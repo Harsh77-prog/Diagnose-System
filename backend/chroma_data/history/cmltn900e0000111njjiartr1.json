@@ -1,0 +1,13 @@
+[
+{
+"role": "user",
+"content": "1234",
+"ts": "2026-02-19T16:04:14.226035"
+},
+{
+"role": "assistant",
+"content": "Hello! It seems like you entered a sequence of numbers. If you have a health-related question or concern, feel free to share more details so I can assist you better. If there's anything specific you'd like to discuss, please let me know!",
+"ts": "2026-02-19T16:04:14.252190",
+"risk_level": "low"
+}
+]
