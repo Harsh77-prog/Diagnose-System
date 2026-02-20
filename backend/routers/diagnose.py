@@ -1,17 +1,17 @@
 """
 Diagnose API: chat, upload report, history.
 All routes require valid JWT (NextAuth).
+ML-powered — no OpenAI dependency.
 """
 from __future__ import annotations
 
-import base64
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
 
 from auth import require_user_id
 from chroma_store import get_full_history
-from diagnose_chain import run_diagnose
+from diagnose_ml import run_ml_diagnose
 from report_parser import parse_report_content
 
 router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
@@ -21,28 +21,17 @@ router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
 async def diagnose_chat(
     request: Request,
     message: str = Form(..., description="User message / symptom description"),
-    report_text: Optional[str] = Form(None, description="Optional pasted report text"),
-    image_b64: Optional[str] = Form(None, description="Optional image as base64"),
+    session_action: Optional[str] = Form(None, description="Follow-up action: yes/no"),
 ) -> dict[str, Any]:
-    """Send a message (and optional report context or image) and get diagnosis-style reply with follow-ups and risk."""
+    """Send a message and get ML-powered diagnosis or follow-up question."""
     user_id = require_user_id(request)
     if not message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
-    report_context = (report_text or "").strip()
-    image_data: Optional[str] = None
-    if image_b64:
-        try:
-            base64.b64decode(image_b64)
-            image_data = image_b64
-        except Exception:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid image base64")
-
-    result = run_diagnose(
+    result = run_ml_diagnose(
         user_id=user_id,
         user_message=message.strip(),
-        report_context=report_context or "",
-        image_b64=image_data,
+        session_action=session_action,
     )
     return result
 
@@ -77,7 +66,7 @@ async def get_history(request: Request) -> dict[str, Any]:
 
 @router.post("/chat/json")
 async def diagnose_chat_json(request: Request) -> dict[str, Any]:
-    """Same as /chat but JSON body: { message, report_text?, image_b64? }."""
+    """JSON body: { message, session_action? }. ML-powered diagnosis."""
     user_id = require_user_id(request)
     try:
         body = await request.json()
@@ -87,13 +76,11 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
     if not message:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
-    report_text = (body.get("report_text") or "").strip()
-    image_b64 = body.get("image_b64")
+    session_action = body.get("session_action")
 
-    result = run_diagnose(
+    result = run_ml_diagnose(
         user_id=user_id,
         user_message=message,
-        report_context=report_text,
-        image_b64=image_b64,
+        session_action=session_action,
     )
     return result

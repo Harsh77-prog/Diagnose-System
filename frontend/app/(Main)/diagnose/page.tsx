@@ -5,16 +5,25 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Send,
-  ImagePlus,
   FileText,
   AlertTriangle,
   Loader2,
   Stethoscope,
   ChevronDown,
+  ThumbsUp,
+  ThumbsDown,
+  BrainCircuit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type Message = { role: "user" | "assistant"; content: string; risk_level?: string; suggested_action?: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  risk_level?: string;
+  suggested_action?: string;
+  follow_up_question?: string;
+  ml_diagnosis?: Record<string, unknown>;
+};
 
 export default function DiagnosePage() {
   const { data: session, status } = useSession();
@@ -22,13 +31,13 @@ export default function DiagnosePage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [reportText, setReportText] = useState("");
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [showReportPanel, setShowReportPanel] = useState(false);
   const [lastRisk, setLastRisk] = useState<{ level: string; action: string } | null>(null);
   const [backendUnavailable, setBackendUnavailable] = useState(false);
+  const [awaitingFollowUp, setAwaitingFollowUp] = useState(false);
+  const [lastMessage, setLastMessage] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -68,20 +77,6 @@ export default function DiagnosePage() {
     }
   }
 
-  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1];
-      setImagePreview(dataUrl);
-      setImageBase64(base64 || null);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  }
-
   async function handleUploadReport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -100,17 +95,7 @@ export default function DiagnosePage() {
     e.target.value = "";
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const text = input.trim();
-    if (!text && !imageBase64) return;
-    if (loading) return;
-
-    const userContent = text || "(Image attached)";
-    setMessages((prev) => [...prev, { role: "user", content: userContent }]);
-    setInput("");
-    setImagePreview(null);
-    setImageBase64(null);
+  async function sendToBackend(message: string, sessionAction?: string) {
     setLoading(true);
     setLastRisk(null);
 
@@ -119,9 +104,8 @@ export default function DiagnosePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: text || "(Please describe what you see in the image or your main concern.)",
-          report_text: reportText || undefined,
-          image_b64: imageBase64 || undefined,
+          message: message,
+          session_action: sessionAction || undefined,
         }),
       });
 
@@ -137,13 +121,15 @@ export default function DiagnosePage() {
           ...prev,
           {
             role: "assistant",
-            content: data.error || "Diagnosis service is not running. Start the Python backend (see SETUP.md) and try again.",
+            content: data.error || "Diagnosis service is not running. Start the Python backend and try again.",
           },
         ]);
+        setAwaitingFollowUp(false);
         return;
       }
 
       const data = await res.json();
+
       setMessages((prev) => [
         ...prev,
         {
@@ -151,17 +137,52 @@ export default function DiagnosePage() {
           content: data.reply || "I couldn't generate a response. Please try again.",
           risk_level: data.risk_level,
           suggested_action: data.suggested_action,
+          follow_up_question: data.follow_up_question,
+          ml_diagnosis: data.ml_diagnosis,
         },
       ]);
+
       if (data.risk_level) setLastRisk({ level: data.risk_level, action: data.suggested_action || "" });
+
+      // Check if there's a follow-up question
+      if (data.follow_up_suggested && data.follow_up_question) {
+        setAwaitingFollowUp(true);
+        setLastMessage(message);
+      } else {
+        setAwaitingFollowUp(false);
+      }
     } catch {
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: "Something went wrong. Please check your connection and try again." },
       ]);
+      setAwaitingFollowUp(false);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    if (loading) return;
+
+    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setInput("");
+    setAwaitingFollowUp(false);
+    setLastMessage(text);
+
+    await sendToBackend(text);
+  }
+
+  async function handleFollowUpAnswer(answer: "yes" | "no") {
+    if (loading) return;
+
+    setMessages((prev) => [...prev, { role: "user", content: answer === "yes" ? "Yes" : "No" }]);
+    setAwaitingFollowUp(false);
+
+    await sendToBackend(lastMessage, answer);
   }
 
   if (status === "loading" || status === "unauthenticated") {
@@ -182,8 +203,14 @@ export default function DiagnosePage() {
               <Stethoscope className="size-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-slate-800">Diagnose</h1>
-              <p className="text-xs text-slate-500">Describe symptoms, attach reports or images</p>
+              <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                Diagnose
+                <span className="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <BrainCircuit className="size-3" />
+                  ML-Powered
+                </span>
+              </h1>
+              <p className="text-xs text-slate-500">BioBERT + ML Ensemble — 100% offline, no API key needed</p>
             </div>
           </div>
         </div>
@@ -270,15 +297,20 @@ export default function DiagnosePage() {
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="rounded-2xl bg-teal-50 border border-teal-100 p-6 max-w-md">
-              <p className="text-slate-700 font-medium mb-2">Start your assessment</p>
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <BrainCircuit className="size-6 text-teal-600" />
+                <p className="text-slate-700 font-medium">ML-Powered Symptom Checker</p>
+              </div>
               <p className="text-sm text-slate-600 mb-4">
-                Describe your symptoms, paste lab or imaging report text, or upload an image. I’ll ask follow-up
-                questions and help you understand next steps. This is not a substitute for professional medical care.
+                Describe your symptoms in natural language. The system uses BioBERT for symptom extraction
+                and a trained ML ensemble (Random Forest + XGBoost + Logistic Regression) for disease prediction.
+                No API keys needed — everything runs locally!
               </p>
               <ul className="text-sm text-slate-600 text-left list-disc list-inside space-y-1">
-                <li>Attach an image (e.g. X-ray, rash photo)</li>
-                <li>Paste or upload a report (PDF/text)</li>
-                <li>Describe how you feel in your own words</li>
+                <li>Describe how you feel naturally</li>
+                <li>Example: &quot;I have a headache and feel tired&quot;</li>
+                <li>The AI will ask follow-up questions if needed</li>
+                <li>Upload a report (PDF/text) for context</li>
               </ul>
             </div>
           </div>
@@ -299,7 +331,34 @@ export default function DiagnosePage() {
                     : "rounded-2xl rounded-bl-md bg-white border border-slate-200 px-4 py-3 max-w-[85%] shadow-sm"
                 }
               >
-                <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                {m.role === "assistant" ? (
+                  <div className="text-sm text-slate-800 whitespace-pre-wrap prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
+                    {m.content.split("\n").map((line, j) => {
+                      // Bold text
+                      const parts = line.split(/(\*\*[^*]+\*\*)/g);
+                      return (
+                        <span key={j}>
+                          {parts.map((part, k) => {
+                            if (part.startsWith("**") && part.endsWith("**")) {
+                              return <strong key={k}>{part.slice(2, -2)}</strong>;
+                            }
+                            // Italic text
+                            const italicParts = part.split(/(\_[^_]+\_)/g);
+                            return italicParts.map((ip, l) => {
+                              if (ip.startsWith("_") && ip.endsWith("_")) {
+                                return <em key={`${k}-${l}`}>{ip.slice(1, -1)}</em>;
+                              }
+                              return <span key={`${k}-${l}`}>{ip}</span>;
+                            });
+                          })}
+                          {j < m.content.split("\n").length - 1 && "\n"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                )}
                 {m.role === "assistant" && m.risk_level && m.risk_level !== "low" && (
                   <p className="text-xs mt-2 pt-2 border-t border-slate-100 text-amber-700">
                     Risk: {m.risk_level}. {m.suggested_action}
@@ -313,51 +372,49 @@ export default function DiagnosePage() {
           <div className="flex justify-start">
             <div className="rounded-2xl rounded-bl-md bg-white border border-slate-200 px-4 py-3 flex items-center gap-2">
               <Loader2 className="size-4 animate-spin text-teal-500" />
-              <span className="text-sm text-slate-500">Thinking...</span>
+              <span className="text-sm text-slate-500">Analyzing with ML engine...</span>
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
+      {/* Follow-up Yes/No buttons */}
+      {awaitingFollowUp && !loading && (
+        <div className="max-w-4xl w-full mx-auto px-4 pb-2">
+          <div className="rounded-xl bg-teal-50 border border-teal-200 p-3 flex items-center justify-center gap-4">
+            <span className="text-sm text-slate-700 font-medium">Answer the follow-up question:</span>
+            <Button
+              onClick={() => handleFollowUpAnswer("yes")}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl px-6 gap-2"
+              disabled={loading}
+            >
+              <ThumbsUp className="size-4" />
+              Yes
+            </Button>
+            <Button
+              onClick={() => handleFollowUpAnswer("no")}
+              variant="outline"
+              className="border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl px-6 gap-2"
+              disabled={loading}
+            >
+              <ThumbsDown className="size-4" />
+              No
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Input area */}
       <div className="border-t border-slate-200 bg-white/95 backdrop-blur-sm sticky bottom-0">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          {imagePreview && (
-            <div className="mb-2 relative inline-block">
-              <img
-                src={imagePreview}
-                alt="Attached"
-                className="h-20 w-20 object-cover rounded-lg border border-slate-200"
-              />
-              <button
-                type="button"
-                className="absolute -top-1 -right-1 size-5 rounded-full bg-slate-800 text-white text-xs flex items-center justify-center"
-                onClick={() => {
-                  setImagePreview(null);
-                  setImageBase64(null);
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )}
           <form onSubmit={handleSubmit} className="flex gap-2 items-end">
-            <div className="flex-1 flex gap-2">
-              <label className="cursor-pointer flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 size-10 shrink-0">
-                <ImagePlus className="size-5" />
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageSelect}
-                />
-              </label>
+            <div className="flex gap-2">
               <label className="cursor-pointer flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 size-10 shrink-0">
                 <FileText className="size-5" />
                 <input
                   type="file"
-                  accept=".pdf,.txt,image/*"
+                  accept=".pdf,.txt"
                   className="hidden"
                   onChange={handleUploadReport}
                 />
@@ -372,7 +429,7 @@ export default function DiagnosePage() {
             </div>
             <textarea
               className="flex-1 min-h-[44px] max-h-32 rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400"
-              placeholder="Describe symptoms or ask a question..."
+              placeholder={awaitingFollowUp ? "Or type your symptoms for a new diagnosis..." : "Describe symptoms or ask a question..."}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -385,14 +442,14 @@ export default function DiagnosePage() {
             />
             <Button
               type="submit"
-              disabled={loading || (!input.trim() && !imageBase64)}
+              disabled={loading || !input.trim()}
               className="rounded-xl bg-teal-500 hover:bg-teal-600 size-10 shrink-0"
             >
               <Send className="size-5" />
             </Button>
           </form>
           <p className="text-xs text-slate-500 mt-2 text-center">
-            Not a substitute for professional medical advice. In an emergency, seek care immediately.
+            🧠 Powered by BioBERT + ML Ensemble. Not a substitute for professional medical advice.
           </p>
         </div>
       </div>

@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const { message, report_text, image_b64 } = body;
+  const { message, session_action } = body;
   if (!message || typeof message !== "string") {
     return NextResponse.json({ error: "message is required" }, { status: 400 });
   }
@@ -28,8 +28,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         message: message.trim(),
-        report_text: report_text?.trim() || "",
-        image_b64: image_b64 || null,
+        session_action: session_action || null,
       }),
     });
   } catch (err) {

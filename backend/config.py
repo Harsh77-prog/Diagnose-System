@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 NEXTAUTH_SECRET = os.getenv("NEXTAUTH_SECRET", "")
 SHARED_SECRET = os.getenv("SHARED_SECRET", "")  # Same as in frontend for server-to-server auth
 CHROMA_PERSIST_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")).resolve()

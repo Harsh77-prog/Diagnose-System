@@ -1,0 +1,24 @@
+[
+{
+"role": "user",
+"content": "hell",
+"ts": "2026-02-19T16:22:39.371413"
+},
+{
+"role": "assistant",
+"content": "Hello! How can I assist you today? If you have any health-related questions or concerns, feel free to share more details.",
+"ts": "2026-02-19T16:22:39.372201",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "symptoms of acne",
+"ts": "2026-02-19T16:22:58.354158"
+},
+{
+"role": "assistant",
+"content": "Acne is a common skin condition that can present with various symptoms. Here are some of the typical signs:\n\n- **Blackheads and Whiteheads**: These are clogged pores. Blackheads are open at the surface and appear black, while whiteheads are closed and appear white or flesh-colored.\n  \n- **Papules**: Small red, tender bumps on the skin.\n  \n- **Pustules**: Pimples that contain pus at their tips, often red at the base.\n  \n- **Nodules**: Large, solid, painful lumps beneath the surface of the skin.\n  \n- **Cysts**: Painful, pus-filled lumps beneath the skin, which can cause scarring.\n\nAcne can vary in severity and can appear on the face, back, chest, shoulders, and other areas. \n\nHere are a few follow-up questions to better understand your situation:\n- How long have you been experiencing these symptoms?\n- Are there any specific areas where the acne is more prominent?\n- Have you noticed anything that seems to trigger or worsen your acne?\n\nIf your symptoms are severe or causing significant discomfort, it's a good idea to consult with a healthcare provider or dermatologist for personalized advice and treatment options.",
+"ts": "2026-02-19T16:22:58.355484",
+"risk_level": "low"
+}
+]
