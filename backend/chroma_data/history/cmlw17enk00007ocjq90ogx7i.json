@@ -95,5 +95,78 @@
 "content": "**Diagnosis: Malaria**\nConfidence: 59.0%\n_(Confirmed after 5 follow-up questions)_\n\n**Top Predictions:**\n1. Malaria — 59.0% ◄\n2. Dengue — 34.7%\n3. Common Cold — 1.5%\n4. Typhoid — 0.9%\n5. Pneumonia — 0.6%\n\n**Symptoms identified (4):**\n• Vomiting\n• High Fever\n• Muscle Pain\n• Chills\n\n**Follow-up questions (5):**\n1. Nausea [✗ No]\n2. High Fever [✓ Yes]\n3. Diarrhoea [✗ No]\n4. Muscle Pain [✓ Yes]\n5. Chills [✓ Yes]\n\n**About Malaria:**\nAn infectious disease caused by protozoan parasites from the Plasmodium family that can be transmitted by the bite of the Anopheles mosquito or by a contaminated needle or transfusion. Falciparum malaria is the most deadly type.\n\n**Precautions:**\n1. Consult nearest hospital\n2. avoid oily food\n3. avoid non veg food\n4. keep mosquitos out\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
 "ts": "2026-02-21T08:29:15.411525",
 "risk_level": "low"
+},
+{
+"role": "user",
+"content": "hlo",
+"ts": "2026-02-21T09:14:07.587525"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-21T09:14:07.627141"
+},
+{
+"role": "user",
+"content": "i have pain near heart",
+"ts": "2026-02-21T09:14:19.434558"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-21T09:14:19.449704"
+},
+{
+"role": "user",
+"content": "I have a headache and fever",
+"ts": "2026-02-21T09:14:36.312999"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Headache, High Fever**\n\nInitial prediction: **Typhoid** (33.1% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-21T09:14:37.572118",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I have a pain near headache",
+"ts": "2026-02-21T09:15:03.544443"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Headache**\n\nInitial prediction: **Typhoid** (15.4% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **high fever**?",
+"ts": "2026-02-21T09:15:05.264529",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "i have a a pain near heart",
+"ts": "2026-02-21T09:15:22.343333"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-21T09:15:22.358737"
+},
+{
+"role": "user",
+"content": "i have a fever",
+"ts": "2026-02-21T09:20:04.109642"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **High Fever**\n\nInitial prediction: **Jaundice** (9.6% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **skin rash**?",
+"ts": "2026-02-21T09:20:05.523626",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "i have a heart attack",
+"ts": "2026-02-21T09:20:20.150644"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-21T09:20:20.168047"
 }
 ]
