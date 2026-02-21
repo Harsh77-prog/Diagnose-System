@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { prismaUser as prisma } from "@/lib/prisma/client";
 
 import { NextResponse } from "next/server";
+import { sendMail } from "../utils/mailer";
 
 export async function POST(req: Request) {
   try {
@@ -37,21 +38,46 @@ export async function POST(req: Request) {
 
     // hash password
     const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedVerificationToken = await bcrypt.hash(
+      JSON.stringify({ name, email, date: Date.now() }),
+      12,
+    );
 
     // create user
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        createdAt: true,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+          emailVerified: true,
+        },
+      });
+
+      await tx.verificationToken.create({
+        data: {
+          identifier: email,
+          token: hashedVerificationToken,
+          expires: (Date.now() + 1000 * 60 * 60 * 48).toString(),
+          type: "UserVerification",
+          status: "Active",
+        },
+      });
+
+      return user;
     });
+
+    await sendMail(
+      email,
+      `${process.env.NEXTAUTH_URL}/verify?token=${hashedVerificationToken}`,
+      "verificationLink",
+    );
 
     return NextResponse.json(user, { status: 201 });
   } catch (error) {

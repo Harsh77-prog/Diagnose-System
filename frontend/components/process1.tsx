@@ -1,7 +1,9 @@
-import { Stethoscope } from "lucide-react";
+import { Asterisk, CornerDownRight } from "lucide-react";
 import React from "react";
 
 import { cn } from "@/lib/utils";
+
+import { Button } from "@/components/ui/button";
 
 interface Process1Props {
   className?: string;
@@ -36,42 +38,35 @@ const Process1 = ({ className }: Process1Props) => {
   ];
 
   return (
-    <section className={cn("py-12 md:py-20", className)}>
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-6 lg:gap-16">
-          <div className="lg:col-span-2">
-            <div className="lg:sticky lg:top-24">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex size-12 items-center justify-center rounded-xl bg-teal-500 text-white">
-                  <Stethoscope className="size-6" />
-                </div>
-                <h2 className="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight">
-                  Our Process
-                </h2>
-              </div>
-              <p className="text-slate-600 leading-relaxed">
-                A simple, guided workflow designed to understand your health
-                concerns, assess urgency, and connect you with the right care at
-                the right time.
-              </p>
+    <section className={cn("py-32", className)}>
+      <div className="container">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-6 lg:gap-20">
+          <div className="top-10 col-span-2 h-fit w-fit gap-3 space-y-7 py-8 lg:sticky">
+            <div className="relative w-fit text-5xl font-semibold tracking-tight lg:text-7xl">
+              {" "}
+              <h1 className="w-fit">Our Process</h1>
+              <Asterisk className="absolute -top-2 -right-2 size-5 text-orange-500 md:size-10 lg:-right-14" />
             </div>
+            <p className="text-base text-foreground/50">
+              A simple, guided workflow designed to understand your health
+              concerns, assess urgency, and connect you with the right care at
+              the right time.
+            </p>
           </div>
-          <ul className="lg:col-span-4 space-y-0">
+          <ul className="relative col-span-4 w-full lg:pl-22">
             {process.map((step, index) => (
               <li
                 key={index}
-                className="flex flex-col sm:flex-row gap-6 py-8 border-b border-slate-200 last:border-b-0"
+                className="relative flex flex-col justify-between gap-10 border-t py-8 md:flex-row lg:py-10"
               >
-                <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 font-bold text-lg">
-                  {step.step}
+                <div className="flex size-12 items-center justify-center bg-muted px-4 py-1 tracking-tighter">
+                  0{index + 1}
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-800 mb-2">
+                <div className="">
+                  <h3 className="mb-4 text-2xl font-semibold tracking-tighter lg:text-3xl">
                     {step.title}
                   </h3>
-                  <p className="text-slate-600 leading-relaxed">
-                    {step.description}
-                  </p>
+                  <p className="text-foreground/50">{step.description}</p>
                 </div>
               </li>
             ))}
