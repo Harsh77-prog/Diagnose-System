@@ -1,0 +1,50 @@
+======================================================================
+STEP 1: Cleaning dataset.csv
+======================================================================
+  Original shape: (4920, 18)
+  Original columns: ['Disease', 'Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4', 'Symptom_5', 'Symptom_6', 'Symptom_7', 'Symptom_8', 'Symptom_9', 'Symptom_10', 'Symptom_11', 'Symptom_12', 'Symptom_13', 'Symptom_14', 'Symptom_15', 'Symptom_16', 'Symptom_17']
+  Unique diseases after cleaning: 41
+  Symptom columns cleaned: ['Symptom_1', 'Symptom_2', 'Symptom_3', 'Symptom_4', 'Symptom_5', 'Symptom_6', 'Symptom_7', 'Symptom_8', 'Symptom_9', 'Symptom_10', 'Symptom_11', 'Symptom_12', 'Symptom_13', 'Symptom_14', 'Symptom_15', 'Symptom_16', 'Symptom_17']
+  Rows before dedup: 4920 → after: 304  (removed 4616)
+  Total unique symptoms: 131
+  Saved → /Users/harsh/Developer/medical_ML/data/dataset_cleaned.csv
+
+  Building binary-encoded feature matrix …
+  Encoded shape: (304, 132)
+  Saved → /Users/harsh/Developer/medical_ML/data/dataset_encoded.csv
+
+======================================================================
+STEP 2: Cleaning Symptom-severity.csv
+======================================================================
+  Original shape: (133, 2)
+  ✓ All dataset symptoms found in severity file
+  ⚠ Symptoms in severity but NOT in dataset: {'prognosis'}
+  Saved → /Users/harsh/Developer/medical_ML/data/symptom_severity_cleaned.csv
+
+======================================================================
+STEP 3: Cleaning symptom_Description.csv
+======================================================================
+  Original shape: (41, 2)
+  ✓ All dataset diseases found in description file
+  ✓ All description diseases found in dataset
+  Saved → /Users/harsh/Developer/medical_ML/data/symptom_description_cleaned.csv
+
+======================================================================
+STEP 4: Cleaning symptom_precaution.csv
+======================================================================
+  Original shape: (41, 5)
+  ✓ All dataset diseases found in precaution file
+  ✓ All precaution diseases found in dataset
+  Saved → /Users/harsh/Developer/medical_ML/data/symptom_precaution_cleaned.csv
+
+======================================================================
+CLEANING SUMMARY
+======================================================================
+  Diseases:  41
+  Symptoms:  131
+  Dataset rows (cleaned):  304
+  Encoded matrix shape:    (304, 132)
+  Symptom name corrections applied: {'dischromic _patches': 'dischromic_patches', 'spotting_ urination': 'spotting_urination', 'foul_smell_of urine': 'foul_smell_of_urine', 'foul_smell_ofurine': 'foul_smell_of_urine'}
+  Disease name corrections applied: {'Peptic ulcer diseae': 'Peptic ulcer disease', 'Dimorphic hemmorhoids(piles)': 'Dimorphic hemorrhoids(piles)', 'Dimorphic hemorrhoids(piles)': 'Dimorphic hemorrhoids(piles)', 'Osteoarthristis': 'Osteoarthritis', '(vertigo) Paroymsal  Positional Vertigo': '(vertigo) Paroxysmal Positional Vertigo', 'hepatitis A': 'Hepatitis A'}
+
+  All cleaned files saved to: /Users/harsh/Developer/medical_ML/data

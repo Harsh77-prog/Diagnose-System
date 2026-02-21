@@ -9,11 +9,11 @@ generator client {
 }
 
 // ===============================
-// PostgreSQL Connection
+// SQLite Connection (local dev)
 // ===============================
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 // ===============================
