@@ -1,10 +1,14 @@
 import nodemailer from "nodemailer";
 
-let transporter = nodemailer.createTransport({
+if (!process.env.EMAIL || !process.env.EMAIL_PASS) {
+  throw new Error("❌ EMAIL or EMAIL_PASS missing in .env");
+}
+
+const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
-    user: "jaskirat0623@gmail.com",
-    pass: "khpaacmqdkwizssw",
+    user: process.env.EMAIL,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
