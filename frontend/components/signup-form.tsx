@@ -138,7 +138,7 @@ export function SignupForm({
                 </Button>
                 <FieldDescription className="text-center">
                   Already have an account?{" "}
-                  <a href="#" className="text-foreground">
+                  <a href="/login" className="text-foreground">
                     Sign in here.
                   </a>
                 </FieldDescription>
