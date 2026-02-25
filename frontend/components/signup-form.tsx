@@ -16,7 +16,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { signIn } from "next-auth/react";
 import { useState } from "react";
 
 export function SignupForm({
@@ -25,10 +24,12 @@ export function SignupForm({
 }: React.ComponentProps<"div">) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationPending, setVerificationPending] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    setVerificationPending(false);
     setLoading(true);
 
     const formData = new FormData(e.currentTarget);
@@ -54,14 +55,7 @@ export function SignupForm({
         return;
       }
 
-      // auto login after signup
-      await signIn("credentials", {
-        email,
-        password,
-        emailVerified: false,
-        redirect: true,
-        callbackUrl: "/",
-      });
+      setVerificationPending(true);
     } catch (err) {
       setError("Network error");
     } finally {
@@ -132,9 +126,19 @@ export function SignupForm({
               {error && (
                 <p className="text-sm text-red-500 text-center">{error}</p>
               )}
+              {verificationPending && (
+                <p className="text-sm text-emerald-600 text-center">
+                  Verify your email to continue. We sent a verification link to
+                  your inbox. After verification, sign in to access home.
+                </p>
+              )}
               <Field>
-                <Button type="submit">
-                  {loading ? "Creating..." : "Create Account"}
+                <Button type="submit" disabled={loading || verificationPending}>
+                  {loading
+                    ? "Creating..."
+                    : verificationPending
+                      ? "Awaiting Verification"
+                      : "Create Account"}
                 </Button>
                 <FieldDescription className="text-center">
                   Already have an account?{" "}
@@ -154,3 +158,4 @@ export function SignupForm({
     </div>
   );
 }
+

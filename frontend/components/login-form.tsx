@@ -48,7 +48,11 @@ export function LoginForm({
       }
 
       if (result.error) {
-        // 👇 THIS prevents redirect to /api/auth/error
+        if (result.error.includes("EMAIL_NOT_VERIFIED")) {
+          setError("Email not verified. Please verify from your email first.");
+          return;
+        }
+
         setError("Invalid email or password");
         return;
       }
@@ -135,3 +139,5 @@ export function LoginForm({
     </div>
   );
 }
+
+

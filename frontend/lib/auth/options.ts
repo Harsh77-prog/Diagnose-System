@@ -37,6 +37,10 @@ export const authOptions: AuthOptions = {
           return null;
         }
 
+        if (!user.emailVerified) {
+          throw new Error("EMAIL_NOT_VERIFIED");
+        }
+
         // 👇 only return safe fields
         return {
           id: user.id,
@@ -132,3 +136,4 @@ export const authOptions: AuthOptions = {
 
   secret: process.env.NEXTAUTH_SECRET,
 };
+

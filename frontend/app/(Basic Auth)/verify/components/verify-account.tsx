@@ -30,8 +30,8 @@ export default function VerifyAccountScreen({
             "All features are unlocked",
             "You can now sign in anytime",
           ],
-          primaryAction: "Go to Dashboard",
-          primaryHref: "/onboarding",
+          primaryAction: "Go to Sign in",
+          primaryHref: "/login",
         };
       case "expired":
         return {
@@ -144,3 +144,4 @@ export default function VerifyAccountScreen({
     </div>
   );
 }
+
