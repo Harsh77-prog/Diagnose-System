@@ -6,14 +6,15 @@
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/user"
 }
 
 // ===============================
-// SQLite Connection (local dev)
+// MongoDB Connection
 // ===============================
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ===============================
@@ -27,25 +28,11 @@ model User {
   image         String?
 
   password String? // nullable for OAuth users
-
-  accounts     Account[]
-  sessions     Session[]
-  chatMessages ChatMessage[]
+  accounts Account[]
+  sessions Session[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model ChatMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  role      String   // "user" | "assistant"
-  content   String
-  createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
 }
 
 model Account {
@@ -76,10 +63,24 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+enum VerificationType {
+  ResetPassword
+  UserVerification
+}
+
+enum Status {
+  Active
+  Accepted
+  Depreciated
+  Expired
+}
+
 model VerificationToken {
   identifier String
-  token      String   @unique
-  expires    DateTime
+  token      String           @unique
+  expires    String
+  type       VerificationType @default(UserVerification)
+  status     Status?          @default(Active)
 
   @@unique([identifier, token])
 }
