@@ -1,2 +1,2 @@
-import { PrismaClient } from "../../node_modules/.prisma/user";
+import { PrismaClient } from "@prisma/client";
 export const prismaUser = new PrismaClient();
