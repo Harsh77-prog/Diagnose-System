@@ -1,4 +1,4 @@
-import NextAuth, { type AuthOptions } from "next-auth";
+import { type AuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcrypt";
@@ -47,8 +47,10 @@ export const authOptions: AuthOptions = {
       },
     }),
     GoogleProvider({
-      clientId: process.env.ClientId!,
-      clientSecret: process.env.ClientSecret!,
+      clientId: process.env.GOOGLE_CLIENT_ID ?? process.env.ClientId ?? "",
+      clientSecret:
+        process.env.GOOGLE_CLIENT_SECRET ?? process.env.ClientSecret ?? "",
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
 
@@ -130,6 +132,3 @@ export const authOptions: AuthOptions = {
 
   secret: process.env.NEXTAUTH_SECRET,
 };
-
-const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };

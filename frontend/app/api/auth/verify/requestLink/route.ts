@@ -4,7 +4,7 @@ import { prismaUser as prisma } from "@/lib/prisma/client";
 
 import { NextResponse } from "next/server";
 import { sendMail } from "../../utils/mailer";
-import { Prisma } from "@prisma/client/scripts/default-index.js";
+import { Prisma } from "@prisma/client";
 
 export async function POST(req: Request) {
   try {

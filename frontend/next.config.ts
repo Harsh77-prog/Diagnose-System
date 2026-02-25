@@ -1,8 +1,6 @@
 const nextConfig = {
-  experimental: {
-    outputFileTracingIncludes: {
-      '/**/*': ['./node_modules/.prisma/client/**/*'],
-    },
+  outputFileTracingIncludes: {
+    "/**/*": ["./node_modules/.prisma/client/**/*"],
   },
 };
 

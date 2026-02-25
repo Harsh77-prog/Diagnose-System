@@ -7,9 +7,6 @@
   "build": "prisma generate && next build",
   "postinstall": "prisma generate"
 },
-  "prisma": {
-  "schema": "prisma/schema.prisma"
-},
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
     "@prisma/client": "6.19",
