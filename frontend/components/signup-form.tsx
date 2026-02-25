@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
-import Link from "next/link";
 
 export function SignupForm({
   className,
@@ -42,7 +41,7 @@ export function SignupForm({
     const name = `${firstName} ${lastName}`;
 
     try {
-      const res = await fetch("/api/register", {
+      const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
@@ -55,12 +54,13 @@ export function SignupForm({
         return;
       }
 
-      // auto login after signup → redirect to Diagnose
+      // auto login after signup
       await signIn("credentials", {
         email,
         password,
+        emailVerified: false,
         redirect: true,
-        callbackUrl: "/diagnose",
+        callbackUrl: "/onboarding",
       });
     } catch (err) {
       setError("Network error");
@@ -71,11 +71,11 @@ export function SignupForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="rounded-2xl border-slate-200 bg-white shadow-xl shadow-slate-200/30">
-        <CardHeader className="text-center pb-2">
-          <CardTitle className="text-2xl text-slate-800">Create your account</CardTitle>
-          <CardDescription className="text-slate-600">
-            Enter your details to get started with MedCoreAI.
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Create a account</CardTitle>
+          <CardDescription>
+            Enter your email below to create your account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -83,75 +83,73 @@ export function SignupForm({
             <FieldGroup>
               <Field className="grid grid-cols-2 gap-4">
                 <Field>
-                  <FieldLabel htmlFor="firstName" className="text-slate-700">First name</FieldLabel>
+                  <FieldLabel htmlFor="firstName">First name</FieldLabel>
                   <Input
                     name="firstName"
-                    id="firstName"
+                    id="name"
                     type="text"
-                    placeholder="John"
+                    placeholder="John Doe"
                     required
-                    className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="lastName" className="text-slate-700">Last name</FieldLabel>
+                  <FieldLabel htmlFor="lastName">Last name</FieldLabel>
                   <Input
                     name="lastName"
-                    id="lastName"
+                    id="name"
                     type="text"
-                    placeholder="Doe"
+                    placeholder="m@example.com"
                     required
-                    className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
                   />
                 </Field>
               </Field>
               <Field>
-                <FieldLabel htmlFor="email" className="text-slate-700">Email</FieldLabel>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
                   name="email"
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="m@example.com"
                   required
-                  className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="password" className="text-slate-700">Password</FieldLabel>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  name="password"
-                  className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
-                />
-                <FieldDescription className="text-slate-500">
-                  Use 8+ characters with letters, numbers and symbols. Avoid using your name.
+                <Field>
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    name="password"
+                  />
+                </Field>
+
+                <FieldDescription>
+                  Use 8 or more characters with a mix of letters, numbers and
+                  symbols. Must not contain your name or username.
                 </FieldDescription>
               </Field>
               {error && (
-                <p className="text-sm text-red-500 text-center font-medium">{error}</p>
+                <p className="text-sm text-red-500 text-center">{error}</p>
               )}
               <Field>
-                <Button
-                  type="submit"
-                  className="rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-semibold"
-                >
+                <Button type="submit">
                   {loading ? "Creating..." : "Create Account"}
                 </Button>
-                <FieldDescription className="text-center text-slate-600">
+                <FieldDescription className="text-center">
                   Already have an account?{" "}
-                  <Link href="/login" className="text-teal-600 font-medium hover:underline">
-                    Sign in here
-                  </Link>
+                  <a href="#" className="text-foreground">
+                    Sign in here.
+                  </a>
                 </FieldDescription>
               </Field>
             </FieldGroup>
           </form>
         </CardContent>
       </Card>
-      <FieldDescription className="px-2 text-center text-slate-500 text-sm">
-        By continuing, you agree to our <a href="#" className="text-teal-600 hover:underline">Terms of Service</a> and <a href="#" className="text-teal-600 hover:underline">Privacy Policy</a>.
+      <FieldDescription className="px-6 text-center">
+        By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
+        and <a href="#">Privacy Policy</a>.
       </FieldDescription>
     </div>
   );

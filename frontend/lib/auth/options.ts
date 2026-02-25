@@ -42,12 +42,13 @@ export const authOptions: AuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
+          emailVerified: user.emailVerified,
         };
       },
     }),
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || "",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      clientId: process.env.ClientId!,
+      clientSecret: process.env.ClientSecret!,
     }),
   ],
 
@@ -89,20 +90,35 @@ export const authOptions: AuthOptions = {
 
     //   return true
     // },
-    async jwt({ token, user }) {
-      // Runs on sign-in
+    async jwt({ token, user, trigger, session }: any) {
       if (user) {
-        token.id = user.id;
-        token.email = user.email;
-        token.name = user.name;
+        const dbUser = await prisma.user.findUnique({
+          where: { email: user.email },
+          select: {
+            name: true,
+            id: true,
+            email: true,
+            emailVerified: true,
+          },
+        });
+        token.name = dbUser?.name;
+        token.id = dbUser?.id;
+        token.email = dbUser?.email;
+        token.emailVerified = dbUser?.emailVerified;
       }
+      // 👇 Manual session update
+      if (trigger === "update" && session) {
+        console.log({ session });
+        if (session.name) token.name = session.name;
+        if (session.image) token.picture = session.image;
+        if (session.emailVerified) token.emailVerified = session.emailVerified;
+      }
+
       return token;
     },
-
-    async session({ session, token }) {
-      if (session.user) {
-        (session.user as any).id = token.id as string;
-      }
+    async session({ session, token }: any) {
+      session.user.id = token.id;
+      session.user.emailVerified = token.emailVerified;
       return session;
     },
   },
@@ -114,3 +130,6 @@ export const authOptions: AuthOptions = {
 
   secret: process.env.NEXTAUTH_SECRET,
 };
+
+const handler = NextAuth(authOptions);
+export { handler as GET, handler as POST };

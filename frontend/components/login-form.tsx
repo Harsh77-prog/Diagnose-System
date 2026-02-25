@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
-import Link from "next/link";
 
 export function LoginForm({
   className,
@@ -54,8 +53,8 @@ export function LoginForm({
         return;
       }
 
-      // ✅ success → redirect to Diagnose
-      window.location.href = "/diagnose";
+      // ✅ success → redirect manually
+      window.location.href = "/onboarding";
     } catch (err) {
       setError("Network error");
     } finally {
@@ -64,12 +63,10 @@ export function LoginForm({
   }
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="rounded-2xl border-slate-200 bg-white shadow-xl shadow-slate-200/30">
-        <CardHeader className="text-center pb-2">
-          <CardTitle className="text-2xl text-slate-800">Welcome back</CardTitle>
-          <CardDescription className="text-slate-600">
-            Sign in with email or Google to access your medical guidance.
-          </CardDescription>
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Welcome back</CardTitle>
+          <CardDescription>Login with your Google account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit}>
@@ -78,14 +75,13 @@ export function LoginForm({
                 <Button
                   variant="outline"
                   type="button"
-                  className="rounded-xl border-slate-200 hover:bg-slate-50"
                   onClick={() =>
                     signIn("google", {
-                      callbackUrl: "/diagnose",
+                      callbackUrl: "/onboarding",
                     })
                   }
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className="size-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                     <path
                       d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
                       fill="currentColor"
@@ -94,49 +90,47 @@ export function LoginForm({
                   Login with Google
                 </Button>
               </Field>
-              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-slate-100 *:data-[slot=field-separator-content]:text-slate-500">
-                Or continue with email
+              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+                Or continue with
               </FieldSeparator>
               <Field>
-                <FieldLabel htmlFor="email" className="text-slate-700">Email</FieldLabel>
+                <FieldLabel htmlFor="email">Email</FieldLabel>
                 <Input
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="m@example.com"
                   required
-                  className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white"
                 />
               </Field>
               <Field>
                 <div className="flex items-center">
-                  <FieldLabel htmlFor="password" className="text-slate-700">Password</FieldLabel>
+                  <FieldLabel htmlFor="password">Password</FieldLabel>
                   <a
-                    href="#"
-                    className="ml-auto text-sm text-teal-600 hover:underline"
+                    href="/login/forgot"
+                    className="ml-auto text-sm underline-offset-4 hover:underline"
                   >
-                    Forgot password?
+                    Forgot your password?
                   </a>
                 </div>
-                <Input id="password" name="password" type="password" required className="rounded-xl border-slate-200 bg-slate-50/50 focus:bg-white" />
+                <Input id="password" name="password" type="password" required />
               </Field>
               {error && (
-                <p className="text-sm text-red-500 text-center font-medium">{error}</p>
+                <p className="text-sm text-red-500 text-center">{error}</p>
               )}
               <Field>
-                <Button type="submit" className="rounded-xl bg-teal-500 hover:bg-teal-600 text-white font-semibold">
-                  Login
-                </Button>
-                <FieldDescription className="text-center text-slate-600">
-                  Don&apos;t have an account? <Link href="/signup" className="text-teal-600 font-medium hover:underline">Sign up</Link>
+                <Button type="submit">Login</Button>
+                <FieldDescription className="text-center">
+                  Don&apos;t have an account? <a href="#">Sign up</a>
                 </FieldDescription>
               </Field>
             </FieldGroup>
           </form>
         </CardContent>
       </Card>
-      <FieldDescription className="px-2 text-center text-slate-500 text-sm">
-        By continuing, you agree to our <a href="#" className="text-teal-600 hover:underline">Terms of Service</a> and <a href="#" className="text-teal-600 hover:underline">Privacy Policy</a>.
+      <FieldDescription className="px-6 text-center">
+        By clicking continue, you agree to our <a href="#">Terms of Service</a>{" "}
+        and <a href="#">Privacy Policy</a>.
       </FieldDescription>
     </div>
   );
