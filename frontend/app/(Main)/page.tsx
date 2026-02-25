@@ -20,7 +20,6 @@ import {
 import { Process1 } from "@/components/process1";
 import { Separator } from "@/components/ui/separator";
 import { InView } from "@/components/ui/in-view";
-import { Navbar } from "../../components/navbar";
 import { useRouter } from "next/navigation";
 
 const faqs = [
@@ -118,10 +117,6 @@ export default function Page() {
   const router = useRouter();
   return (
     <main>
-      <section className="navbar p-3.5 w-full ">
-        <Navbar />
-      </section>
-
       <section className="h-auto p-8 py-20 md:py-64 gap-8 border w-full flex justify-center items-center flex-col">
         <h1 className="scroll-m-20 text-center text-5xl md:text-6xl font-bold tracking-tight text-center break-word md:max-w-[45vw]">
           Medical conversations, simplified.

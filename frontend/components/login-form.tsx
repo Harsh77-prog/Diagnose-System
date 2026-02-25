@@ -54,7 +54,7 @@ export function LoginForm({
       }
 
       // ✅ success → redirect manually
-      window.location.href = "/onboarding";
+      window.location.href = "/";
     } catch (err) {
       setError("Network error");
     } finally {
@@ -77,7 +77,7 @@ export function LoginForm({
                   type="button"
                   onClick={() =>
                     signIn("google", {
-                      callbackUrl: "/onboarding",
+                      callbackUrl: "/",
                     })
                   }
                 >

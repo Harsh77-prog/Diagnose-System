@@ -1,15 +1,16 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import Image from "next/image";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
 
 const LINKS = [
   { label: "Home", href: "/" },
@@ -17,14 +18,50 @@ const LINKS = [
   { label: "About us", href: "/about" },
 ];
 
+function UserProfileBar({
+  name,
+  email,
+  mobile = false,
+}: {
+  name: string;
+  email: string;
+  mobile?: boolean;
+}) {
+  const initials = name.trim().charAt(0).toUpperCase() || "U";
+
+  return (
+    <div
+      className={`flex items-center gap-3 rounded-md border p-2 ${mobile ? "w-full" : ""}`}
+    >
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-sm font-semibold text-white">
+        {initials}
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold">{name}</p>
+        <p className="truncate text-xs text-muted-foreground">{email}</p>
+      </div>
+      <Button
+        className="ml-auto"
+        variant="outline"
+        onClick={() => signOut({ callbackUrl: "/login" })}
+      >
+        Sign out
+      </Button>
+    </div>
+  );
+}
+
 export function Navbar() {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated";
+  const userName = session?.user?.name || "User";
+  const userEmail = session?.user?.email || "No email";
 
   return (
     <header className="fixed top-0 left-0 w-full z-50">
       <nav className="py-2 flex items-center justify-between px-4 md:px-8 bg-white/90 backdrop-blur-sm border">
-        {/* Logo */}
         <Link href={"/"}>
           <div className="text-md items-center gap-2 flex md:text-lg font-semibold">
             <Image src={"/globe.svg"} alt="TNP" width={30} height={30} />
@@ -32,7 +69,6 @@ export function Navbar() {
           </div>
         </Link>
 
-        {/* Desktop links */}
         <div className="hidden md:flex items-center gap-4">
           {LINKS.map((l) => (
             <Link
@@ -43,19 +79,23 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
-          <Button
-            className="shadow-none rounded-md"
-            variant={"outline"}
-            onClick={() => router.push("/login")}
-          >
-            Sign in
-          </Button>
-          <Button className=" " onClick={() => router.push("/signup")}>
-            Get Started
-          </Button>
+
+          {isAuthenticated ? (
+            <UserProfileBar name={userName} email={userEmail} />
+          ) : (
+            <>
+              <Button
+                className="shadow-none rounded-md"
+                variant={"outline"}
+                onClick={() => router.push("/login")}
+              >
+                Sign in
+              </Button>
+              <Button onClick={() => router.push("/signup")}>Get Started</Button>
+            </>
+          )}
         </div>
 
-        {/* Mobile menu (Popover) */}
         <div className="md:hidden">
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -64,13 +104,11 @@ export function Navbar() {
                 className="relative flex h-8 w-8 items-center justify-center"
               >
                 <div className="relative size-4">
-                  {/* top bar */}
                   <span
                     className={`bg-foreground absolute left-0 block h-0.5 w-4 transition-all duration-200 ${
                       open ? "top-[0.4rem] -rotate-45" : "top-1 rotate-0"
                     }`}
                   />
-                  {/* bottom bar */}
                   <span
                     className={`bg-foreground absolute left-0 block h-0.5 w-4 transition-all duration-200 ${
                       open ? "top-[0.4rem] rotate-45" : "top-2.5 rotate-0"
@@ -97,20 +135,31 @@ export function Navbar() {
                   </Link>
                 ))}
 
-                <div className="flex flex-col justify-between gap-2">
-                  <Button
-                    className="shadow-none rounded-md w-full"
-                    variant={"outline"}
-                  >
-                    Sign in
-                  </Button>
-                  <Button
-                    className="w-full"
-                    onClick={() => router.push("/signup")}
-                  >
-                    Get Started
-                  </Button>
-                </div>
+                {isAuthenticated ? (
+                  <UserProfileBar name={userName} email={userEmail} mobile />
+                ) : (
+                  <div className="flex flex-col justify-between gap-2">
+                    <Button
+                      className="shadow-none rounded-md w-full"
+                      variant={"outline"}
+                      onClick={() => {
+                        setOpen(false);
+                        router.push("/login");
+                      }}
+                    >
+                      Sign in
+                    </Button>
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        setOpen(false);
+                        router.push("/signup");
+                      }}
+                    >
+                      Get Started
+                    </Button>
+                  </div>
+                )}
               </div>
             </PopoverContent>
           </Popover>

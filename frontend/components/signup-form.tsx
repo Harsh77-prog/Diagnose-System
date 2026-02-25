@@ -60,7 +60,7 @@ export function SignupForm({
         password,
         emailVerified: false,
         redirect: true,
-        callbackUrl: "/onboarding",
+        callbackUrl: "/",
       });
     } catch (err) {
       setError("Network error");
