@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import { prismaUser as prisma } from "@/lib/prisma/client";
 
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client/scripts/default-index.js";
 
 export async function POST(req: Request) {
   try {
@@ -60,7 +61,7 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // update password  user
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await prisma.verificationToken.update({
         data: {
           status: "Accepted",

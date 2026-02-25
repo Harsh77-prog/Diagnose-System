@@ -1,5 +1,6 @@
 // /api/register/route.ts
 import { prismaUser as prisma } from "@/lib/prisma/client";
+import { Prisma } from "@prisma/client/scripts/default-index.js";
 
 import { NextResponse } from "next/server";
 
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
 
     const emailVerified = new Date();
 
-    const user = await prisma.$transaction(async (tx) => {
+    const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.verificationToken.update({
         data: {
           status: "Accepted",

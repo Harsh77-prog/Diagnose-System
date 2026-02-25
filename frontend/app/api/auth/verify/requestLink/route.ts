@@ -4,6 +4,7 @@ import { prismaUser as prisma } from "@/lib/prisma/client";
 
 import { NextResponse } from "next/server";
 import { sendMail } from "../../utils/mailer";
+import { Prisma } from "@prisma/client/scripts/default-index.js";
 
 export async function POST(req: Request) {
   try {
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
 
     const hashedToken = await bcrypt.hash(JSON.stringify(Token), 12);
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       //invalidate previous reset password tokens before creating new
       await tx.verificationToken.updateMany({
         data: { status: "Depreciated" },
