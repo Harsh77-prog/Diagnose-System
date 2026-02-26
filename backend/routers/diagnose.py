@@ -11,10 +11,21 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, s
 
 from auth import require_user_id
 from chroma_store import get_full_history
-from diagnose_ml import run_ml_diagnose
 from report_parser import parse_report_content
 
 router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
+
+
+def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, session_action: Optional[str] = None):
+    # Lazy import so app can boot and bind port before heavy ML initialization.
+    from diagnose_ml import run_ml_diagnose
+
+    return run_ml_diagnose(
+        user_id=user_id,
+        session_id=session_id,
+        user_message=user_message,
+        session_action=session_action,
+    )
 
 
 @router.post("/chat")
@@ -29,7 +40,7 @@ async def diagnose_chat(
     if not message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
-    result = run_ml_diagnose(
+    result = _run_ml_diagnose(
         user_id=user_id,
         session_id=session_id,
         user_message=message.strip(),
@@ -81,7 +92,7 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
     session_action = body.get("session_action")
     session_id = request.headers.get("X-Session-Id") or user_id
 
-    result = run_ml_diagnose(
+    result = _run_ml_diagnose(
         user_id=user_id,
         session_id=session_id,
         user_message=message,

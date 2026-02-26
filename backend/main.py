@@ -6,7 +6,6 @@ Powered by BioBERT + ML Ensemble — no OpenAI API needed.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from diagnose_ml import ML_ENGINE_LOADED
 from routers.diagnose import router as diagnose_router
 
 app = FastAPI(
@@ -36,7 +35,7 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "ml_engine_loaded": ML_ENGINE_LOADED}
+    return {"status": "ok", "ml_engine_loaded": "lazy"}
 
 
 if __name__ == "__main__":
