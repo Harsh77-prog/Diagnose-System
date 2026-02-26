@@ -240,6 +240,7 @@ export default function ChatDashboard() {
     const [latestDiagnosis, setLatestDiagnosis] = useState<DiagnosisPayload | null>(null);
     const [latestDiagnosisMessageId, setLatestDiagnosisMessageId] = useState<string | null>(null);
     const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
+    const [mobilePanel, setMobilePanel] = useState<"none" | "history" | "prediction">("none");
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -657,14 +658,146 @@ export default function ChatDashboard() {
 
                 {/* Mobile Header */}
                 <header className="h-14 border-b border-[#e5e5e5] flex items-center px-4 md:hidden bg-white shrink-0 sticky top-0 z-10 transition-shadow">
-                    <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setMobilePanel((prev) => (prev === "history" ? "none" : "history"))}
+                        title="Open chat history"
+                    >
                         <Menu className="w-5 h-5 text-slate-800" />
                     </Button>
                     <span className="ml-3 font-semibold text-slate-900">MedCoreAI</span>
-                    <Button variant="ghost" size="icon" className="ml-auto" onClick={handleNewChat}>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto mr-1 text-[12px] px-2.5 h-8 border border-[#e5e5e5] rounded-full"
+                        onClick={() => setMobilePanel((prev) => (prev === "prediction" ? "none" : "prediction"))}
+                    >
+                        Results
+                    </Button>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                            setMobilePanel("none");
+                            handleNewChat();
+                        }}
+                    >
                         <PlusSquare className="w-5 h-5 text-slate-800" />
                     </Button>
                 </header>
+
+                {/* Mobile Panels (History + Prediction) */}
+                {mobilePanel !== "none" ? (
+                    <div className="md:hidden absolute inset-x-0 top-14 bottom-0 z-20 bg-white border-b border-[#e5e5e5] overflow-y-auto">
+                        {mobilePanel === "history" ? (
+                            <div className="p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="text-sm font-semibold text-slate-800">Chat History</div>
+                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setMobilePanel("none")}>
+                                        Close
+                                    </Button>
+                                </div>
+
+                                <div className="relative mb-3">
+                                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Search chats..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full h-9 pl-8 pr-3 text-[13px] bg-[#ececec] border-transparent rounded-md focus:outline-none focus:ring-1 focus:ring-[#d4d4d4] focus:bg-white transition-all text-[#0f0f0f] placeholder:text-slate-500"
+                                    />
+                                </div>
+
+                                <div className="space-y-1">
+                                    {filteredSessions.length === 0 ? (
+                                        <div className="text-xs text-slate-500">No chats yet. Start a new conversation.</div>
+                                    ) : (
+                                        filteredSessions.map((s) => (
+                                            <div
+                                                key={s.id}
+                                                className={`w-full px-2 py-1 rounded-md text-[13.5px] transition-colors flex items-center gap-2 ${currentSessionId === s.id ? "bg-[#ececec] text-[#0f0f0f] font-medium" : "text-[#4d4d4d] hover:bg-[#f1f1f1]"}`}
+                                            >
+                                                <button
+                                                    onClick={() => {
+                                                        loadSession(s.id);
+                                                        setMobilePanel("none");
+                                                    }}
+                                                    className="flex-1 min-w-0 text-left px-1 py-1"
+                                                    title={s.title || "Diagnosis Chat"}
+                                                >
+                                                    <span className="truncate block font-medium w-full text-left">{s.title || "Diagnosis Chat"}</span>
+                                                </button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        deleteSession(s.id);
+                                                    }}
+                                                    disabled={deletingSessionId === s.id}
+                                                    title="Delete chat"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-4 space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-sm font-semibold text-slate-800">Prediction Panel</div>
+                                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setMobilePanel("none")}>
+                                        Close
+                                    </Button>
+                                </div>
+
+                                {!latestDiagnosis ? (
+                                    <div className="rounded-xl border border-[#e5e5e5] bg-[#fafafa] p-4 text-sm text-slate-600">
+                                        Diagnosis results will appear here after follow-up completes.
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="rounded-2xl bg-gradient-to-br from-[#111827] to-[#1f2937] text-white p-4">
+                                            <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
+                                            <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
+                                            <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Top Predictions</div>
+                                            <div className="space-y-2.5">
+                                                {(panelPredictions.slice(0, 5)).map((pred) => (
+                                                    <div key={pred.disease}>
+                                                        <div className="flex items-center justify-between text-[12px] mb-1">
+                                                            <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
+                                                            <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
+                                                        </div>
+                                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600" style={{ width: `${pred.probability}%` }} />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Explanation</div>
+                                            <p className="text-[13px] text-slate-700 leading-relaxed">
+                                                {panelDescription || "The prediction is estimated from symptom patterns in the dataset and your follow-up responses."}
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ) : null}
 
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth font-sans">
                     <div className="max-w-3xl mx-auto w-full">

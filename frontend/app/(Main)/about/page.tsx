@@ -3,14 +3,13 @@ import { Activity, Brain, CircleHelp, ShieldCheck, UserRound } from "lucide-reac
 export default function AboutPage() {
   return (
     <main className="bg-white">
-      <section className="relative w-full overflow-hidden px-8 py-24 text-white md:py-44">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/image copy.png')" }}
-        />
-        <div className="absolute inset-0 bg-black/65" />
+      <section className="relative w-full overflow-hidden border-b border-[#e5e5e5] bg-[#0f0f0f] px-8 py-24 text-white md:py-44">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.18),transparent_42%),radial-gradient(circle_at_85%_0%,rgba(255,255,255,0.12),transparent_38%),linear-gradient(135deg,#0f0f0f_0%,#171717_45%,#222_100%)]" />
+        <div className="absolute -left-20 top-12 h-56 w-56 rounded-full border border-white/20" />
+        <div className="absolute -right-12 bottom-10 h-44 w-44 rounded-full border border-white/15" />
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/25 to-transparent" />
         <div className="relative z-10 mx-auto max-w-6xl">
-          <p className="mb-5 inline-flex rounded-full border border-white/25 px-4 py-1 text-xs tracking-wider text-white/90 uppercase">
+          <p className="mb-5 inline-flex rounded-full border border-white/25 bg-white/5 px-4 py-1 text-xs tracking-wider text-white/90 uppercase backdrop-blur-sm">
             About This Project
           </p>
           <h1 className="max-w-4xl text-4xl font-bold tracking-tight md:text-6xl">
@@ -20,6 +19,17 @@ export default function AboutPage() {
             The assistant starts with demographics, then asks dynamic OpenAI-generated follow-up questions based on your
             exact symptoms and conversation context until confidence becomes reliable.
           </p>
+          <div className="mt-10 grid max-w-3xl gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-white/20 bg-white/5 p-3 text-xs text-white/90 backdrop-blur-sm">
+              Dynamic follow-up interviews
+            </div>
+            <div className="rounded-xl border border-white/20 bg-white/5 p-3 text-xs text-white/90 backdrop-blur-sm">
+              Confidence-aware prediction
+            </div>
+            <div className="rounded-xl border border-white/20 bg-white/5 p-3 text-xs text-white/90 backdrop-blur-sm">
+              Safety-first informational output
+            </div>
+          </div>
         </div>
       </section>
 

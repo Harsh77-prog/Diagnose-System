@@ -114,42 +114,56 @@ export default function Page() {
   const router = useRouter();
   return (
     <main>
-    <section
-  className="relative w-full flex justify-center items-center flex-col
-             h-auto py-20 md:py-64 px-8 text-white overflow-hidden"
->
+          <section className="relative w-full overflow-hidden px-8 py-24 text-white md:py-52">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: "url('/image copy.png')" }}
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(0,0,0,0.86)_5%,rgba(0,0,0,0.7)_45%,rgba(0,0,0,0.88)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.16),transparent_35%),radial-gradient(circle_at_85%_5%,rgba(255,255,255,0.12),transparent_28%)]" />
+        <div className="absolute left-10 top-20 h-40 w-40 rounded-full border border-white/20" />
+        <div className="absolute bottom-14 right-10 h-28 w-28 rounded-full border border-white/20" />
 
-  {/* Background Image */}
-  <div
-    className="absolute inset-0 bg-cover bg-center"
-    style={{
-      backgroundImage: "url('/image copy.png')", // put image in /public folder
-    }}
-  />
+        <div className="relative z-10 mx-auto flex max-w-6xl flex-col items-center gap-8 text-center">
+          <p className="inline-flex rounded-full border border-white/30 bg-white/10 px-4 py-1 text-xs uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
+            AI Health Companion
+          </p>
 
-  {/* Dark Overlay (improves text readability) */}
-  <div className="absolute inset-0 bg-black/60" />
+          <h1 className="scroll-m-20 text-center text-5xl font-bold tracking-tight md:max-w-[52vw] md:text-7xl">
+            Medical conversations, simplified.
+          </h1>
 
-  {/* Content */}
-  <div className="relative z-10 flex flex-col items-center gap-8">
-    <h1 className="scroll-m-20 text-center text-5xl md:text-6xl font-bold tracking-tight md:max-w-[45vw]">
-      Medical conversations, simplified.
-    </h1>
+          <div className="text-md font-semibold text-center text-white/90 md:max-w-[48vw]">
+            A text-first AI medical assistant that helps users understand symptoms, reports, and likely next steps without
+            avatars, simulations, or exaggerated claims.
+          </div>
 
-    <div className="text-md font-semibold text-center md:max-w-[45vw]">
-      A text-first AI medical assistant that helps users understand
-      symptoms, medical reports, and possible next steps — without avatars,
-      simulations, or exaggerated claims.
-    </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Button className="w-fit px-6" onClick={() => router.push("/signup")}>
+              Get Started <ArrowRight />
+            </Button>
+            <Button
+              variant="secondary"
+              className="w-fit border border-white/20 bg-white/10 px-6 text-white hover:bg-white/20"
+              onClick={() => router.push("/chat")}
+            >
+              Try Chat
+            </Button>
+          </div>
 
-    <Button
-      className="w-fit mt-2 px-6"
-      onClick={() => router.push("/signup")}
-    >
-      Get Started <ArrowRight />
-    </Button>
-  </div>
-</section>
+          <div className="mt-4 grid w-full max-w-3xl gap-3 text-left sm:grid-cols-3">
+            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
+              24/7 conversational guidance
+            </div>
+            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
+              Structured follow-up questions
+            </div>
+            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
+              Safety-first informational output
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/*Features*/}
 
@@ -263,7 +277,7 @@ export default function Page() {
       <section className=" relative z-2 p-8 py-0 gap-8  bg-neutral-100 w-full flex justify-center items-center flex-col">
         <div className="flex justify-between w-full py-4 md:px-28 border-b md:max-w-[75vw]">
           <div className="text-sm text-muted-foreground font-semibold text-center ">
-            © 2026 medcoreai.com
+            (c) 2026 medcoreai.com
           </div>
           <div className="text-sm text-muted-foreground font-semibold text-center ">
             Built by <span className="text-foreground">@Team</span>
@@ -275,3 +289,4 @@ export default function Page() {
     </main>
   );
 }
+
