@@ -714,15 +714,34 @@ async function openAIFallbackDiagnosis(
       top_predictions?: Array<{ disease: string; probability: number }>;
     };
     if (!parsed.diagnosis) return null;
-    const top = (parsed.top_predictions || [])
+
+    let top = (parsed.top_predictions || [])
       .slice(0, 5)
       .map((p) => ({ disease: p.disease, probability: Number(p.probability) || 0 }));
+
+    const maxProbability = top.reduce((m, p) => Math.max(m, p.probability), 0);
+    if (maxProbability > 0 && maxProbability <= 1) {
+      top = top.map((p) => ({ ...p, probability: p.probability * 100 }));
+    }
+    const totalProbability = top.reduce((sum, p) => sum + p.probability, 0);
+    if (totalProbability > 0) {
+      top = top.map((p) => ({
+        ...p,
+        probability: Number(((p.probability / totalProbability) * 100).toFixed(1)),
+      }));
+    }
+
+    let confidence = Number(parsed.confidence);
+    if (Number.isNaN(confidence)) confidence = 35;
+    if (confidence > 0 && confidence <= 1) confidence *= 100;
+    confidence = Number(Math.max(0, Math.min(100, confidence)).toFixed(1));
+
     return {
       diagnosis: parsed.diagnosis,
-      confidence: Number(parsed.confidence) || 35,
+      confidence,
       summary: parsed.summary || "",
       precautions: parsed.precautions || [],
-      top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: Number(parsed.confidence) || 35 }],
+      top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: confidence }],
     };
   } catch (err) {
     console.error("OpenAI fallback diagnosis crashed:", err instanceof Error ? err.stack || err.message : err);
