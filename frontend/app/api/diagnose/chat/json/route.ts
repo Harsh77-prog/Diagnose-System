@@ -847,7 +847,7 @@ async function openAILiveFollowupQuestion(params: {
       }
 
       const text = parsed.question_text.trim();
-      const rawId = (parsed.question_id || `ai_followup_${Date.now()}`).toLowerCase();
+      const rawId = String(parsed.question_id ?? `ai_followup_${Date.now()}`).toLowerCase();
       const id = `ai:${rawId.replace(/[^a-z0-9:_-]+/g, "_").slice(0, 64)}`;
       const choices = Array.isArray(parsed.question_choices)
         ? parsed.question_choices
