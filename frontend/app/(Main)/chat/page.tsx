@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -263,7 +263,11 @@ export default function ChatDashboard() {
     // Track latest diagnosis and auto-open result panel
     useEffect(() => {
         const latest = extractLatestDiagnosis(messages);
-        if (!latest) return;
+        if (!latest) {
+            setLatestDiagnosis(null);
+            setLatestDiagnosisMessageId(null);
+            return;
+        }
         if (latest.messageId !== latestDiagnosisMessageId) {
             setLatestDiagnosis(latest.payload);
             setLatestDiagnosisMessageId(latest.messageId);
@@ -305,6 +309,9 @@ export default function ChatDashboard() {
         setLoading(true);
         setFollowUpActive(false);
         setFollowUpChoices([]);
+        setLatestDiagnosis(null);
+        setLatestDiagnosisMessageId(null);
+        setResultPanelMinimized(false);
 
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
@@ -908,14 +915,19 @@ export default function ChatDashboard() {
                         </div>
 
                         <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Explanation</div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="h-6 w-6 rounded-lg bg-amber-100 text-amber-700 grid place-items-center">
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Explanation</div>
+                            </div>
                             <p className="text-[13px] text-slate-700 leading-relaxed">
                                 {panelDescription || "The prediction is estimated from symptom patterns in the dataset and your follow-up responses."}
                             </p>
                             {panelSymptoms.length > 0 ? (
-                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                <div className="mt-3 flex flex-wrap gap-2">
                                     {panelSymptoms.map((symptom) => (
-                                        <span key={symptom} className="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                                        <span key={symptom} className="text-[11px] px-2.5 py-1 rounded-full bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-800 border border-sky-100">
                                             {labelize(symptom)}
                                         </span>
                                     ))}
@@ -923,29 +935,53 @@ export default function ChatDashboard() {
                             ) : null}
                         </div>
 
-                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Home Remedies</div>
+                        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="h-6 w-6 rounded-lg bg-emerald-100 text-emerald-700 grid place-items-center">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Home Remedies</div>
+                            </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                        <span>{item}</span>
+                                    </li>
                                 ))}
                             </ul>
                         </div>
 
-                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Lifestyle Changes</div>
+                        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="h-6 w-6 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">
+                                    <HeartPulse className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-violet-800">Lifestyle Changes</div>
+                            </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(guidance?.lifestyle || []).map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                        <span>{item}</span>
+                                    </li>
                                 ))}
                             </ul>
                         </div>
 
-                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 mb-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Diet Adjustments</div>
+                        <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-white p-4 mb-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="h-6 w-6 rounded-lg bg-orange-100 text-orange-700 grid place-items-center">
+                                    <Apple className="w-3.5 h-3.5" />
+                                </div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-orange-800">Diet Adjustments</div>
+                            </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(guidance?.diet || []).map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
+                                        <span>{item}</span>
+                                    </li>
                                 ))}
                             </ul>
                         </div>

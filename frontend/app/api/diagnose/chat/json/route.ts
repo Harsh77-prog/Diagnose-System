@@ -227,6 +227,34 @@ function aliasSymptoms(text: string, symptomSet: Set<string>): string[] {
   if (/\bvomit|\bvomiting\b/.test(t)) pushIf("vomiting");
   if (/\bfatigue|\btired|\bweak/.test(t)) pushIf("fatigue");
   if (/\brunny nose|\bblocked nose|\bcongestion/.test(t)) pushIf("runny nose");
+  if (/\bleg pain\b|\bpain in (my )?leg\b|\bleg ache\b|\blegs hurt\b/.test(t)) {
+    pushIf("joint pain");
+    pushIf("knee pain");
+    pushIf("hip joint pain");
+    pushIf("painful walking");
+    pushIf("swollen legs");
+  }
+  if (/\bknee pain\b|\bknee ache\b/.test(t)) {
+    pushIf("knee pain");
+    pushIf("joint pain");
+    pushIf("painful walking");
+  }
+  if (/\bhip pain\b|\bhip joint pain\b/.test(t)) {
+    pushIf("hip joint pain");
+    pushIf("joint pain");
+    pushIf("painful walking");
+  }
+  if (/\bjoint pain\b|\bjoint ache\b/.test(t)) {
+    pushIf("joint pain");
+    pushIf("swelling joints");
+  }
+  if (/\bpainful walking\b|\bpain while walking\b|\bdifficulty walking\b/.test(t)) {
+    pushIf("painful walking");
+  }
+  if (/\bleg swelling\b|\bswollen leg\b|\bswollen legs\b/.test(t)) {
+    pushIf("swollen legs");
+    pushIf("swelling joints");
+  }
 
   return Array.from(out);
 }
@@ -324,6 +352,28 @@ function scoreDiseases(diseases: DiseaseRow[], confirmed: Set<string>, denied: S
     .sort((a, b) => b.probability - a.probability);
 }
 
+function evaluatePredictionReliability(predictions: Prediction[], confirmedCount: number, turns: number): {
+  reliable: boolean;
+  topProbability: number;
+  probabilityGap: number;
+} {
+  const top = predictions[0];
+  if (!top) return { reliable: false, topProbability: 0, probabilityGap: 0 };
+
+  const second = predictions[1];
+  const probabilityGap = second ? top.probability - second.probability : top.probability;
+  const enoughSymptoms = confirmedCount >= 2;
+  const enoughFollowup = turns >= 2;
+  const strongConfidence = top.probability >= 62;
+  const clearSeparation = probabilityGap >= 12;
+
+  return {
+    reliable: strongConfidence && clearSeparation && (enoughSymptoms || enoughFollowup),
+    topProbability: top.probability,
+    probabilityGap,
+  };
+}
+
 function chooseSymptomQuestion(
   datasets: DatasetCache,
   topCandidates: string[],
@@ -377,6 +427,48 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           currentQuestionText: p.currentQuestionText,
           currentQuestionChoices: p.currentQuestionChoices || undefined,
           slots: p.slots || {},
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function parseExistingFinalDiagnosis(messages: Array<{ role: string; jsonPayload: string | null }>): {
+  diagnosis: string;
+  confidence?: number;
+  top_predictions?: Array<{ disease: string; probability: number }>;
+  disease_info?: { description?: string; precautions?: string[] };
+  confirmed_symptoms?: string[];
+  followups_asked?: number;
+  demographics?: { gender?: string | null; age_group?: string | null };
+} | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const item = messages[i];
+    if (item.role !== "assistant" || !item.jsonPayload) continue;
+    try {
+      const p = JSON.parse(item.jsonPayload) as {
+        kind?: string;
+        diagnosis?: string;
+        confidence?: number;
+        top_predictions?: Array<{ disease: string; probability: number }>;
+        disease_info?: { description?: string; precautions?: string[] };
+        confirmed_symptoms?: string[];
+        followups_asked?: number;
+        demographics?: { gender?: string | null; age_group?: string | null };
+      };
+      if (p.kind === "followup_state") continue;
+      if (p.diagnosis && Array.isArray(p.top_predictions)) {
+        return {
+          diagnosis: p.diagnosis,
+          confidence: p.confidence,
+          top_predictions: p.top_predictions,
+          disease_info: p.disease_info,
+          confirmed_symptoms: p.confirmed_symptoms,
+          followups_asked: p.followups_asked,
+          demographics: p.demographics,
         };
       }
     } catch {
@@ -520,7 +612,7 @@ export async function POST(req: NextRequest) {
     });
 
     const historicalUserMessages = await prisma.message.findMany({
-      where: { role: "user", chatSession: { userId } },
+      where: { role: "user", chatSessionId: sessionId },
       orderBy: { createdAt: "desc" },
       take: 200,
       select: { content: true },
@@ -538,11 +630,22 @@ export async function POST(req: NextRequest) {
     }
 
     const parsedState = parseState(currentMessages);
+    const existingFinalDiagnosis = parseExistingFinalDiagnosis(currentMessages);
     const shouldStartMedicalFlow = Boolean(parsedState) || hasMedicalIntent(userMessage, datasets);
     if (!shouldStartMedicalFlow) {
       return NextResponse.json({
         reply: friendlyReplyForGeneralChat(userMessage),
         follow_up_suggested: false,
+      });
+    }
+
+    // Enforce one final prediction per session. Continue only when an active follow-up exists.
+    if (!parsedState && existingFinalDiagnosis) {
+      return NextResponse.json({
+        reply:
+          "This chat session already has a final prediction. Please start a new chat for a new medical issue so results stay session-specific.",
+        follow_up_suggested: false,
+        ml_diagnosis: existingFinalDiagnosis,
       });
     }
 
@@ -588,16 +691,6 @@ export async function POST(req: NextRequest) {
         if (answer === "no") denied.add(symptom);
       }
       turns += 1;
-    } else if (!parsedState) {
-      const historyCounts = new Map<string, number>();
-      for (const text of priorText) {
-        for (const s of extractSymptoms(text, datasets)) {
-          historyCounts.set(s, (historyCounts.get(s) || 0) + 1);
-        }
-      }
-      for (const [sym, count] of historyCounts.entries()) {
-        if (count >= 2) confirmed.add(sym);
-      }
     }
 
     const predictions = scoreDiseases(datasets.diseases, confirmed, denied);
@@ -605,10 +698,9 @@ export async function POST(req: NextRequest) {
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
     const question = nextQuestion(datasets, confirmed, denied, asked, topCandidates, slots);
-    const goodConfidence = Boolean(top && top.probability >= 67);
-    const enoughTurns = turns >= 2;
+    const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns);
 
-    if (question && turns < maxTurns && !(goodConfidence && enoughTurns)) {
+    if (question && turns < maxTurns && !reliability.reliable) {
       const nextState = makeState({
         turns,
         maxTurns,
@@ -631,15 +723,27 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!top || top.probability < 25) {
+    if (!top) {
+      return NextResponse.json({
+        reply:
+          "I cannot make a safe prediction from the current details. Please share exact symptom location, severity (0-10), duration, and any triggering factors.",
+        follow_up_suggested: false,
+      });
+    }
+
+    if (!reliability.reliable) {
       const ai = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
         gender: slots.gender,
         ageGroup: slots.ageGroup,
       });
-      if (ai) {
-        const reply = `**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
-          ai.confidence
-        ).toFixed(1)}%\n\n${ai.summary || "Dataset confidence was low, so this result used API-assisted analysis."}\n\n${
+      const aiTop = ai?.top_predictions?.[0]?.probability || 0;
+      const aiSecond = ai?.top_predictions?.[1]?.probability || 0;
+      const aiGap = aiTop - aiSecond;
+      const aiReliable = Boolean(ai && ai.confidence >= 70 && aiGap >= 15);
+      if (ai && aiReliable) {
+        const reply = `**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(ai.confidence).toFixed(
+          1
+        )}%\n\n${ai.summary || "Confidence was low in the dataset model, so this used API-assisted analysis."}\n\n${
           ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
         }This is informational only and not a medical diagnosis.`;
 
@@ -662,14 +766,18 @@ export async function POST(req: NextRequest) {
             },
             disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
             source: "api_fallback",
-            considered_prior_history: true,
+            considered_prior_history: false,
           },
         });
       }
 
+      const reason =
+        reliability.topProbability < 62
+          ? `confidence is only ${reliability.topProbability.toFixed(1)}%`
+          : `top predictions are too close (gap ${reliability.probabilityGap.toFixed(1)}%)`;
       return NextResponse.json({
         reply:
-          "I could not reach a confident dataset prediction. Please consult a clinician, especially if symptoms are worsening or persistent.",
+          `I am not confident enough to give a reliable diagnosis because ${reason}. I will avoid giving a potentially misleading prediction.\n\nPlease provide: exact pain location, pain severity (0-10), swelling/redness, fever status, and what makes it better/worse. If symptoms are severe or worsening, consult a clinician promptly.`,
         follow_up_suggested: false,
       });
     }
@@ -694,8 +802,8 @@ export async function POST(req: NextRequest) {
         age_group: slots.ageGroup || null,
       },
       disease_info: diseaseInfo,
-      source: "dataset_plus_history",
-      considered_prior_history: true,
+      source: "dataset_current_session",
+      considered_prior_history: false,
     };
 
     const precautionsText =
