@@ -27,7 +27,10 @@ type FollowupState = {
   topCandidates: string[];
   currentQuestionId: string;
   currentQuestionText: string;
+  currentQuestionChoices?: string[];
   slots: {
+    gender?: "male" | "female";
+    ageGroup?: "child" | "youth" | "adult";
     temperatureF?: number;
     durationDays?: number;
   };
@@ -179,6 +182,31 @@ function extractDurationDays(text: string): number | undefined {
   return undefined;
 }
 
+function extractGender(text: string): "male" | "female" | undefined {
+  const t = normalizeToken(text);
+  if (/\b(male|man|boy)\b/.test(t)) return "male";
+  if (/\b(female|woman|girl)\b/.test(t)) return "female";
+  return undefined;
+}
+
+function extractAgeGroup(text: string): "child" | "youth" | "adult" | undefined {
+  const t = normalizeToken(text);
+  if (/\b(child|kid|kids|children|minor)\b/.test(t)) return "child";
+  if (/\b(youth|teen|teenager|adolescent)\b/.test(t)) return "youth";
+  if (/\b(adult|grown)\b/.test(t)) return "adult";
+
+  const numericAge = t.match(/\b(?:age|aged)?\s*(\d{1,3})\b/);
+  if (numericAge) {
+    const age = Number(numericAge[1]);
+    if (!Number.isNaN(age)) {
+      if (age <= 12) return "child";
+      if (age <= 19) return "youth";
+      return "adult";
+    }
+  }
+  return undefined;
+}
+
 function aliasSymptoms(text: string, symptomSet: Set<string>): string[] {
   const t = normalizeToken(text);
   const out = new Set<string>();
@@ -216,6 +244,59 @@ function extractSymptoms(text: string, datasets: DatasetCache): string[] {
   if (temp && temp >= 99.5 && datasets.symptomSet.has("high fever")) found.add("high fever");
 
   return Array.from(found);
+}
+
+function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
+  const normalized = normalizeToken(text);
+  if (!normalized) return false;
+
+  const directSymptoms = extractSymptoms(text, datasets);
+  if (directSymptoms.length > 0) return true;
+
+  const medicalKeywords = [
+    "symptom",
+    "symptoms",
+    "disease",
+    "diagnose",
+    "diagnosis",
+    "pain",
+    "fever",
+    "cough",
+    "cold",
+    "infection",
+    "vomit",
+    "nausea",
+    "headache",
+    "stomach",
+    "medicine",
+    "medication",
+    "doctor",
+    "clinic",
+    "hospital",
+    "rash",
+    "allergy",
+    "blood pressure",
+    "sugar",
+    "diabetes",
+  ];
+
+  return medicalKeywords.some((k) => normalized.includes(k));
+}
+
+function friendlyReplyForGeneralChat(text: string): string {
+  const t = normalizeToken(text);
+
+  if (/\b(hi|hello|hey)\b/.test(t)) {
+    return "Hello. I can chat normally, and whenever you share a medical issue or symptoms, I will start the diagnosis flow.";
+  }
+  if (/\b(how are you|how r u|what's up|whats up)\b/.test(t)) {
+    return "I am here and ready to help. If you want health guidance, share your symptoms and I will begin assessment questions.";
+  }
+  if (/\b(thank you|thanks)\b/.test(t)) {
+    return "You're welcome. Share any symptoms anytime when you want a medical assessment.";
+  }
+
+  return "I can continue normal conversation. When you want a health prediction, describe your medical issue or symptoms.";
 }
 
 function scoreDiseases(diseases: DiseaseRow[], confirmed: Set<string>, denied: Set<string>): Prediction[] {
@@ -294,6 +375,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           topCandidates: p.topCandidates || [],
           currentQuestionId: p.currentQuestionId,
           currentQuestionText: p.currentQuestionText,
+          currentQuestionChoices: p.currentQuestionChoices || undefined,
           slots: p.slots || {},
         };
       }
@@ -315,7 +397,13 @@ function nextQuestion(
   asked: Set<string>,
   topCandidates: string[],
   slots: FollowupState["slots"]
-): { id: string; text: string } | null {
+): { id: string; text: string; choices?: string[] } | null {
+  if (!slots.gender) {
+    return { id: "gender", text: "Please select your gender for better triage context.", choices: ["male", "female"] };
+  }
+  if (!slots.ageGroup) {
+    return { id: "age_group", text: "Please select your age group.", choices: ["child", "youth", "adult"] };
+  }
   if ((confirmed.has("high fever") || asked.has("high fever")) && !slots.temperatureF) {
     return { id: "temperature", text: "What is your current temperature (in F or C)?" };
   }
@@ -334,7 +422,12 @@ function yesNoFromText(text: string): "yes" | "no" | null {
   return null;
 }
 
-async function openAIFallbackDiagnosis(history: string[], message: string, symptoms: string[]) {
+async function openAIFallbackDiagnosis(
+  history: string[],
+  message: string,
+  symptoms: string[],
+  demographics: { gender?: "male" | "female"; ageGroup?: "child" | "youth" | "adult" }
+) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
   try {
@@ -355,7 +448,11 @@ async function openAIFallbackDiagnosis(history: string[], message: string, sympt
           },
           {
             role: "user",
-            content: `History:\n${history.slice(-15).join("\n")}\n\nCurrent message: ${message}\nSymptoms: ${symptoms.join(", ")}`,
+            content: `History:\n${history.slice(-15).join("\n")}\n\nCurrent message: ${message}\nSymptoms: ${symptoms.join(
+              ", "
+            )}\nDemographics: gender=${demographics.gender || "unknown"}, age_group=${
+              demographics.ageGroup || "unknown"
+            }`,
           },
         ],
       }),
@@ -389,9 +486,9 @@ async function openAIFallbackDiagnosis(history: string[], message: string, sympt
   }
 }
 
-function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number): string {
+function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number, choices?: string[]): string {
   const symptoms = Array.from(confirmed).map(formatSymptom).join(", ");
-  return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}\n\nUse **Yes**, **No**, or **Write own**.`;
+  return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -441,6 +538,14 @@ export async function POST(req: NextRequest) {
     }
 
     const parsedState = parseState(currentMessages);
+    const shouldStartMedicalFlow = Boolean(parsedState) || hasMedicalIntent(userMessage, datasets);
+    if (!shouldStartMedicalFlow) {
+      return NextResponse.json({
+        reply: friendlyReplyForGeneralChat(userMessage),
+        follow_up_suggested: false,
+      });
+    }
+
     const confirmed = new Set<string>(parsedState?.confirmedSymptoms || []);
     const denied = new Set<string>(parsedState?.deniedSymptoms || []);
     const asked = new Set<string>(parsedState?.askedSymptoms || []);
@@ -455,6 +560,10 @@ export async function POST(req: NextRequest) {
     if (temp) slots.temperatureF = temp;
     const duration = extractDurationDays(userMessage);
     if (duration) slots.durationDays = duration;
+    const gender = extractGender(userMessage);
+    if (gender) slots.gender = gender;
+    const ageGroup = extractAgeGroup(userMessage);
+    if (ageGroup) slots.ageGroup = ageGroup;
 
     if (parsedState && action && parsedState.currentQuestionId) {
       const qid = parsedState.currentQuestionId;
@@ -466,6 +575,12 @@ export async function POST(req: NextRequest) {
         if (answer === "no") denied.add("high fever");
       } else if (qid === "duration") {
         if (duration) slots.durationDays = duration;
+      } else if (qid === "gender") {
+        const parsedGender = extractGender(userMessage);
+        if (parsedGender) slots.gender = parsedGender;
+      } else if (qid === "age_group") {
+        const parsedAgeGroup = extractAgeGroup(userMessage);
+        if (parsedAgeGroup) slots.ageGroup = parsedAgeGroup;
       } else if (qid.startsWith("symptom:")) {
         const symptom = qid.slice("symptom:".length);
         asked.add(symptom);
@@ -503,19 +618,24 @@ export async function POST(req: NextRequest) {
         topCandidates,
         currentQuestionId: question.id,
         currentQuestionText: question.text,
+        currentQuestionChoices: question.choices,
         slots,
       });
 
       return NextResponse.json({
-        reply: replyForQuestion(question.text, confirmed, turns),
+        reply: replyForQuestion(question.text, confirmed, turns, question.choices),
         follow_up_suggested: true,
         follow_up_question: question.text,
+        follow_up_choices: question.choices || null,
         follow_up_state: nextState,
       });
     }
 
     if (!top || top.probability < 25) {
-      const ai = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed));
+      const ai = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
+        gender: slots.gender,
+        ageGroup: slots.ageGroup,
+      });
       if (ai) {
         const reply = `**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
           ai.confidence
@@ -536,6 +656,10 @@ export async function POST(req: NextRequest) {
             })),
             confirmed_symptoms: Array.from(confirmed),
             followups_asked: turns,
+            demographics: {
+              gender: slots.gender || null,
+              age_group: slots.ageGroup || null,
+            },
             disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
             source: "api_fallback",
             considered_prior_history: true,
@@ -565,6 +689,10 @@ export async function POST(req: NextRequest) {
       })),
       confirmed_symptoms: Array.from(confirmed),
       followups_asked: turns,
+      demographics: {
+        gender: slots.gender || null,
+        age_group: slots.ageGroup || null,
+      },
       disease_info: diseaseInfo,
       source: "dataset_plus_history",
       considered_prior_history: true,
@@ -575,9 +703,10 @@ export async function POST(req: NextRequest) {
         ? `\n\n**Precautions:**\n${diseaseInfo.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
         : "";
 
+    const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
     const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
       diagnosis.confidence
-    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n\n${
+    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}\n\n${
       diseaseInfo.description || "No detailed description available in dataset."
     }${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
 

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Activity, Info, AlertTriangle, Menu, PlusSquare, FileText, Search } from "lucide-react";
+import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -25,7 +25,121 @@ type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
     currentQuestionText?: string;
+    currentQuestionChoices?: string[];
 };
+
+type DiagnosisPayload = {
+    diagnosis: string;
+    confidence?: number;
+    top_predictions?: { disease: string; probability: number }[];
+    confirmed_symptoms?: string[];
+    disease_info?: {
+        description?: string;
+        precautions?: string[];
+    };
+};
+
+function labelize(text: string): string {
+    return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function extractLatestDiagnosis(messages: Message[]): { messageId: string; payload: DiagnosisPayload } | null {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const msg = messages[i];
+        if (msg.role !== "assistant" || !msg.jsonPayload) continue;
+        try {
+            const parsed = JSON.parse(msg.jsonPayload) as Partial<DiagnosisPayload>;
+            if (parsed?.diagnosis && Array.isArray(parsed.top_predictions)) {
+                return { messageId: msg.id, payload: parsed as DiagnosisPayload };
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
+}
+
+function guidanceForDiagnosis(diagnosis: string) {
+    const normalized = diagnosis.toLowerCase();
+
+    if (/(flu|cold|viral|fever)/.test(normalized)) {
+        return {
+            homeRemedies: [
+                "Warm fluids, soups, and hydration throughout the day.",
+                "Steam inhalation once or twice daily for congestion relief.",
+                "Salt-water gargle for throat irritation.",
+            ],
+            lifestyle: [
+                "Take full rest and avoid intense physical activity.",
+                "Monitor temperature every 6-8 hours.",
+                "Use separate utensils/towels to reduce spread at home.",
+            ],
+            diet: [
+                "Soft warm foods (khichdi, soups, oatmeal).",
+                "Vitamin-C rich foods (citrus, guava, amla).",
+                "Avoid fried, packaged, and very cold food/drinks.",
+            ],
+        };
+    }
+
+    if (/(gastr|stomach|acidity|indigestion|diarrhea)/.test(normalized)) {
+        return {
+            homeRemedies: [
+                "ORS or electrolyte water in small frequent sips.",
+                "Ginger or peppermint tea for mild nausea.",
+                "Use warm compress on abdomen for cramp relief.",
+            ],
+            lifestyle: [
+                "Eat smaller meals and avoid lying down after eating.",
+                "Maintain hand hygiene and safe drinking water.",
+                "Track triggers like spicy/oily foods.",
+            ],
+            diet: [
+                "BRAT-style options: banana, rice, applesauce, toast.",
+                "Curd/yogurt and plain boiled foods.",
+                "Avoid spicy, oily, caffeinated, and sugary drinks.",
+            ],
+        };
+    }
+
+    if (/(headache|migraine)/.test(normalized)) {
+        return {
+            homeRemedies: [
+                "Hydration and quiet dark-room rest.",
+                "Cold or warm compress on forehead/neck.",
+                "Gentle neck and shoulder stretches.",
+            ],
+            lifestyle: [
+                "Keep a regular sleep schedule.",
+                "Reduce screen glare and frequent long screen sessions.",
+                "Manage stress using breathing exercises.",
+            ],
+            diet: [
+                "Regular meals to avoid long fasting gaps.",
+                "Magnesium-rich foods: nuts, seeds, leafy greens.",
+                "Limit high-caffeine and ultra-processed snacks.",
+            ],
+        };
+    }
+
+    return {
+        homeRemedies: [
+            "Hydrate adequately and take sufficient rest.",
+            "Use symptom-relief measures appropriate for discomfort.",
+            "Monitor worsening signs and seek care if needed.",
+        ],
+        lifestyle: [
+            "Maintain sleep, hydration, and gentle daily activity.",
+            "Track symptoms in a daily log.",
+            "Avoid self-medicating beyond basic OTC guidance.",
+        ],
+        diet: [
+            "Prefer home-cooked balanced meals with fruits/vegetables.",
+            "Avoid excessive sugar, fried, and heavily processed foods.",
+            "Continue small frequent meals if appetite is low.",
+        ],
+    };
+}
 
 async function parseResponseJson<T>(res: Response): Promise<T> {
     const raw = await res.text();
@@ -106,8 +220,13 @@ export default function ChatDashboard() {
     const [loading, setLoading] = useState(false);
     const [followUpActive, setFollowUpActive] = useState(false);
     const [followUpQuestion, setFollowUpQuestion] = useState<string>("");
+    const [followUpChoices, setFollowUpChoices] = useState<string[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+    const [latestDiagnosis, setLatestDiagnosis] = useState<DiagnosisPayload | null>(null);
+    const [latestDiagnosisMessageId, setLatestDiagnosisMessageId] = useState<string | null>(null);
+    const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -141,6 +260,17 @@ export default function ChatDashboard() {
         }
     }, [input]);
 
+    // Track latest diagnosis and auto-open result panel
+    useEffect(() => {
+        const latest = extractLatestDiagnosis(messages);
+        if (!latest) return;
+        if (latest.messageId !== latestDiagnosisMessageId) {
+            setLatestDiagnosis(latest.payload);
+            setLatestDiagnosisMessageId(latest.messageId);
+            setResultPanelMinimized(false);
+        }
+    }, [messages, latestDiagnosisMessageId]);
+
     async function fetchSessions() {
         try {
             const res = await fetch("/api/chat/sessions");
@@ -160,7 +290,11 @@ export default function ChatDashboard() {
         setMessages([]);
         setFollowUpActive(false);
         setFollowUpQuestion("");
+        setFollowUpChoices([]);
         setInput("");
+        setLatestDiagnosis(null);
+        setLatestDiagnosisMessageId(null);
+        setResultPanelMinimized(false);
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
         }
@@ -170,6 +304,7 @@ export default function ChatDashboard() {
         setCurrentSessionId(id);
         setLoading(true);
         setFollowUpActive(false);
+        setFollowUpChoices([]);
 
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
@@ -193,22 +328,27 @@ export default function ChatDashboard() {
                             } else {
                                 setFollowUpQuestion("Please answer the follow-up question.");
                             }
+                            setFollowUpChoices(Array.isArray(payload.currentQuestionChoices) ? payload.currentQuestionChoices : []);
                         } else {
                             setFollowUpActive(false);
                             setFollowUpQuestion("");
+                            setFollowUpChoices([]);
                         }
                     } catch {
                         setFollowUpActive(false);
                         setFollowUpQuestion("");
+                        setFollowUpChoices([]);
                     }
                 } else {
                     setFollowUpActive(false);
                     setFollowUpQuestion("");
+                    setFollowUpChoices([]);
                 }
             } else {
                 setMessages([]);
                 setFollowUpActive(false);
                 setFollowUpQuestion("");
+                setFollowUpChoices([]);
             }
         } catch (e) {
             console.error("Failed to load messages", e);
@@ -217,7 +357,29 @@ export default function ChatDashboard() {
         }
     }
 
+    async function deleteSession(id: string) {
+        if (deletingSessionId) return;
+        setDeletingSessionId(id);
+        try {
+            const res = await fetch(`/api/chat/sessions/${id}`, {
+                method: "DELETE",
+            });
+            const data = await parseResponseJson<{ error?: string; ok?: boolean }>(res);
+            if (!res.ok) throw new Error(data.error || "Failed to delete session");
+
+            setSessions(prev => prev.filter(s => s.id !== id));
+            if (currentSessionId === id) {
+                handleNewChat();
+            }
+        } catch (e) {
+            console.error("Failed to delete session", e);
+        } finally {
+            setDeletingSessionId(null);
+        }
+    }
+
     async function sendMessage(text: string, action?: "yes" | "no" | "custom") {
+        if (loading) return;
         if (!text.trim() && !action) return;
 
         const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
@@ -278,6 +440,7 @@ export default function ChatDashboard() {
                     follow_up_state?: unknown;
                     follow_up_suggested?: boolean;
                     follow_up_question?: string;
+                    follow_up_choices?: string[] | null;
                 }>(res);
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
 
@@ -302,9 +465,11 @@ export default function ChatDashboard() {
                 if (data.follow_up_suggested) {
                     setFollowUpActive(true);
                     setFollowUpQuestion(data.follow_up_question || "Please answer the follow-up question.");
+                    setFollowUpChoices(Array.isArray(data.follow_up_choices) ? data.follow_up_choices : []);
                 } else {
                     setFollowUpActive(false);
                     setFollowUpQuestion("");
+                    setFollowUpChoices([]);
                 }
             }
         } catch (err: any) {
@@ -361,6 +526,12 @@ export default function ChatDashboard() {
     const filteredSessions = sessions.filter(s =>
         (s.title || "Diagnosis Chat").toLowerCase().includes(searchQuery.toLowerCase())
     );
+    const panelPredictions = latestDiagnosis?.top_predictions || [];
+    const panelConfidence = Math.max(0, Math.min(100, Number(latestDiagnosis?.confidence || panelPredictions[0]?.probability || 0)));
+    const panelPrecautions = latestDiagnosis?.disease_info?.precautions || [];
+    const panelDescription = latestDiagnosis?.disease_info?.description || "";
+    const panelSymptoms = latestDiagnosis?.confirmed_symptoms || [];
+    const guidance = latestDiagnosis ? guidanceForDiagnosis(latestDiagnosis.diagnosis) : null;
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
@@ -407,13 +578,32 @@ export default function ChatDashboard() {
                     <div className="text-[11px] font-semibold text-[#8e8e8e] mt-4 mb-2 px-2 uppercase tracking-wider">Recent</div>
                     <div className="space-y-0.5 mt-1">
                         {filteredSessions.map(s => (
-                            <button
+                            <div
                                 key={s.id}
-                                onClick={() => loadSession(s.id)}
-                                className={`w-full px-3 py-2 rounded-md text-[13.5px] transition-colors flex flex-col ${currentSessionId === s.id ? 'bg-[#ececec] text-[#0f0f0f] font-medium' : 'text-[#4d4d4d] hover:bg-[#f1f1f1]'}`}
+                                className={`w-full px-2 py-1 rounded-md text-[13.5px] transition-colors flex items-center gap-2 ${currentSessionId === s.id ? 'bg-[#ececec] text-[#0f0f0f] font-medium' : 'text-[#4d4d4d] hover:bg-[#f1f1f1]'}`}
                             >
-                                <span className="truncate block font-medium w-full text-left">{s.title || "Diagnosis Chat"}</span>
-                            </button>
+                                <button
+                                    onClick={() => loadSession(s.id)}
+                                    className="flex-1 min-w-0 text-left px-1 py-1"
+                                    title={s.title || "Diagnosis Chat"}
+                                >
+                                    <span className="truncate block font-medium w-full text-left">{s.title || "Diagnosis Chat"}</span>
+                                </button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        deleteSession(s.id);
+                                    }}
+                                    disabled={deletingSessionId === s.id}
+                                    title="Delete chat"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                            </div>
                         ))}
                     </div>
                 </div>
@@ -579,17 +769,26 @@ export default function ChatDashboard() {
                                         <Info className="w-4 h-4" /> {followUpQuestion || "Please verify this symptom"}
                                     </span>
                                     <div className="flex gap-2">
-                                        <Button size="sm" className="bg-black hover:bg-black/80 text-white w-16 h-8 text-xs rounded-full" onClick={() => sendMessage("", "yes")} disabled={loading}>Yes</Button>
-                                        <Button size="sm" variant="outline" className="w-16 h-8 text-xs rounded-full bg-white border-[#e5e5e5]" onClick={() => sendMessage("", "no")} disabled={loading}>No</Button>
-                                        <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 text-xs rounded-full bg-white border-[#e5e5e5]"
-                                            onClick={() => textareaRef.current?.focus()}
-                                            disabled={loading}
-                                        >
-                                            Write own
-                                        </Button>
+                                        {followUpChoices.length > 0 ? (
+                                            followUpChoices.map((choice) => (
+                                                <Button
+                                                    key={choice}
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-8 text-xs rounded-full bg-white border-[#e5e5e5] capitalize"
+                                                    onClick={() => sendMessage(choice, "custom")}
+                                                    disabled={loading}
+                                                >
+                                                    {choice}
+                                                </Button>
+                                            ))
+                                        ) : (
+                                            <>
+                                                <Button size="sm" className="bg-black hover:bg-black/80 text-white w-16 h-8 text-xs rounded-full" onClick={() => sendMessage("", "yes")} disabled={loading}>Yes</Button>
+                                                <Button size="sm" variant="outline" className="w-16 h-8 text-xs rounded-full bg-white border-[#e5e5e5]" onClick={() => sendMessage("", "no")} disabled={loading}>No</Button>
+                                            </>
+                                        )}
+                                        
                                     </div>
                                 </div>
                             ) : null}
@@ -605,7 +804,8 @@ export default function ChatDashboard() {
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Message MediCore..."
+                                    placeholder={loading ? "MediCore is thinking..." : "Message MediCore..."}
+                                    disabled={loading}
                                     className="flex-1 bg-transparent border-0 shadow-none focus-visible:outline-none focus:ring-0 min-h-[40px] max-h-[200px] resize-none text-[15px] pt-2 px-3 w-full placeholder:text-slate-500 text-black overflow-y-auto"
                                     rows={1}
                                     onKeyDown={(e) => {
@@ -633,6 +833,125 @@ export default function ChatDashboard() {
                     </div>
                 </div>
             </main >
+
+            {/* Right Result Panel */}
+            <aside className="hidden lg:flex h-full border-l border-[#e5e5e5] bg-[#fafafa]">
+                {!latestDiagnosis ? (
+                    <div className="w-[340px] p-5 flex flex-col justify-center items-center text-center text-slate-500">
+                        <div className="w-11 h-11 rounded-xl bg-white border border-[#e5e5e5] flex items-center justify-center mb-3">
+                            <Activity className="w-5 h-5 text-slate-600" />
+                        </div>
+                        <div className="text-sm font-semibold text-slate-700">Prediction Panel</div>
+                        <p className="text-xs mt-2 leading-relaxed max-w-[260px]">
+                            After diagnosis, detailed results with charts, home remedies, lifestyle, and diet guidance will appear here.
+                        </p>
+                    </div>
+                ) : resultPanelMinimized ? (
+                    <div className="w-14 p-2 flex flex-col items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 rounded-full border border-[#e5e5e5] bg-white"
+                            onClick={() => setResultPanelMinimized(false)}
+                            title="Expand results panel"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                    </div>
+                ) : (
+                    <div className="w-[340px] h-full overflow-y-auto p-4 space-y-4">
+                        <div className="rounded-2xl bg-gradient-to-br from-[#111827] to-[#1f2937] text-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
+                                    <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
+                                    <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white"
+                                    onClick={() => setResultPanelMinimized(true)}
+                                    title="Minimize results panel"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="mt-4 flex items-center gap-4">
+                                <div
+                                    className="h-16 w-16 rounded-full grid place-items-center text-xs font-semibold"
+                                    style={{ background: `conic-gradient(#10b981 ${panelConfidence}%, #374151 ${panelConfidence}% 100%)` }}
+                                >
+                                    <div className="h-12 w-12 rounded-full bg-[#111827] grid place-items-center">{Math.round(panelConfidence)}%</div>
+                                </div>
+                                <div className="text-xs text-slate-300 leading-relaxed">
+                                    Model confidence gauge based on your confirmed symptoms and follow-up responses.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Prediction Chart</div>
+                            <div className="space-y-2.5">
+                                {panelPredictions.slice(0, 5).map((pred) => (
+                                    <div key={pred.disease}>
+                                        <div className="flex items-center justify-between text-[12px] mb-1">
+                                            <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
+                                            <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
+                                        </div>
+                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600" style={{ width: `${pred.probability}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Explanation</div>
+                            <p className="text-[13px] text-slate-700 leading-relaxed">
+                                {panelDescription || "The prediction is estimated from symptom patterns in the dataset and your follow-up responses."}
+                            </p>
+                            {panelSymptoms.length > 0 ? (
+                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                    {panelSymptoms.map((symptom) => (
+                                        <span key={symptom} className="text-[11px] px-2 py-1 rounded-full bg-slate-100 text-slate-700">
+                                            {labelize(symptom)}
+                                        </span>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Home Remedies</div>
+                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
+                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Lifestyle Changes</div>
+                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                {(guidance?.lifestyle || []).map((item, idx) => (
+                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 mb-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Diet Adjustments</div>
+                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                {(guidance?.diet || []).map((item, idx) => (
+                                    <li key={`${item}-${idx}`} className="leading-relaxed">• {item}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+            </aside>
         </div >
     );
 }

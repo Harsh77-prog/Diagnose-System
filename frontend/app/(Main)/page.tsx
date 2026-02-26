@@ -117,22 +117,42 @@ export default function Page() {
   const router = useRouter();
   return (
     <main>
-      <section className="h-auto p-8 py-20 md:py-64 gap-8 border w-full flex justify-center items-center flex-col">
-        <h1 className="scroll-m-20 text-center text-5xl md:text-6xl font-bold tracking-tight text-center break-word md:max-w-[45vw]">
-          Medical conversations, simplified.
-        </h1>
-        <div className="text-md  font-semibold text-center md:max-w-[45vw]">
-          A text-first AI medical assistant that helps users understand
-          symptoms, medical reports, and possible next steps — without avatars,
-          simulations, or exaggerated claims.
-        </div>
-        <Button
-          className="w-fit mt-2 px-6"
-          onClick={() => router.push("/signup")}
-        >
-          Get Started <ArrowRight />
-        </Button>
-      </section>
+    <section
+  className="relative w-full flex justify-center items-center flex-col
+             h-auto py-20 md:py-64 px-8 text-white overflow-hidden"
+>
+
+  {/* Background Image */}
+  <div
+    className="absolute inset-0 bg-cover bg-center"
+    style={{
+      backgroundImage: "url('/medical-bg.jpg')", // put image in /public folder
+    }}
+  />
+
+  {/* Dark Overlay (improves text readability) */}
+  <div className="absolute inset-0 bg-black/60" />
+
+  {/* Content */}
+  <div className="relative z-10 flex flex-col items-center gap-8">
+    <h1 className="scroll-m-20 text-center text-5xl md:text-6xl font-bold tracking-tight md:max-w-[45vw]">
+      Medical conversations, simplified.
+    </h1>
+
+    <div className="text-md font-semibold text-center md:max-w-[45vw]">
+      A text-first AI medical assistant that helps users understand
+      symptoms, medical reports, and possible next steps — without avatars,
+      simulations, or exaggerated claims.
+    </div>
+
+    <Button
+      className="w-fit mt-2 px-6"
+      onClick={() => router.push("/signup")}
+    >
+      Get Started <ArrowRight />
+    </Button>
+  </div>
+</section>
 
       {/*Features*/}
 
