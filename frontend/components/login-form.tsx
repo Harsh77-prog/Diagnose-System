@@ -52,8 +52,11 @@ export function LoginForm({
           setError("Email not verified. Please verify from your email first.");
           return;
         }
-
-        setError("Invalid email or password");
+        if (result.error.includes("CredentialsSignin")) {
+          setError("Invalid email or password");
+          return;
+        }
+        setError(`Login failed: ${result.error}`);
         return;
       }
 

@@ -739,75 +739,129 @@ async function openAILiveFollowupQuestion(params: {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Return strict JSON only with keys question_id, question_text, question_choices. Ask exactly one concise medically relevant follow-up question to improve diagnosis confidence. Do not repeat already asked questions. question_choices must be null or an array of 2-8 short lowercase options.",
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              turns: params.turns,
-              max_turns: params.maxTurns,
-              current_message: params.currentMessage,
-              recent_history: params.history.slice(-20),
-              confirmed_symptoms: params.confirmedSymptoms,
-              denied_symptoms: params.deniedSymptoms,
-              top_candidates: params.topCandidates,
-              demographics: {
-                gender: params.slots.gender || null,
-                age_group: params.slots.ageGroup || null,
-              },
-              prior_asked_items: params.askedItems,
-              constraints: [
-                "Do not ask age group or gender here.",
-                "Ask only one question.",
-                "No diagnosis/treatment advice in the question.",
-                "Prefer yes/no style when clinically useful.",
-              ],
-            }),
-          },
-        ],
-      }),
-    });
+  const parseJsonObjectFromText = (raw: string): {
+    question_id?: string;
+    question_text?: string;
+    question_choices?: string[] | null;
+  } | null => {
+    const direct = raw.trim();
+    if (!direct) return null;
+    try {
+      return JSON.parse(direct) as {
+        question_id?: string;
+        question_text?: string;
+        question_choices?: string[] | null;
+      };
+    } catch {}
 
-    if (!res.ok) return null;
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content || "";
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
+    const fenced = direct.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced?.[1]) {
+      try {
+        return JSON.parse(fenced[1]) as {
+          question_id?: string;
+          question_text?: string;
+          question_choices?: string[] | null;
+        };
+      } catch {}
+    }
+
+    const start = direct.indexOf("{");
+    const end = direct.lastIndexOf("}");
     if (start < 0 || end < 0 || end <= start) return null;
+    try {
+      return JSON.parse(direct.slice(start, end + 1)) as {
+        question_id?: string;
+        question_text?: string;
+        question_choices?: string[] | null;
+      };
+    } catch {
+      return null;
+    }
+  };
 
-    const parsed = JSON.parse(raw.slice(start, end + 1)) as {
-      question_id?: string;
-      question_text?: string;
-      question_choices?: string[] | null;
-    };
-    const text = (parsed.question_text || "").trim();
-    if (!text) return null;
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim();
+  const models = Array.from(
+    new Set(
+      [configuredModel, "gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"].filter((m): m is string => Boolean(m))
+    )
+  );
+  let lastError = "unknown_error";
 
-    const rawId = (parsed.question_id || `ai_followup_${Date.now()}`).toLowerCase();
-    const id = `ai:${rawId.replace(/[^a-z0-9:_-]+/g, "_").slice(0, 64)}`;
-    const choices = Array.isArray(parsed.question_choices)
-      ? parsed.question_choices
-          .map((value) => normalizeToken(String(value)))
-          .filter(Boolean)
-          .slice(0, 8)
-      : undefined;
+  try {
+    for (const model of models) {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Return strict JSON only with keys question_id, question_text, question_choices. Ask exactly one concise medically relevant follow-up question to improve diagnosis confidence. Do not repeat already asked questions. question_choices must be null or an array of 2-8 short lowercase options.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                turns: params.turns,
+                max_turns: params.maxTurns,
+                current_message: params.currentMessage,
+                recent_history: params.history.slice(-20),
+                confirmed_symptoms: params.confirmedSymptoms,
+                denied_symptoms: params.deniedSymptoms,
+                top_candidates: params.topCandidates,
+                demographics: {
+                  gender: params.slots.gender || null,
+                  age_group: params.slots.ageGroup || null,
+                },
+                prior_asked_items: params.askedItems,
+                constraints: [
+                  "Do not ask age group or gender here.",
+                  "Ask only one question.",
+                  "No diagnosis/treatment advice in the question.",
+                  "Prefer yes/no style when clinically useful.",
+                ],
+              }),
+            },
+          ],
+        }),
+      });
 
-    return { id, text, choices: choices && choices.length > 0 ? choices : undefined };
+      if (!res.ok) {
+        const body = (await res.text().catch(() => "")).slice(0, 300);
+        lastError = `model=${model} status=${res.status} body=${body}`;
+        continue;
+      }
+
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const raw = data.choices?.[0]?.message?.content || "";
+      const parsed = parseJsonObjectFromText(raw);
+      if (!parsed?.question_text?.trim()) {
+        lastError = `model=${model} invalid_json_output`;
+        continue;
+      }
+
+      const text = parsed.question_text.trim();
+      const rawId = (parsed.question_id || `ai_followup_${Date.now()}`).toLowerCase();
+      const id = `ai:${rawId.replace(/[^a-z0-9:_-]+/g, "_").slice(0, 64)}`;
+      const choices = Array.isArray(parsed.question_choices)
+        ? parsed.question_choices
+            .map((value) => normalizeToken(String(value)))
+            .filter(Boolean)
+            .slice(0, 8)
+        : undefined;
+
+      return { id, text, choices: choices && choices.length > 0 ? choices : undefined };
+    }
+
+    console.error("Live follow-up generation failed:", lastError);
+    return null;
   } catch {
+    console.error("Live follow-up generation crashed.");
     return null;
   }
 }
@@ -1056,7 +1110,7 @@ export async function POST(req: NextRequest) {
         if (!question) {
           return NextResponse.json({
             reply:
-              "Live follow-up generation is currently unavailable. Please try again shortly.",
+              "Live follow-up generation is currently unavailable. Please try again shortly. If this continues, verify OPENAI_API_KEY and OPENAI_MODEL.",
             follow_up_suggested: false,
           });
         }
