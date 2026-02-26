@@ -6,7 +6,7 @@ import { prismaUser as prisma } from "@/lib/prisma/client";
 // Get all messages for a specific session
 export async function GET(
     req: NextRequest,
-    props: { params: Promise<{ id: string }> | { id: string } }
+    props: { params: Promise<{ id: string }> }
 ) {
     try {
         const session: any = await getServerSession(authOptions as any);
@@ -43,7 +43,7 @@ export async function GET(
 // Add a new message to the session
 export async function POST(
     req: NextRequest,
-    props: { params: Promise<{ id: string }> | { id: string } }
+    props: { params: Promise<{ id: string }> }
 ) {
     try {
         const session: any = await getServerSession(authOptions as any);
