@@ -188,10 +188,10 @@ export default function ChatDashboard() {
         }
     }
 
-    async function sendMessage(text: string, action?: "yes" | "no") {
+    async function sendMessage(text: string, action?: "yes" | "no" | "custom") {
         if (!text.trim() && !action) return;
 
-        const sentText = action ? (action === "yes" ? "Yes" : "No") : text;
+        const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
         const optimisticUserMessage: Message = { id: Date.now().toString(), role: "user", content: sentText };
         setMessages(prev => [...prev, optimisticUserMessage]);
 
@@ -247,6 +247,7 @@ export default function ChatDashboard() {
                     error?: string;
                     reply?: string;
                     ml_diagnosis?: unknown;
+                    follow_up_state?: unknown;
                     follow_up_suggested?: boolean;
                 }>(res);
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
@@ -258,7 +259,7 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         role: "assistant",
                         content: data.reply || "Error parsing response",
-                        jsonPayload: data.ml_diagnosis || null
+                        jsonPayload: data.ml_diagnosis || data.follow_up_state || null
                     })
                 });
 
@@ -547,12 +548,24 @@ export default function ChatDashboard() {
                                     <div className="flex gap-2">
                                         <Button size="sm" className="bg-black hover:bg-black/80 text-white w-16 h-8 text-xs rounded-full" onClick={() => sendMessage("", "yes")} disabled={loading}>Yes</Button>
                                         <Button size="sm" variant="outline" className="w-16 h-8 text-xs rounded-full bg-white border-[#e5e5e5]" onClick={() => sendMessage("", "no")} disabled={loading}>No</Button>
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-8 text-xs rounded-full bg-white border-[#e5e5e5]"
+                                            onClick={() => textareaRef.current?.focus()}
+                                            disabled={loading}
+                                        >
+                                            Write own
+                                        </Button>
                                     </div>
                                 </div>
                             ) : null}
 
                             <form
-                                onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    sendMessage(input, followUpActive ? "custom" : undefined);
+                                }}
                                 className="flex items-end p-2.5"
                             >
                                 <textarea
@@ -565,7 +578,7 @@ export default function ChatDashboard() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
-                                            sendMessage(input);
+                                            sendMessage(input, followUpActive ? "custom" : undefined);
                                         }
                                     }}
                                 />

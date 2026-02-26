@@ -58,7 +58,7 @@ export function LoginForm({
       }
 
       // ✅ success → redirect manually
-      window.location.href = "/";
+      window.location.href = "/chat";
     } catch (err) {
       setError("Network error");
     } finally {
@@ -81,7 +81,7 @@ export function LoginForm({
                   type="button"
                   onClick={() =>
                     signIn("google", {
-                      callbackUrl: "/",
+                      callbackUrl: "/chat",
                     })
                   }
                 >

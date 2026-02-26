@@ -1,8 +1,21 @@
-import { GalleryVerticalEnd } from "lucide-react"
+"use client";
 
-import { SignupForm } from "@/components/signup-form"
+import { useEffect } from "react";
+import { GalleryVerticalEnd } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { SignupForm } from "@/components/signup-form";
 
 export default function SignupPage() {
+  const { status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/chat");
+    }
+  }, [status, router]);
+
   return (
     <div className="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
       <div className="flex w-full max-w-sm flex-col gap-6">
@@ -15,5 +28,5 @@ export default function SignupPage() {
         <SignupForm />
       </div>
     </div>
-  )
+  );
 }

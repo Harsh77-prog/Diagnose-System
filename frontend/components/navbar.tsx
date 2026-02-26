@@ -12,12 +12,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-const LINKS = [
+const PUBLIC_LINKS = [
   { label: "Home", href: "/" },
-  { label: "Diagnose", href: "/chat" },
-  { label: "Philosophy", href: "/Philosophy" },
   { label: "About us", href: "/about" },
 ];
+
+const AUTH_LINKS = [...PUBLIC_LINKS, { label: "Dashboard", href: "/chat" }];
 
 function UserProfileBar({
   name,
@@ -57,6 +57,7 @@ export function Navbar() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
+  const links = isAuthenticated ? AUTH_LINKS : PUBLIC_LINKS;
   const userName = session?.user?.name || "User";
   const userEmail = session?.user?.email || "No email";
 
@@ -71,7 +72,7 @@ export function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-4">
-          {LINKS.map((l) => (
+          {links.map((l) => (
             <Link
               key={l.href}
               href={l.href}
@@ -125,7 +126,7 @@ export function Navbar() {
               className="w-screen h-[calc(100vh-56px)] mt-2 bg-white/90 backdrop-blur-md rounded-none shadow-lg p-6 border-0"
             >
               <div className="flex flex-col gap-6">
-                {LINKS.map((l) => (
+                {links.map((l) => (
                   <Link
                     key={l.href}
                     href={l.href}
