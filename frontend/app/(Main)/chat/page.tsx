@@ -652,7 +652,7 @@ export default function ChatDashboard() {
                     <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
                         <Menu className="w-5 h-5 text-slate-800" />
                     </Button>
-                    <span className="ml-3 font-semibold text-slate-900">MediCore</span>
+                    <span className="ml-3 font-semibold text-slate-900">MedCoreAI</span>
                     <Button variant="ghost" size="icon" className="ml-auto" onClick={handleNewChat}>
                         <PlusSquare className="w-5 h-5 text-slate-800" />
                     </Button>
@@ -712,7 +712,7 @@ export default function ChatDashboard() {
 
                                         {msg.role === "assistant" && (
                                             <div className="font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">
-                                                MediCore
+                                                MedCoreAI
                                             </div>
                                         )}
 
@@ -766,7 +766,7 @@ export default function ChatDashboard() {
                                         </div>
                                     </div>
                                     <div className="flex flex-col items-start min-w-0">
-                                        <div className="font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">MediCore</div>
+                                        <div className="font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">MedCoreAI</div>
                                         <div className="flex items-center gap-1.5 h-6">
                                             <span className="w-1.5 h-1.5 bg-[#d1d5db] rounded-full animate-bounce [animation-delay:-0.3s]"></span>
                                             <span className="w-1.5 h-1.5 bg-[#d1d5db] rounded-full animate-bounce [animation-delay:-0.15s]"></span>
@@ -824,7 +824,7 @@ export default function ChatDashboard() {
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    placeholder={loading ? "MediCore is thinking..." : "Message MediCore..."}
+                                    placeholder={loading ? "MedCoreAI is thinking..." : "Message MedCoreAI..."}
                                     disabled={loading}
                                     className="flex-1 bg-transparent border-0 shadow-none focus-visible:outline-none focus:ring-0 min-h-[40px] max-h-[200px] resize-none text-[15px] pt-2 px-3 w-full placeholder:text-slate-500 text-black overflow-y-auto"
                                     rows={1}
@@ -848,7 +848,7 @@ export default function ChatDashboard() {
                             </form>
                         </div>
                         <div className="text-center mt-2.5 text-[11px] text-[#8e8e8e]">
-                            MediCore can make mistakes. Consider verifying important information.
+                            MedCoreAI can make mistakes. Consider verifying important information.
                         </div>
                     </div>
                 </div>

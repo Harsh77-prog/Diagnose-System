@@ -14,7 +14,7 @@ export default function AboutPage() {
             About This Project
           </p>
           <h1 className="max-w-4xl text-4xl font-bold tracking-tight md:text-6xl">
-            MediCoreAI now uses live, problem-specific medical follow-up questions.
+            MedCoreAI now uses live, problem-specific medical follow-up questions.
           </h1>
           <p className="mt-6 max-w-3xl text-base text-white/85 md:text-lg">
             The assistant starts with demographics, then asks dynamic OpenAI-generated follow-up questions based on your
@@ -145,7 +145,7 @@ export default function AboutPage() {
             </div>
           </div>
           <p className="mt-6 text-sm text-slate-500">
-            Safety notice: MediCoreAI is informational and does not replace licensed medical diagnosis or treatment.
+            Safety notice: MedCoreAI is informational and does not replace licensed medical diagnosis or treatment.
           </p>
         </div>
       </section>

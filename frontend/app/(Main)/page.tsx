@@ -24,9 +24,9 @@ import { useRouter } from "next/navigation";
 
 const faqs = [
   {
-    trigger: "Is MediCore a substitute for professional medical care?",
+    trigger: "Is MedCoreAI a substitute for professional medical care?",
     content:
-      "No. MediCore provides AI-powered health guidance and symptom analysis, but is not a substitute for professional medical diagnosis or treatment. Always consult licensed healthcare providers for medical advice. In emergencies, contact emergency services immediately.",
+      "No. MedCoreAI provides AI-powered health guidance and symptom analysis, but is not a substitute for professional medical diagnosis or treatment. Always consult licensed healthcare providers for medical advice. In emergencies, contact emergency services immediately.",
   },
   {
     trigger: "How accurate is the symptom analysis?",
@@ -39,9 +39,9 @@ const faqs = [
       "Yes. All patient data is encrypted end-to-end, stored on HIPAA-compliant servers, and never shared with third parties. We exceed healthcare security standards and undergo regular compliance audits.",
   },
   {
-    trigger: "Can MediCore diagnose conditions?",
+    trigger: "Can MedCoreAI diagnose conditions?",
     content:
-      "MediCore does not provide medical diagnosis. It analyzes symptoms, provides educational information, and helps patients understand when they need professional care. Actual diagnosis must come from licensed healthcare providers.",
+      "MedCoreAI does not provide medical diagnosis. It analyzes symptoms, provides educational information, and helps patients understand when they need professional care. Actual diagnosis must come from licensed healthcare providers.",
   },
   {
     trigger: "What medical image formats are supported?",
@@ -54,7 +54,7 @@ const faqs = [
       "Based on symptoms and location, we connect patients with local specialists, urgent care, or emergency services as appropriate. All referrals are made with patient consent.",
   },
   {
-    trigger: "Can healthcare providers integrate MediCore into their practice?",
+    trigger: "Can healthcare providers integrate MedCoreAI into their practice?",
     content:
       "Yes. We offer enterprise integrations for hospitals, clinics, and telemedicine platforms. Our API supports EHR integration, allowing seamless workflow incorporation.",
   },
@@ -69,9 +69,9 @@ const faqs = [
       "Our system immediately flags emergency symptoms and directs patients to call emergency services or visit the nearest ER. This includes chest pain, severe difficulty breathing, and other critical presentations.",
   },
   {
-    trigger: "Is MediCore available 24/7?",
+    trigger: "Is MedCoreAI available 24/7?",
     content:
-      "Yes. Unlike traditional healthcare, MediCore is available anytime, anywhere. For critical emergencies, we always recommend immediate professional care.",
+      "Yes. Unlike traditional healthcare, MedCoreAI is available anytime, anywhere. For critical emergencies, we always recommend immediate professional care.",
   },
 ];
 
