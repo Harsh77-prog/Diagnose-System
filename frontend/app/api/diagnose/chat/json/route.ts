@@ -375,6 +375,10 @@ function extractSymptoms(text: string, datasets: DatasetCache): string[] {
 function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
   const normalized = normalizeToken(text);
   if (!normalized) return false;
+  const padded = ` ${normalized} `;
+
+  // Explicit triage trigger for users who want diagnosis mode.
+  if (/^\s*(diagnose|predict|triage)\s*[:\-]/i.test(text)) return true;
 
   const directSymptoms = extractSymptoms(text, datasets);
   if (directSymptoms.length > 0) return true;
@@ -412,8 +416,15 @@ function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
   ];
 
   const hasMedicalKeyword = medicalKeywords.some((k) => normalized.includes(k));
-  if (!hasMedicalKeyword) return false;
-  return /\b(i|im|i am|my|me|mine|feeling|feel|having|suffering|experienced|experiencing)\b/.test(normalized);
+  const mentionsDiseaseByName = datasets.diseases.some((d) => {
+    const name = normalizeToken(d.name);
+    return name.length >= 4 && padded.includes(` ${name} `);
+  });
+  const firstPerson = /\b(i|im|i am|my|me|mine)\b/.test(normalized);
+  const selfReportVerb = /\b(have|having|feel|feeling|suffer|suffering|experiencing|got)\b/.test(normalized);
+
+  if (firstPerson && (hasMedicalKeyword || mentionsDiseaseByName) && selfReportVerb) return true;
+  return hasMedicalKeyword && /\b(i|im|i am|my|me|mine|feeling|feel|having|suffering|experienced|experiencing)\b/.test(normalized);
 }
 
 function pickDiseaseFromSymptomQuery(text: string, datasets: DatasetCache): DiseaseRow | null {
@@ -1020,7 +1031,7 @@ export async function POST(req: NextRequest) {
     }
 
     const parsedState = parseState(currentMessages);
-    const directInfoReply = !parsedState ? informationalDiseaseReply(userMessage, datasets) : null;
+    const directInfoReply = !parsedState && !hasMedicalIntent(userMessage, datasets) ? informationalDiseaseReply(userMessage, datasets) : null;
     if (directInfoReply) {
       return NextResponse.json({
         reply: directInfoReply,

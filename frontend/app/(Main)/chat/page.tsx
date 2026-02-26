@@ -194,6 +194,7 @@ function generateChatTitle(prompt: string) {
     const prefixesToRemove = [
         "can you evaluate my ", "what are the precautions for ",
         "give me a healthy list of ", "explain common ",
+        "diagnose: ", "predict: ", "triage: ",
         "i have a ", "i have an ", "i am experiencing ", "i feel ", "what is a ",
         "tell me about ", "can you tell me about ", "i have ",
         "can you help with ", "how do i treat ", "symptoms of "
@@ -216,6 +217,9 @@ function generateChatTitle(prompt: string) {
     }
     return title || "New Diagnosis";
 }
+
+const DIAGNOSIS_TRIGGER_HELP =
+    "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have jaundice and yellow eyes`.";
 
 export default function ChatDashboard() {
     const { data: session, status } = useSession();
@@ -663,6 +667,12 @@ export default function ChatDashboard() {
                 </header>
 
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth font-sans">
+                    <div className="max-w-3xl mx-auto w-full">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-2.5 text-[12px] md:text-[13px]">
+                            {DIAGNOSIS_TRIGGER_HELP}
+                        </div>
+                    </div>
+
                     {messages.length === 0 && !loading ? (
                         <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center px-4 animate-in fade-in duration-500">
                             <div className="w-16 h-16 rounded-2xl bg-[#0f0f0f] text-white flex items-center justify-center shadow-md mb-6">
@@ -828,7 +838,7 @@ export default function ChatDashboard() {
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    placeholder={loading ? "MedCoreAI is thinking..." : "Message MedCoreAI..."}
+                                    placeholder={loading ? "MedCoreAI is thinking..." : "Message MedCoreAI... (use diagnose: to start diagnosis)"}
                                     disabled={loading}
                                     className="flex-1 bg-transparent border-0 shadow-none focus-visible:outline-none focus:ring-0 min-h-[40px] max-h-[200px] resize-none text-[15px] pt-2 px-3 w-full placeholder:text-slate-500 text-black overflow-y-auto"
                                     rows={1}
