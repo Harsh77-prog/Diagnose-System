@@ -792,6 +792,42 @@ export default function ChatDashboard() {
                                                 {panelDescription || "The prediction is estimated from symptom patterns in the dataset and your follow-up responses."}
                                             </p>
                                         </div>
+
+                                        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800 mb-2">Home Remedies</div>
+                                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                                {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
+                                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-violet-800 mb-2">Lifestyle Changes</div>
+                                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                                {(guidance?.lifestyle || []).map((item, idx) => (
+                                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-white p-4">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-orange-800 mb-2">Diet Adjustments</div>
+                                            <ul className="space-y-2 text-[13px] text-slate-700">
+                                                {(guidance?.diet || []).map((item, idx) => (
+                                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
                                     </>
                                 )}
                             </div>
