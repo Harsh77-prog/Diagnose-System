@@ -718,7 +718,7 @@ export default function ChatDashboard() {
                                                 {msg.jsonPayload && (() => {
                                                     try {
                                                         const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
-                                                        const predictions: { disease: string, probability: number }[] = payload.top_predictions;
+                                                        const predictions: { disease: string, probability: number }[] = payload.top_predictions || [];
                                                         const source = payload.source;
                                                         const sourceLabel =
                                                             source === "dataset_current_session"
