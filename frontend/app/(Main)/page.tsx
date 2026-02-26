@@ -126,7 +126,7 @@ export default function Page() {
   <div
     className="absolute inset-0 bg-cover bg-center"
     style={{
-      backgroundImage: "url('/medical-bg.jpg')", // put image in /public folder
+      backgroundImage: "url('/image copy.png')", // put image in /public folder
     }}
   />
 
