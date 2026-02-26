@@ -24,7 +24,7 @@ type Message = {
 type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
-    askedSymptom?: string;
+    currentQuestionText?: string;
 };
 
 async function parseResponseJson<T>(res: Response): Promise<T> {
@@ -188,8 +188,8 @@ export default function ChatDashboard() {
                         const payload = JSON.parse(lastMsg.jsonPayload) as FollowupStatePayload;
                         if (payload.kind === "followup_state" && payload.pending) {
                             setFollowUpActive(true);
-                            if (payload.askedSymptom) {
-                                setFollowUpQuestion(`Are you also experiencing ${payload.askedSymptom}?`);
+                            if (payload.currentQuestionText) {
+                                setFollowUpQuestion(payload.currentQuestionText);
                             } else {
                                 setFollowUpQuestion("Please answer the follow-up question.");
                             }
@@ -301,7 +301,7 @@ export default function ChatDashboard() {
 
                 if (data.follow_up_suggested) {
                     setFollowUpActive(true);
-                    setFollowUpQuestion(data.follow_up_question ? `Are you also experiencing ${data.follow_up_question}?` : "Please answer the follow-up question.");
+                    setFollowUpQuestion(data.follow_up_question || "Please answer the follow-up question.");
                 } else {
                     setFollowUpActive(false);
                     setFollowUpQuestion("");

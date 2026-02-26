@@ -5,29 +5,35 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { prismaUser as prisma } from "@/lib/prisma/client";
 
-type FollowupState = {
-  kind: "followup_state";
-  pending: boolean;
-  askedSymptom: string;
-  askedSymptoms: string[];
-  confirmedSymptoms: string[];
-  deniedSymptoms: string[];
-  turns: number;
-  topCandidates: string[];
-};
-
-type DiseaseRow = {
-  name: string;
-  symptoms: string[];
-};
+type DiseaseRow = { name: string; symptoms: string[] };
 
 type DatasetCache = {
   loaded: boolean;
   symptoms: string[];
+  symptomSet: Set<string>;
   diseases: DiseaseRow[];
   descriptions: Record<string, string>;
   precautions: Record<string, string[]>;
 };
+
+type FollowupState = {
+  kind: "followup_state";
+  pending: boolean;
+  turns: number;
+  maxTurns: number;
+  confirmedSymptoms: string[];
+  deniedSymptoms: string[];
+  askedSymptoms: string[];
+  topCandidates: string[];
+  currentQuestionId: string;
+  currentQuestionText: string;
+  slots: {
+    temperatureF?: number;
+    durationDays?: number;
+  };
+};
+
+type Prediction = { disease: string; probability: number; matched: number; total: number };
 
 let DATASET_CACHE: DatasetCache | null = null;
 
@@ -40,24 +46,20 @@ function parseCsv(text: string): string[][] {
   for (let i = 0; i < text.length; i += 1) {
     const ch = text[i];
     const next = text[i + 1];
-
     if (ch === '"' && inQuotes && next === '"') {
       cell += '"';
       i += 1;
       continue;
     }
-
     if (ch === '"') {
       inQuotes = !inQuotes;
       continue;
     }
-
     if (ch === "," && !inQuotes) {
       row.push(cell.trim());
       cell = "";
       continue;
     }
-
     if ((ch === "\n" || ch === "\r") && !inQuotes) {
       if (ch === "\r" && next === "\n") i += 1;
       row.push(cell.trim());
@@ -66,7 +68,6 @@ function parseCsv(text: string): string[][] {
       cell = "";
       continue;
     }
-
     cell += ch;
   }
 
@@ -83,6 +84,7 @@ function normalizeToken(value: string): string {
     .toLowerCase()
     .trim()
     .replace(/[_-]+/g, " ")
+    .replace(/[^\w\s.]/g, " ")
     .replace(/\s+/g, " ");
 }
 
@@ -94,12 +96,13 @@ function loadDatasets(): DatasetCache {
     path.resolve(process.cwd(), "backend/medical_ML/data"),
     path.resolve(process.cwd(), "medical_ML/data"),
   ];
-
   const dataDir = candidates.find((dir) => fs.existsSync(dir));
+
   if (!dataDir) {
     DATASET_CACHE = {
       loaded: false,
       symptoms: [],
+      symptomSet: new Set<string>(),
       diseases: [],
       descriptions: {},
       precautions: {},
@@ -113,18 +116,17 @@ function loadDatasets(): DatasetCache {
 
   const symptomSet = new Set<string>();
   const diseaseMap = new Map<string, Set<string>>();
-
   for (let i = 1; i < cleaned.length; i += 1) {
     const row = cleaned[i];
     const disease = row[0]?.trim();
     if (!disease) continue;
     if (!diseaseMap.has(disease)) diseaseMap.set(disease, new Set<string>());
-    const target = diseaseMap.get(disease)!;
-    for (let c = 1; c < row.length; c += 1) {
-      const symptom = normalizeToken(row[c] || "");
-      if (!symptom) continue;
-      target.add(symptom);
-      symptomSet.add(symptom);
+    const entry = diseaseMap.get(disease)!;
+    for (let j = 1; j < row.length; j += 1) {
+      const sym = normalizeToken(row[j] || "");
+      if (!sym) continue;
+      entry.add(sym);
+      symptomSet.add(sym);
     }
   }
 
@@ -145,91 +147,197 @@ function loadDatasets(): DatasetCache {
   DATASET_CACHE = {
     loaded: true,
     symptoms: Array.from(symptomSet),
-    diseases: Array.from(diseaseMap.entries()).map(([name, symptoms]) => ({
-      name,
-      symptoms: Array.from(symptoms),
-    })),
+    symptomSet,
+    diseases: Array.from(diseaseMap.entries()).map(([name, s]) => ({ name, symptoms: Array.from(s) })),
     descriptions,
     precautions,
   };
-
   return DATASET_CACHE;
 }
 
-function extractSymptomsFromText(text: string, symptoms: string[]): string[] {
+function extractTemperatureF(text: string): number | undefined {
+  const m = normalizeToken(text).match(/(\d{2,3}(?:\.\d)?)\s*(f|fahrenheit|c|celsius|degree)?/i);
+  if (!m) return undefined;
+  const value = Number(m[1]);
+  if (Number.isNaN(value)) return undefined;
+  const unit = (m[2] || "").toLowerCase();
+  if (unit.startsWith("c")) return Number(((value * 9) / 5 + 32).toFixed(1));
+  if (value >= 92 && value <= 110) return value;
+  return undefined;
+}
+
+function extractDurationDays(text: string): number | undefined {
+  const t = normalizeToken(text);
+  const d = t.match(/(\d+)\s*(day|days)/);
+  if (d) return Number(d[1]);
+  const w = t.match(/(\d+)\s*(week|weeks)/);
+  if (w) return Number(w[1]) * 7;
+  const m = t.match(/(\d+)\s*(month|months)/);
+  if (m) return Number(m[1]) * 30;
+  if (/\btoday\b|\b1 day\b/.test(t)) return 1;
+  if (/\byesterday\b/.test(t)) return 2;
+  return undefined;
+}
+
+function aliasSymptoms(text: string, symptomSet: Set<string>): string[] {
+  const t = normalizeToken(text);
+  const out = new Set<string>();
+  const pushIf = (candidate: string) => {
+    if (symptomSet.has(candidate)) out.add(candidate);
+  };
+
+  if (/\bfever\b|\btemperature\b|\bhigh temp\b/.test(t)) pushIf("high fever");
+  if (/\bcough\b/.test(t)) pushIf("cough");
+  if (/\bchill|\bshiver/.test(t)) {
+    pushIf("chills");
+    pushIf("shivering");
+  }
+  if (/\bbody ache|\bbody pain|\bmuscle ache|\bmuscle pain/.test(t)) pushIf("muscle pain");
+  if (/\bheadache\b/.test(t)) pushIf("headache");
+  if (/\bsore throat\b/.test(t)) pushIf("throat irritation");
+  if (/\bnausea\b/.test(t)) pushIf("nausea");
+  if (/\bvomit|\bvomiting\b/.test(t)) pushIf("vomiting");
+  if (/\bfatigue|\btired|\bweak/.test(t)) pushIf("fatigue");
+  if (/\brunny nose|\bblocked nose|\bcongestion/.test(t)) pushIf("runny nose");
+
+  return Array.from(out);
+}
+
+function extractSymptoms(text: string, datasets: DatasetCache): string[] {
   const normalized = ` ${normalizeToken(text)} `;
   const found = new Set<string>();
-  for (const symptom of symptoms) {
+
+  for (const symptom of datasets.symptoms) {
     if (normalized.includes(` ${symptom} `)) found.add(symptom);
   }
+  for (const s of aliasSymptoms(text, datasets.symptomSet)) found.add(s);
+
+  const temp = extractTemperatureF(text);
+  if (temp && temp >= 99.5 && datasets.symptomSet.has("high fever")) found.add("high fever");
+
   return Array.from(found);
 }
 
-function scoreDiseases(
-  diseases: DiseaseRow[],
-  confirmed: Set<string>,
-  denied: Set<string>
-): { disease: string; probability: number; matched: number; total: number }[] {
-  const scored: { disease: string; score: number; matched: number; total: number }[] = [];
-  for (const disease of diseases) {
-    const total = disease.symptoms.length || 1;
+function scoreDiseases(diseases: DiseaseRow[], confirmed: Set<string>, denied: Set<string>): Prediction[] {
+  const scored: Array<{ disease: string; score: number; matched: number; total: number }> = [];
+  for (const d of diseases) {
     let matched = 0;
     let deniedHits = 0;
-    for (const symptom of disease.symptoms) {
-      if (confirmed.has(symptom)) matched += 1;
-      if (denied.has(symptom)) deniedHits += 1;
+    const total = d.symptoms.length || 1;
+    for (const s of d.symptoms) {
+      if (confirmed.has(s)) matched += 1;
+      if (denied.has(s)) deniedHits += 1;
     }
-    const raw = matched / total - deniedHits * 0.2 + (matched > 0 ? 0.02 : 0);
-    if (raw > 0) scored.push({ disease: disease.name, score: raw, matched, total });
+    const score = matched / total - deniedHits * 0.18 + (matched > 0 ? 0.03 : 0);
+    if (score > 0) scored.push({ disease: d.name, score, matched, total });
   }
-
   if (scored.length === 0) return [];
-  const sum = scored.reduce((acc, s) => acc + s.score, 0);
+  const sum = scored.reduce((a, b) => a + b.score, 0);
   return scored
-    .map((s) => ({
-      disease: s.disease,
-      probability: Math.max(0, (s.score / sum) * 100),
-      matched: s.matched,
-      total: s.total,
+    .map((x) => ({
+      disease: x.disease,
+      probability: Number(((x.score / sum) * 100).toFixed(1)),
+      matched: x.matched,
+      total: x.total,
     }))
     .sort((a, b) => b.probability - a.probability);
 }
 
-function chooseFollowupSymptom(
-  diseases: DiseaseRow[],
+function chooseSymptomQuestion(
+  datasets: DatasetCache,
   topCandidates: string[],
   asked: Set<string>,
   confirmed: Set<string>,
   denied: Set<string>
 ): string | null {
   const candidateSet = new Set(topCandidates);
-  const topDiseaseRows = diseases.filter((d) => candidateSet.has(d.name));
-  if (topDiseaseRows.length === 0) return null;
+  const diseaseRows = datasets.diseases.filter((d) => candidateSet.has(d.name));
+  if (diseaseRows.length === 0) return null;
 
-  const count = new Map<string, number>();
-  for (const d of topDiseaseRows) {
+  const counts = new Map<string, number>();
+  for (const d of diseaseRows) {
     for (const s of d.symptoms) {
       if (asked.has(s) || confirmed.has(s) || denied.has(s)) continue;
-      count.set(s, (count.get(s) || 0) + 1);
+      counts.set(s, (counts.get(s) || 0) + 1);
     }
   }
 
   let best: { symptom: string; score: number } | null = null;
-  for (const [symptom, freq] of count.entries()) {
-    const p = freq / topDiseaseRows.length;
-    const entropyLike = 1 - Math.abs(0.5 - p);
-    const score = entropyLike * 100 + freq;
+  for (const [symptom, freq] of counts.entries()) {
+    const p = freq / diseaseRows.length;
+    const splitScore = 1 - Math.abs(0.5 - p);
+    const score = splitScore * 100 + freq;
     if (!best || score > best.score) best = { symptom, score };
   }
   return best?.symptom ?? null;
 }
 
-async function openAIFallbackReply(history: string[], message: string): Promise<string | null> {
+function formatSymptom(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function parseState(messages: Array<{ role: string; jsonPayload: string | null }>): FollowupState | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const item = messages[i];
+    if (item.role !== "assistant" || !item.jsonPayload) continue;
+    try {
+      const p = JSON.parse(item.jsonPayload) as Partial<FollowupState>;
+      if (p.kind === "followup_state" && p.pending && p.currentQuestionId && p.currentQuestionText) {
+        return {
+          kind: "followup_state",
+          pending: true,
+          turns: p.turns || 0,
+          maxTurns: p.maxTurns || 6,
+          confirmedSymptoms: p.confirmedSymptoms || [],
+          deniedSymptoms: p.deniedSymptoms || [],
+          askedSymptoms: p.askedSymptoms || [],
+          topCandidates: p.topCandidates || [],
+          currentQuestionId: p.currentQuestionId,
+          currentQuestionText: p.currentQuestionText,
+          slots: p.slots || {},
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function makeState(state: Omit<FollowupState, "kind" | "pending">): FollowupState {
+  return { kind: "followup_state", pending: true, ...state };
+}
+
+function nextQuestion(
+  datasets: DatasetCache,
+  confirmed: Set<string>,
+  denied: Set<string>,
+  asked: Set<string>,
+  topCandidates: string[],
+  slots: FollowupState["slots"]
+): { id: string; text: string } | null {
+  if ((confirmed.has("high fever") || asked.has("high fever")) && !slots.temperatureF) {
+    return { id: "temperature", text: "What is your current temperature (in F or C)?" };
+  }
+  if (!slots.durationDays) {
+    return { id: "duration", text: "How long have you had these symptoms?" };
+  }
+  const symptom = chooseSymptomQuestion(datasets, topCandidates, asked, confirmed, denied);
+  if (!symptom) return null;
+  return { id: `symptom:${symptom}`, text: `Do you also have ${symptom}?` };
+}
+
+function yesNoFromText(text: string): "yes" | "no" | null {
+  const t = normalizeToken(text);
+  if (/\b(yes|yeah|yep|present|have|i do)\b/.test(t)) return "yes";
+  if (/\b(no|not|none|dont|don't|never)\b/.test(t)) return "no";
+  return null;
+}
+
+async function openAIFallbackDiagnosis(history: string[], message: string, symptoms: string[]) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
-
   try {
-    const promptHistory = history.slice(-10).join("\n");
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -243,53 +351,47 @@ async function openAIFallbackReply(history: string[], message: string): Promise<
           {
             role: "system",
             content:
-              "You are a careful medical triage assistant. Ask concise follow-up questions, do not claim certainty, and include a safety disclaimer.",
+              "Return strict JSON only with keys diagnosis, confidence, top_predictions (array of up to 5 {disease, probability}), summary, precautions (string array).",
           },
           {
             role: "user",
-            content: `Prior medical chat context:\n${promptHistory}\n\nCurrent user message:\n${message}`,
+            content: `History:\n${history.slice(-15).join("\n")}\n\nCurrent message: ${message}\nSymptoms: ${symptoms.join(", ")}`,
           },
         ],
       }),
     });
-
     if (!res.ok) return null;
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content || "";
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end < 0 || end <= start) return null;
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as {
+      diagnosis?: string;
+      confidence?: number;
+      summary?: string;
+      precautions?: string[];
+      top_predictions?: Array<{ disease: string; probability: number }>;
     };
-    return data.choices?.[0]?.message?.content?.trim() || null;
+    if (!parsed.diagnosis) return null;
+    const top = (parsed.top_predictions || [])
+      .slice(0, 5)
+      .map((p) => ({ disease: p.disease, probability: Number(p.probability) || 0 }));
+    return {
+      diagnosis: parsed.diagnosis,
+      confidence: Number(parsed.confidence) || 35,
+      summary: parsed.summary || "",
+      precautions: parsed.precautions || [],
+      top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: Number(parsed.confidence) || 35 }],
+    };
   } catch {
     return null;
   }
 }
 
-function formatSymptomList(symptoms: string[]): string {
-  return symptoms.map((s) => s.replace(/\b\w/g, (c) => c.toUpperCase())).join(", ");
-}
-
-function parseFollowupState(messages: Array<{ role: string; jsonPayload: string | null }>): FollowupState | null {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const m = messages[i];
-    if (m.role !== "assistant" || !m.jsonPayload) continue;
-    try {
-      const parsed = JSON.parse(m.jsonPayload) as Partial<FollowupState>;
-      if (parsed.kind === "followup_state" && parsed.pending) {
-        return {
-          kind: "followup_state",
-          pending: true,
-          askedSymptom: parsed.askedSymptom || "",
-          askedSymptoms: parsed.askedSymptoms || [],
-          confirmedSymptoms: parsed.confirmedSymptoms || [],
-          deniedSymptoms: parsed.deniedSymptoms || [],
-          turns: parsed.turns || 1,
-          topCandidates: parsed.topCandidates || [],
-        };
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
+function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number): string {
+  const symptoms = Array.from(confirmed).map(formatSymptom).join(", ");
+  return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}\n\nUse **Yes**, **No**, or **Write own**.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -306,8 +408,8 @@ export async function POST(req: NextRequest) {
       session_action?: "yes" | "no" | "custom" | null;
     };
     const userMessage = (body.message || "").trim();
-    const sessionAction = body.session_action || null;
     if (!userMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
+    const action = body.session_action || null;
 
     const chatSession = await prisma.chatSession.findUnique({ where: { id: sessionId } });
     if (!chatSession || chatSession.userId !== userId) {
@@ -323,113 +425,128 @@ export async function POST(req: NextRequest) {
     const historicalUserMessages = await prisma.message.findMany({
       where: { role: "user", chatSession: { userId } },
       orderBy: { createdAt: "desc" },
-      take: 160,
+      take: 200,
       select: { content: true },
     });
-
-    const datasets = loadDatasets();
     const priorText = historicalUserMessages.map((m) => m.content);
 
+    const datasets = loadDatasets();
     if (!datasets.loaded) {
-      const fallback = await openAIFallbackReply(priorText, userMessage);
-      const reply =
-        fallback ||
-        "Based on available resources, I couldn't access the symptom dataset right now. Please describe key symptoms (duration, severity, triggers) and I will continue.";
       return NextResponse.json({
-        reply,
+        reply:
+          "Dataset is unavailable right now. Please share your symptoms, duration, and temperature so I can continue with API-assisted guidance.",
         follow_up_suggested: false,
-        resource_note: "dataset_unavailable_fallback",
+        resource_note: "dataset_unavailable",
       });
     }
 
-    const pendingState = parseFollowupState(currentMessages);
-    let confirmed = new Set<string>(pendingState?.confirmedSymptoms || []);
-    let denied = new Set<string>(pendingState?.deniedSymptoms || []);
-    let asked = new Set<string>(pendingState?.askedSymptoms || []);
-    let turns = pendingState?.turns || 0;
+    const parsedState = parseState(currentMessages);
+    const confirmed = new Set<string>(parsedState?.confirmedSymptoms || []);
+    const denied = new Set<string>(parsedState?.deniedSymptoms || []);
+    const asked = new Set<string>(parsedState?.askedSymptoms || []);
+    const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
+    let turns = parsedState?.turns || 0;
+    const maxTurns = parsedState?.maxTurns || 6;
 
-    const extractedCurrent = extractSymptomsFromText(userMessage, datasets.symptoms);
+    const extracted = extractSymptoms(userMessage, datasets);
+    for (const s of extracted) confirmed.add(s);
 
-    if (pendingState && sessionAction) {
-      asked.add(pendingState.askedSymptom);
-      if (sessionAction === "yes") confirmed.add(pendingState.askedSymptom);
-      if (sessionAction === "no") denied.add(pendingState.askedSymptom);
-      if (sessionAction === "custom") {
-        for (const s of extractedCurrent) confirmed.add(s);
-        if (/\b(yes|yeah|yep|present|have)\b/i.test(userMessage)) confirmed.add(pendingState.askedSymptom);
-        if (/\b(no|not|dont|don't|none)\b/i.test(userMessage)) denied.add(pendingState.askedSymptom);
+    const temp = extractTemperatureF(userMessage);
+    if (temp) slots.temperatureF = temp;
+    const duration = extractDurationDays(userMessage);
+    if (duration) slots.durationDays = duration;
+
+    if (parsedState && action && parsedState.currentQuestionId) {
+      const qid = parsedState.currentQuestionId;
+      const answer = action === "custom" ? yesNoFromText(userMessage) : action;
+
+      if (qid === "temperature") {
+        if (temp) slots.temperatureF = temp;
+        if (answer === "yes") confirmed.add("high fever");
+        if (answer === "no") denied.add("high fever");
+      } else if (qid === "duration") {
+        if (duration) slots.durationDays = duration;
+      } else if (qid.startsWith("symptom:")) {
+        const symptom = qid.slice("symptom:".length);
+        asked.add(symptom);
+        if (answer === "yes") confirmed.add(symptom);
+        if (answer === "no") denied.add(symptom);
       }
       turns += 1;
-    } else {
-      for (const s of extractedCurrent) confirmed.add(s);
-
-      const counts = new Map<string, number>();
+    } else if (!parsedState) {
+      const historyCounts = new Map<string, number>();
       for (const text of priorText) {
-        for (const s of extractSymptomsFromText(text, datasets.symptoms)) {
-          counts.set(s, (counts.get(s) || 0) + 1);
+        for (const s of extractSymptoms(text, datasets)) {
+          historyCounts.set(s, (historyCounts.get(s) || 0) + 1);
         }
       }
-      for (const [symptom, count] of counts.entries()) {
-        if (count >= 2) confirmed.add(symptom);
+      for (const [sym, count] of historyCounts.entries()) {
+        if (count >= 2) confirmed.add(sym);
       }
-    }
-
-    if (confirmed.size === 0) {
-      const fallback = await openAIFallbackReply(priorText, userMessage);
-      const reply =
-        fallback ||
-        "I couldn't identify clear symptoms yet. Please share what you feel, where it occurs, since when, and what makes it better or worse.";
-      return NextResponse.json({
-        reply,
-        follow_up_suggested: false,
-        resource_note: "no_dataset_match_fallback",
-      });
     }
 
     const predictions = scoreDiseases(datasets.diseases, confirmed, denied);
     const top = predictions[0];
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
-    const nextSymptom = chooseFollowupSymptom(datasets.diseases, topCandidates, asked, confirmed, denied);
 
-    const shouldAskFollowup =
-      Boolean(nextSymptom) && (sessionAction !== null ? turns < 5 : true) && (top ? top.probability < 68 : true);
+    const question = nextQuestion(datasets, confirmed, denied, asked, topCandidates, slots);
+    const goodConfidence = Boolean(top && top.probability >= 67);
+    const enoughTurns = turns >= 2;
 
-    if (shouldAskFollowup && nextSymptom) {
-      const state: FollowupState = {
-        kind: "followup_state",
-        pending: true,
-        askedSymptom: nextSymptom,
-        askedSymptoms: Array.from(asked),
+    if (question && turns < maxTurns && !(goodConfidence && enoughTurns)) {
+      const nextState = makeState({
+        turns,
+        maxTurns,
         confirmedSymptoms: Array.from(confirmed),
         deniedSymptoms: Array.from(denied),
-        turns: Math.max(1, turns),
+        askedSymptoms: Array.from(asked),
         topCandidates,
-      };
-
-      const reply = `I identified these symptoms so far: **${formatSymptomList(
-        Array.from(confirmed)
-      )}**.\n\nTo improve prediction confidence, are you also experiencing **${nextSymptom}**?\nYou can answer **Yes**, **No**, or write your own details.`;
+        currentQuestionId: question.id,
+        currentQuestionText: question.text,
+        slots,
+      });
 
       return NextResponse.json({
-        reply,
+        reply: replyForQuestion(question.text, confirmed, turns),
         follow_up_suggested: true,
-        follow_up_question: nextSymptom,
-        follow_up_state: state,
+        follow_up_question: question.text,
+        follow_up_state: nextState,
       });
     }
 
-    if (!top || top.probability < 22) {
-      const fallback = await openAIFallbackReply(priorText, userMessage);
-      const reply =
-        (fallback
-          ? `${fallback}\n\nBased on available resources, dataset confidence is low, so this uses API-assisted guidance.`
-          : "Based on available resources, I could not produce a confident dataset prediction. Please consult a clinician for proper diagnosis.") +
-        "\n\nThis is informational only and not a medical diagnosis.";
+    if (!top || top.probability < 25) {
+      const ai = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed));
+      if (ai) {
+        const reply = `**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
+          ai.confidence
+        ).toFixed(1)}%\n\n${ai.summary || "Dataset confidence was low, so this result used API-assisted analysis."}\n\n${
+          ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
+        }This is informational only and not a medical diagnosis.`;
+
+        return NextResponse.json({
+          reply,
+          follow_up_suggested: false,
+          ml_diagnosis: {
+            diagnosis: ai.diagnosis,
+            confidence: Number(ai.confidence.toFixed(1)),
+            diagnosis_type: "api_fallback",
+            top_predictions: ai.top_predictions.map((p) => ({
+              disease: p.disease,
+              probability: Number(p.probability.toFixed(1)),
+            })),
+            confirmed_symptoms: Array.from(confirmed),
+            followups_asked: turns,
+            disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
+            source: "api_fallback",
+            considered_prior_history: true,
+          },
+        });
+      }
 
       return NextResponse.json({
-        reply,
+        reply:
+          "I could not reach a confident dataset prediction. Please consult a clinician, especially if symptoms are worsening or persistent.",
         follow_up_suggested: false,
-        resource_note: "low_confidence_api_fallback",
       });
     }
 
@@ -441,7 +558,7 @@ export async function POST(req: NextRequest) {
     const diagnosis = {
       diagnosis: top.disease,
       confidence: Number(top.probability.toFixed(1)),
-      diagnosis_type: top.probability >= 68 ? "confident" : "best_guess",
+      diagnosis_type: top.probability >= 67 ? "confident" : "best_guess",
       top_predictions: predictions.slice(0, 5).map((p) => ({
         disease: p.disease,
         probability: Number(p.probability.toFixed(1)),
@@ -458,9 +575,11 @@ export async function POST(req: NextRequest) {
         ? `\n\n**Precautions:**\n${diseaseInfo.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
         : "";
 
-    const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${diagnosis.confidence}%\n\nSymptoms considered: ${formatSymptomList(
-      diagnosis.confirmed_symptoms
-    )}\n\n${diseaseInfo.description || "No detailed description available in dataset."}${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
+    const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
+      diagnosis.confidence
+    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n\n${
+      diseaseInfo.description || "No detailed description available in dataset."
+    }${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
 
     return NextResponse.json({
       reply,
