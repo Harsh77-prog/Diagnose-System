@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -52,6 +53,41 @@ function UserProfileBar({
   );
 }
 
+function UserProfileMenu({ name, email }: { name: string; email: string }) {
+  const initials = name.trim().charAt(0).toUpperCase() || "U";
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-2 rounded-full border border-black/10 bg-white px-2 py-1.5 hover:bg-neutral-50"
+          aria-label="Open profile menu"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">
+            {initials}
+          </span>
+          <ChevronDown className="h-4 w-4 text-neutral-600" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-3">
+        <div className="mb-3 flex items-center gap-3 rounded-md border p-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-sm font-semibold text-white">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">{email}</p>
+          </div>
+        </div>
+        <Button className="w-full" variant="outline" onClick={() => signOut({ callbackUrl: "/login" })}>
+          Sign out
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function Navbar() {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
@@ -64,7 +100,7 @@ export function Navbar() {
 
   return (
     <header className="fixed top-0 left-0 z-50 w-full border-b border-black/10 bg-white">
-      <nav className="mx-auto flex h-16 w-full max-w-[1200px] items-center justify-between px-4 md:px-6">
+      <nav className="flex h-16 w-full items-center justify-between px-2 md:px-4">
         <Link href={"/"}>
           <div className="flex items-center gap-2 text-base font-semibold tracking-tight md:text-lg">
             <div className="rounded-xl border border-black/10 bg-gradient-to-b from-white to-neutral-100 p-1.5 shadow-sm">
@@ -90,7 +126,7 @@ export function Navbar() {
           ))}
 
           {isAuthenticated ? (
-            <UserProfileBar name={userName} email={userEmail} />
+            <UserProfileMenu name={userName} email={userEmail} />
           ) : (
             <>
               <Button
