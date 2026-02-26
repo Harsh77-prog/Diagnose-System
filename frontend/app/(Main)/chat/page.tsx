@@ -31,6 +31,7 @@ type FollowupStatePayload = {
 type DiagnosisPayload = {
     diagnosis: string;
     confidence?: number;
+    source?: "dataset_current_session" | "api_fallback" | string;
     top_predictions?: { disease: string; probability: number }[];
     confirmed_symptoms?: string[];
     disease_info?: {
@@ -716,12 +717,29 @@ export default function ChatDashboard() {
                                                 {/* Render Animated ML Progress Bars if payload exists */}
                                                 {msg.jsonPayload && (() => {
                                                     try {
-                                                        const payload = JSON.parse(msg.jsonPayload);
+                                                        const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
                                                         const predictions: { disease: string, probability: number }[] = payload.top_predictions;
+                                                        const source = payload.source;
+                                                        const sourceLabel =
+                                                            source === "dataset_current_session"
+                                                                ? "Dataset Model"
+                                                                : source === "api_fallback"
+                                                                    ? "OpenAI API"
+                                                                    : null;
 
                                                         if (Array.isArray(predictions) && predictions.length > 0) {
                                                             return (
                                                                 <div className="mt-5 p-4 rounded-xl border border-[#e5e5e5] bg-[#f9f9f9]">
+                                                                    {sourceLabel ? (
+                                                                        <div
+                                                                            className={`mb-3 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${source === "dataset_current_session"
+                                                                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                                                    : "bg-amber-50 text-amber-700 border border-amber-200"
+                                                                                }`}
+                                                                        >
+                                                                            Prediction Source: {sourceLabel}
+                                                                        </div>
+                                                                    ) : null}
                                                                     <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4">Diagnosis Probabilities</div>
                                                                     {predictions.map((pred, idx) => (
                                                                         <AnimatedProgress

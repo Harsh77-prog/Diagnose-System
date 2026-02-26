@@ -579,6 +579,10 @@ function formatSymptom(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function questionTextKey(text: string): string {
+  return `qtext:${normalizeToken(text).slice(0, 160)}`;
+}
+
 function parseState(messages: Array<{ role: string; jsonPayload: string | null }>): FollowupState | null {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const item = messages[i];
@@ -990,6 +994,7 @@ export async function POST(req: NextRequest) {
       const qid = parsedState.currentQuestionId;
       const answer = action === "custom" ? yesNoFromText(userMessage) : action;
       asked.add(qid);
+      asked.add(questionTextKey(parsedState.currentQuestionText || ""));
 
       if (qid === "temperature") {
         if (temp) slots.temperatureF = temp;
@@ -1096,17 +1101,30 @@ export async function POST(req: NextRequest) {
           choices: ["male", "female", "custom"],
         };
       } else {
-        question = await openAILiveFollowupQuestion({
-          history: priorText,
-          currentMessage: userMessage,
-          confirmedSymptoms: Array.from(confirmed),
-          deniedSymptoms: Array.from(denied),
-          topCandidates,
-          askedItems: Array.from(asked),
-          turns,
-          maxTurns,
-          slots,
-        });
+        const askedTracker = new Set<string>(asked);
+        let generated: { id: string; text: string; choices?: string[] } | null = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          const candidate = await openAILiveFollowupQuestion({
+            history: priorText,
+            currentMessage: userMessage,
+            confirmedSymptoms: Array.from(confirmed),
+            deniedSymptoms: Array.from(denied),
+            topCandidates,
+            askedItems: Array.from(askedTracker),
+            turns,
+            maxTurns,
+            slots,
+          });
+          if (!candidate) break;
+          const key = questionTextKey(candidate.text);
+          if (askedTracker.has(key)) {
+            askedTracker.add(candidate.id);
+            continue;
+          }
+          generated = candidate;
+          break;
+        }
+        question = generated;
 
         if (!question) {
           return NextResponse.json({
