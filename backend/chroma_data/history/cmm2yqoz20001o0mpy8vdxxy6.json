@@ -1,0 +1,45 @@
+[
+{
+"role": "user",
+"content": "my skin feel oily and pimple full can you give me solution for it",
+"ts": "2026-02-26T04:28:37.831033"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Pus Filled Pimples**\n\nInitial prediction: **Acne** (32.4% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **blackheads**?",
+"ts": "2026-02-26T04:28:37.957087",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "yes",
+"ts": "2026-02-26T04:29:00.360843"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-26T04:29:00.365544"
+},
+{
+"role": "user",
+"content": "my skin feel oily and pimple full can you give me solution for it",
+"ts": "2026-02-26T04:29:25.886406"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Pus Filled Pimples**\n\nInitial prediction: **Acne** (32.4% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **blackheads**?",
+"ts": "2026-02-26T04:29:26.043979",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-26T04:29:37.272072"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Acne**\nConfidence: 79.6%\n_(Confirmed after 1 follow-up questions)_\n\n**Top Predictions:**\n1. Acne — 79.6% ◄\n2. Common Cold — 1.1%\n3. Varicose veins — 1.0%\n4. Diabetes — 1.0%\n5. Hypothyroidism — 0.9%\n\n**Symptoms identified (2):**\n• Pus Filled Pimples\n• Blackheads\n\n**Follow-up questions (1):**\n1. Blackheads [✓ Yes]\n\n**About Acne:**\nAcne vulgaris is the formation of comedones, papules, pustules, nodules, and/or cysts as a result of obstruction and inflammation of pilosebaceous units (hair follicles and their accompanying sebaceous gland). Acne develops on the face and upper trunk. It most often affects adolescents.\n\n**Precautions:**\n1. bath twice\n2. avoid fatty spicy food\n3. drink plenty of water\n4. avoid too many products\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-26T04:29:37.292208",
+"risk_level": "low"
+}
+]

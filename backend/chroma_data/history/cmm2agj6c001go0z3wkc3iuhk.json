@@ -1,0 +1,24 @@
+[
+{
+"role": "user",
+"content": "hlo,there are several pimples on my skin and pimples are red",
+"ts": "2026-02-25T17:08:45.527317"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Pus Filled Pimples**\n\nInitial prediction: **Acne** (32.4% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **blackheads**?",
+"ts": "2026-02-25T17:08:45.770838",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-25T17:09:24.220862"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Acne**\nConfidence: 79.6%\n_(Confirmed after 1 follow-up questions)_\n\n**Top Predictions:**\n1. Acne — 79.6% ◄\n2. Common Cold — 1.1%\n3. Varicose veins — 1.0%\n4. Diabetes — 1.0%\n5. Hypothyroidism — 0.9%\n\n**Symptoms identified (2):**\n• Pus Filled Pimples\n• Blackheads\n\n**Follow-up questions (1):**\n1. Blackheads [✓ Yes]\n\n**About Acne:**\nAcne vulgaris is the formation of comedones, papules, pustules, nodules, and/or cysts as a result of obstruction and inflammation of pilosebaceous units (hair follicles and their accompanying sebaceous gland). Acne develops on the face and upper trunk. It most often affects adolescents.\n\n**Precautions:**\n1. bath twice\n2. avoid fatty spicy food\n3. drink plenty of water\n4. avoid too many products\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-25T17:09:24.238609",
+"risk_level": "low"
+}
+]

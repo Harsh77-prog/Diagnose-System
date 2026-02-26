@@ -25,11 +25,13 @@ async def diagnose_chat(
 ) -> dict[str, Any]:
     """Send a message and get ML-powered diagnosis or follow-up question."""
     user_id = require_user_id(request)
+    session_id = request.headers.get("X-Session-Id") or user_id 
     if not message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
     result = run_ml_diagnose(
         user_id=user_id,
+        session_id=session_id,
         user_message=message.strip(),
         session_action=session_action,
     )
@@ -77,9 +79,11 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
     session_action = body.get("session_action")
+    session_id = request.headers.get("X-Session-Id") or user_id
 
     result = run_ml_diagnose(
         user_id=user_id,
+        session_id=session_id,
         user_message=message,
         session_action=session_action,
     )

@@ -1,0 +1,79 @@
+[
+{
+"role": "user",
+"content": "I am having severe headaches, slight nausea, and my vision is a bit blurry.",
+"ts": "2026-02-25T15:47:00.809288"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Nausea, Headache**\n\nInitial prediction: **Typhoid** (30.8% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-25T15:47:01.200522",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I am having severe headaches, slight nausea, and my vision is a bit blurry.",
+"ts": "2026-02-25T15:48:09.776662"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Nausea, Headache**\n\nInitial prediction: **Typhoid** (30.8% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-25T15:48:10.178439",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I am having severe headaches, slight nausea, and my vision is a bit blurry.",
+"ts": "2026-02-25T15:49:33.206325"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Nausea, Headache**\n\nInitial prediction: **Typhoid** (30.8% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-25T15:49:33.908191",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I am having severe headaches, slight nausea, and my vision is a bit blurry.",
+"ts": "2026-02-25T15:50:41.498300"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Nausea, Headache**\n\nInitial prediction: **Typhoid** (30.8% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-25T15:50:41.856855",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-25T15:51:38.148091"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Typhoid**\nConfidence: 75.6%\n_(Confirmed after 1 follow-up questions)_\n\n**Top Predictions:**\n1. Typhoid — 75.6% ◄\n2. (vertigo) Paroxysmal Positional Vertigo — 7.0%\n3. Hypoglycemia — 2.7%\n4. Migraine — 1.8%\n5. Malaria — 1.7%\n\n**Symptoms identified (3):**\n• Nausea\n• Headache\n• Toxic Look (Typhos)\n\n**Follow-up questions (1):**\n1. Toxic Look (Typhos) [✓ Yes]\n\n**About Typhoid:**\nAn acute illness characterized by fever caused by infection with the bacterium Salmonella typhi. Typhoid fever has an insidious onset, with fever, headache, constipation, malaise, chills, and muscle pain. Diarrhea is uncommon, and vomiting is not usually severe.\n\n**Precautions:**\n1. eat high calorie vegitables\n2. antiboitic therapy\n3. consult doctor\n4. medication\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-25T15:51:38.196524",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I have sustained high fever, abdominal pain, and rose-colored spots on my chest.",
+"ts": "2026-02-25T15:52:19.393789"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Red Spots Over Body, High Fever, Abdominal Pain**\n\nInitial prediction: **Dengue** (40.0% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **fatigue**?",
+"ts": "2026-02-25T15:52:19.857429",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "I have severe headaches, slight nausea, blurry vision, and I have a toxic look.",
+"ts": "2026-02-25T15:53:14.377085"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Typhoid**\nConfidence: 60.0%\n_(Direct match — no follow-up questions needed)_\n\n**Top Predictions:**\n1. Typhoid — 60.0% ◄\n2. Migraine — 17.1%\n3. Hypoglycemia — 5.8%\n4. (vertigo) Paroxysmal Positional Vertigo — 5.5%\n5. Malaria — 2.0%\n\n**Symptoms identified (4):**\n• Blurred And Distorted Vision\n• Nausea\n• Headache\n• Toxic Look (Typhos)\n\n**About Typhoid:**\nAn acute illness characterized by fever caused by infection with the bacterium Salmonella typhi. Typhoid fever has an insidious onset, with fever, headache, constipation, malaise, chills, and muscle pain. Diarrhea is uncommon, and vomiting is not usually severe.\n\n**Precautions:**\n1. eat high calorie vegitables\n2. antiboitic therapy\n3. consult doctor\n4. medication\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-25T15:53:14.594866",
+"risk_level": "high"
+}
+]

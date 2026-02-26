@@ -49,19 +49,19 @@ _sessions: dict[str, dict[str, Any]] = {}
 _session_lock = threading.Lock()
 
 
-def _get_session(user_id: str) -> Optional[dict]:
+def _get_session(session_id: str) -> Optional[dict]:
     with _session_lock:
-        return _sessions.get(user_id)
+        return _sessions.get(session_id)
 
 
-def _set_session(user_id: str, session: dict) -> None:
+def _set_session(session_id: str, session: dict) -> None:
     with _session_lock:
-        _sessions[user_id] = session
+        _sessions[session_id] = session
 
 
-def _clear_session(user_id: str) -> None:
+def _clear_session(session_id: str) -> None:
     with _session_lock:
-        _sessions.pop(user_id, None)
+        _sessions.pop(session_id, None)
 
 
 def _format_diagnosis_reply(result: dict) -> str:
@@ -79,18 +79,13 @@ def _format_diagnosis_reply(result: dict) -> str:
     elif dtype == "confident":
         lines.append(f"**Diagnosis: {diagnosis}**")
         lines.append(f"Confidence: {confidence}%")
-        lines.append(f"_(Confirmed after {result['followups_asked']} follow-up questions)_")
+        lines.append(f"(Confirmed after {result['followups_asked']} follow-up questions)")
     else:
         lines.append(f"**Best Guess: {diagnosis}**")
         lines.append(f"Confidence: {confidence}%")
         lines.append("_(Low confidence — please consult a doctor)_")
 
-    # Top predictions
-    lines.append("")
-    lines.append("**Top Predictions:**")
-    for i, pred in enumerate(result["top_predictions"][:5], 1):
-        marker = " ◄" if i == 1 else ""
-        lines.append(f"{i}. {pred['disease']} — {pred['probability']}%{marker}")
+
 
     # Confirmed symptoms
     if result["confirmed_symptoms"]:
@@ -99,13 +94,7 @@ def _format_diagnosis_reply(result: dict) -> str:
         for s in result["confirmed_symptoms"]:
             lines.append(f"• {s.replace('_', ' ').title()}")
 
-    # Follow-up log
-    if result["followup_log"]:
-        lines.append("")
-        lines.append(f"**Follow-up questions ({result['followups_asked']}):**")
-        for fu in result["followup_log"]:
-            status = "✓ Yes" if fu["confirmed"] else "✗ No"
-            lines.append(f"{fu['turn']}. {fu['display']} [{status}]")
+
 
     # Disease info
     info = result["disease_info"]
@@ -121,7 +110,7 @@ def _format_diagnosis_reply(result: dict) -> str:
             lines.append(f"{i}. {p}")
 
     lines.append("")
-    lines.append("⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._")
+    lines.append("⚕️ This is for informational purposes only. Always consult a qualified healthcare professional.")
 
     return "\n".join(lines)
 
@@ -136,47 +125,39 @@ def _format_followup_question(symptom_display: str, turn: int) -> str:
 
 def run_ml_diagnose(
     user_id: str,
+    session_id: str,
     user_message: str,
     session_action: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Run one diagnosis turn using the ML engine.
-
-    session_action:
-      - None or "new": Start a new diagnosis from user_message (extract symptoms)
-      - "yes": User confirmed the last follow-up symptom
-      - "no": User denied the last follow-up symptom
-
-    Returns same contract as old run_diagnose:
-      { reply, risk_score, risk_level, suggested_action, follow_up_suggested,
-        ml_diagnosis?, follow_up_question? }
     """
     # ── Risk scoring (same as before) ────────────────────────────────────
-    recent = get_recent_history(user_id, limit=4)
+    recent = get_recent_history(session_id, limit=4)
     recent_summary = " ".join([m["content"][:200] for m in recent[-4:] if m["role"] == "user"])
     risk_result = predict_risk({"symptom_text": user_message, "recent_summary": recent_summary})
 
     # ── Handle follow-up answers ─────────────────────────────────────────
     if session_action in ("yes", "no"):
-        session = _get_session(user_id)
+        session = _get_session(session_id)
         if not session:
             # No active session — treat as new message
-            return _start_new_diagnosis(user_id, user_message, risk_result)
+            return _start_new_diagnosis(session_id, user_message, risk_result)
 
-        return _continue_followup(user_id, session, session_action == "yes", risk_result)
+        return _continue_followup(session_id, session, session_action == "yes", risk_result)
 
     # ── New diagnosis ────────────────────────────────────────────────────
-    return _start_new_diagnosis(user_id, user_message, risk_result)
+    return _start_new_diagnosis(session_id, user_message, risk_result)
 
 
 def _start_new_diagnosis(
-    user_id: str,
+    session_id: str,
     user_message: str,
     risk_result: dict,
 ) -> dict[str, Any]:
     """Extract symptoms, predict, and either return diagnosis or first follow-up."""
     # Clear any previous session
-    _clear_session(user_id)
+    _clear_session(session_id)
 
     # Step 1: BioBERT extracts symptoms
     extracted = _extractor.extract_symptoms(user_message)
@@ -190,8 +171,8 @@ def _start_new_diagnosis(
             "• \"My skin is itchy and I feel tired\"\n"
             "• \"I have stomach pain and nausea\""
         )
-        add_turn(user_id, "user", user_message)
-        add_turn(user_id, "assistant", reply)
+        add_turn(session_id, "user", user_message)
+        add_turn(session_id, "assistant", reply)
         return {
             "reply": reply,
             "risk_score": risk_result["risk_score"],
@@ -201,7 +182,7 @@ def _start_new_diagnosis(
         }
 
     # Persist user message
-    add_turn(user_id, "user", user_message)
+    add_turn(session_id, "user", user_message)
 
     # Step 2: Build symptom vector and predict
     symptom_vector = _engine.build_symptom_vector(extracted)
@@ -211,7 +192,7 @@ def _start_new_diagnosis(
     if _engine.is_confident(predictions):
         result = _engine.run_diagnosis(extracted)
         reply = _format_diagnosis_reply(result)
-        add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+        add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
         return {
             "reply": reply,
             "risk_score": risk_result["risk_score"],
@@ -234,7 +215,7 @@ def _start_new_diagnosis(
         # No good follow-up — just give best guess
         result = _engine.run_diagnosis(extracted)
         reply = _format_diagnosis_reply(result)
-        add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+        add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
         return {
             "reply": reply,
             "risk_score": risk_result["risk_score"],
@@ -256,7 +237,7 @@ def _start_new_diagnosis(
         "current_info_gain": info_gain,
         "original_message": user_message,
     }
-    _set_session(user_id, session)
+    _set_session(session_id, session)
 
     # Build initial info + follow-up question
     symptom_names = ", ".join(s.replace("_", " ").title() for s in extracted)
@@ -270,7 +251,7 @@ def _start_new_diagnosis(
     question = _format_followup_question(_engine.display_symptom(best_symptom), 1)
     reply = intro + question
 
-    add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+    add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
 
     return {
         "reply": reply,
@@ -283,7 +264,7 @@ def _start_new_diagnosis(
 
 
 def _continue_followup(
-    user_id: str,
+    session_id: str,
     session: dict,
     confirmed: bool,
     risk_result: dict,
@@ -301,7 +282,7 @@ def _continue_followup(
 
     # Record the user's answer
     answer_text = "Yes" if confirmed else "No"
-    add_turn(user_id, "user", answer_text)
+    add_turn(session_id, "user", answer_text)
 
     # Update symptom vector if confirmed
     asked_symptoms.add(current_symptom)
@@ -323,7 +304,7 @@ def _continue_followup(
 
     # Check if now confident or max follow-ups reached
     if _engine.is_confident(predictions) or followup_count >= 5:
-        _clear_session(user_id)
+        _clear_session(session_id)
 
         diagnosis_type = "confident" if _engine.is_confident(predictions) else "best_guess"
         top_disease, top_prob = predictions[0]
@@ -343,7 +324,7 @@ def _continue_followup(
             "disease_info": disease_info,
         }
         reply = _format_diagnosis_reply(result)
-        add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+        add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
 
         return {
             "reply": reply,
@@ -361,7 +342,7 @@ def _continue_followup(
 
     if best_symptom is None:
         # No more useful questions — give best guess
-        _clear_session(user_id)
+        _clear_session(session_id)
 
         top_disease, top_prob = predictions[0]
         disease_info = _engine.get_disease_info(top_disease)
@@ -380,7 +361,7 @@ def _continue_followup(
             "disease_info": disease_info,
         }
         reply = _format_diagnosis_reply(result)
-        add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+        add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
 
         return {
             "reply": reply,
@@ -400,13 +381,13 @@ def _continue_followup(
     session["followup_log"] = followup_log
     session["current_followup_symptom"] = best_symptom
     session["current_info_gain"] = info_gain
-    _set_session(user_id, session)
+    _set_session(session_id, session)
 
     # Return next question
     reply = _format_followup_question(
         _engine.display_symptom(best_symptom), followup_count + 1
     )
-    add_turn(user_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
+    add_turn(session_id, "assistant", reply, metadata={"risk_level": risk_result["risk_level"]})
 
     return {
         "reply": reply,

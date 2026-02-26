@@ -1,0 +1,35 @@
+[
+{
+"role": "user",
+"content": "I am feeling joint pains in the morning",
+"ts": "2026-02-26T05:08:46.142954"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Joint Pain**\n\nInitial prediction: **Osteoarthritis** (28.8% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **hip joint pain**?",
+"ts": "2026-02-26T05:08:46.507441",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "No",
+"ts": "2026-02-26T05:09:13.580310"
+},
+{
+"role": "assistant",
+"content": "To narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 2:** Are you experiencing **knee pain**?",
+"ts": "2026-02-26T05:09:13.936123",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-26T05:09:29.451492"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Osteoarthritis**\nConfidence: 75.7%\n(Confirmed after 2 follow-up questions)\n\n**Symptoms identified (2):**\n• Joint Pain\n• Knee Pain\n\n**About Osteoarthritis:**\nOsteoarthritis is the most common form of arthritis, affecting millions of people worldwide. It occurs when the protective cartilage that cushions the ends of your bones wears down over time.\n\n**Precautions:**\n1. acetaminophen\n2. consult nearest hospital\n3. follow up\n4. salt baths\n\n⚕️ This is for informational purposes only. Always consult a qualified healthcare professional.",
+"ts": "2026-02-26T05:09:29.489166",
+"risk_level": "low"
+}
+]

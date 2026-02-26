@@ -1,0 +1,57 @@
+[
+{
+"role": "user",
+"content": "headaches and eye pain",
+"ts": "2026-02-25T16:14:25.806235"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Headache**\n\nInitial prediction: **Typhoid** (15.4% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **high fever**?",
+"ts": "2026-02-25T16:14:26.528610",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-25T16:19:56.010590"
+},
+{
+"role": "assistant",
+"content": "To narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 2:** Are you experiencing **toxic look (typhos)**?",
+"ts": "2026-02-25T16:19:56.397017",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-25T16:20:06.096072"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: Typhoid**\nConfidence: 71.1%\n_(Confirmed after 2 follow-up questions)_\n\n**Top Predictions:**\n1. Typhoid — 71.1% ◄\n2. Chicken pox — 9.8%\n3. Malaria — 1.9%\n4. Dengue — 1.7%\n5. Jaundice — 1.3%\n\n**Symptoms identified (3):**\n• Headache\n• High Fever\n• Toxic Look (Typhos)\n\n**Follow-up questions (2):**\n1. High Fever [✓ Yes]\n2. Toxic Look (Typhos) [✓ Yes]\n\n**About Typhoid:**\nAn acute illness characterized by fever caused by infection with the bacterium Salmonella typhi. Typhoid fever has an insidious onset, with fever, headache, constipation, malaise, chills, and muscle pain. Diarrhea is uncommon, and vomiting is not usually severe.\n\n**Precautions:**\n1. eat high calorie vegitables\n2. antiboitic therapy\n3. consult doctor\n4. medication\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-25T16:20:06.114382",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Hello, I have a stomach ache",
+"ts": "2026-02-25T16:26:23.992690"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **Stomach Pain**\n\nInitial prediction: **GERD** (34.7% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **ulcers on tongue**?",
+"ts": "2026-02-25T16:26:24.250617",
+"risk_level": "low"
+},
+{
+"role": "user",
+"content": "Yes",
+"ts": "2026-02-25T16:26:41.251641"
+},
+{
+"role": "assistant",
+"content": "**Diagnosis: GERD**\nConfidence: 83.6%\n_(Confirmed after 1 follow-up questions)_\n\n**Top Predictions:**\n1. GERD — 83.6% ◄\n2. Drug Reaction — 2.9%\n3. Hypothyroidism — 0.7%\n4. Common Cold — 0.7%\n5. AIDS — 0.6%\n\n**Symptoms identified (2):**\n• Stomach Pain\n• Ulcers On Tongue\n\n**Follow-up questions (1):**\n1. Ulcers On Tongue [✓ Yes]\n\n**About GERD:**\nGastroesophageal reflux disease, or GERD, is a digestive disorder that affects the lower esophageal sphincter (LES), the ring of muscle between the esophagus and stomach. Many people, including pregnant women, suffer from heartburn or acid indigestion caused by GERD.\n\n**Precautions:**\n1. avoid fatty spicy food\n2. avoid lying down after eating\n3. maintain healthy weight\n4. exercise\n\n⚕️ _This is for informational purposes only. Always consult a qualified healthcare professional._",
+"ts": "2026-02-25T16:26:41.293552",
+"risk_level": "low"
+}
+]

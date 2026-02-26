@@ -1,0 +1,113 @@
+[
+{
+"role": "user",
+"content": "I have a terrible stomach ache and fever today",
+"ts": "2026-02-25T17:30:40.854185"
+},
+{
+"role": "assistant",
+"content": "I identified the following symptoms: **High Fever, Stomach Pain**\n\nInitial prediction: **GERD** (21.2% confidence)\n\nThe confidence is not high enough for a definitive diagnosis. Let me ask a few follow-up questions to narrow it down.\n\nTo narrow down the diagnosis, I need to ask you a few questions.\n\n**Question 1:** Are you experiencing **ulcers on tongue**?",
+"ts": "2026-02-25T17:30:42.192500",
+"risk_level": "high"
+},
+{
+"role": "user",
+"content": "test 1",
+"ts": "2026-02-25T17:31:02.120540"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:02.122590"
+},
+{
+"role": "user",
+"content": "test 2",
+"ts": "2026-02-25T17:31:02.458624"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:02.459427"
+},
+{
+"role": "user",
+"content": "test 5",
+"ts": "2026-02-25T17:31:02.717814"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:02.719400"
+},
+{
+"role": "user",
+"content": "test 3",
+"ts": "2026-02-25T17:31:02.956142"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:02.957545"
+},
+{
+"role": "user",
+"content": "test 8",
+"ts": "2026-02-25T17:31:03.228707"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:03.234469"
+},
+{
+"role": "user",
+"content": "test 7",
+"ts": "2026-02-25T17:31:03.499936"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:03.502581"
+},
+{
+"role": "user",
+"content": "test 9",
+"ts": "2026-02-25T17:31:03.760219"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:03.766704"
+},
+{
+"role": "user",
+"content": "test 6",
+"ts": "2026-02-25T17:31:03.981511"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:03.983744"
+},
+{
+"role": "user",
+"content": "test 4",
+"ts": "2026-02-25T17:31:04.259465"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:04.263593"
+},
+{
+"role": "user",
+"content": "test 10",
+"ts": "2026-02-25T17:31:06.501899"
+},
+{
+"role": "assistant",
+"content": "I couldn't identify specific symptoms from your description. Could you try describing what you're feeling more specifically?\n\n**Examples:**\n• \"I have a headache and fever\"\n• \"My skin is itchy and I feel tired\"\n• \"I have stomach pain and nausea\"",
+"ts": "2026-02-25T17:31:06.505374"
+}
+]
