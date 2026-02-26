@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +55,7 @@ function UserProfileBar({
 export function Navbar() {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated";
   const links = isAuthenticated ? AUTH_LINKS : PUBLIC_LINKS;
@@ -62,12 +63,14 @@ export function Navbar() {
   const userEmail = session?.user?.email || "No email";
 
   return (
-    <header className="fixed top-0 left-0 w-full z-50">
-      <nav className="py-2 flex items-center justify-between px-4 md:px-8 bg-white/90 backdrop-blur-sm border">
+    <header className="fixed top-0 left-0 z-50 w-full px-3 pt-3 md:px-6">
+      <nav className="mx-auto flex max-w-[1200px] items-center justify-between rounded-2xl border border-black/10 bg-white/85 px-4 py-2 shadow-[0_8px_30px_rgba(0,0,0,0.08)] backdrop-blur-md md:px-6">
         <Link href={"/"}>
-          <div className="text-md items-center gap-2 flex md:text-lg font-semibold">
-            <Image src={"/globe.svg"} alt="TNP" width={30} height={30} />
-            MedCoreAI
+          <div className="flex items-center gap-2 text-base font-semibold tracking-tight md:text-lg">
+            <div className="rounded-xl border border-black/10 bg-gradient-to-b from-white to-neutral-100 p-1.5 shadow-sm">
+              <Image src={"/globe.svg"} alt="MedCoreAI" width={22} height={22} />
+            </div>
+            <span>MedCoreAI</span>
           </div>
         </Link>
 
@@ -76,7 +79,11 @@ export function Navbar() {
             <Link
               key={l.href}
               href={l.href}
-              className="text-sm font-medium hover:underline"
+              className={`rounded-full px-3 py-1.5 text-sm font-medium transition-all ${
+                pathname === l.href
+                  ? "bg-black text-white"
+                  : "text-neutral-700 hover:bg-neutral-100"
+              }`}
             >
               {l.label}
             </Link>
@@ -87,13 +94,13 @@ export function Navbar() {
           ) : (
             <>
               <Button
-                className="shadow-none rounded-md"
+                className="rounded-full px-5 shadow-none"
                 variant={"outline"}
                 onClick={() => router.push("/login")}
               >
                 Sign in
               </Button>
-              <Button onClick={() => router.push("/signup")}>Get Started</Button>
+              <Button className="rounded-full px-5" onClick={() => router.push("/signup")}>Get Started</Button>
             </>
           )}
         </div>
@@ -130,7 +137,7 @@ export function Navbar() {
                   <Link
                     key={l.href}
                     href={l.href}
-                    className="text-2xl font-medium"
+                    className={`text-2xl font-medium ${pathname === l.href ? "text-black" : "text-neutral-700"}`}
                     onClick={() => setOpen(false)}
                   >
                     {l.label}

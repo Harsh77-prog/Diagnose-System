@@ -21,6 +21,12 @@ type Message = {
     isInitial?: boolean;
 };
 
+type FollowupStatePayload = {
+    kind?: "followup_state";
+    pending?: boolean;
+    askedSymptom?: string;
+};
+
 async function parseResponseJson<T>(res: Response): Promise<T> {
     const raw = await res.text();
 
@@ -99,6 +105,7 @@ export default function ChatDashboard() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [followUpActive, setFollowUpActive] = useState(false);
+    const [followUpQuestion, setFollowUpQuestion] = useState<string>("");
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -152,6 +159,7 @@ export default function ChatDashboard() {
         setCurrentSessionId(null);
         setMessages([]);
         setFollowUpActive(false);
+        setFollowUpQuestion("");
         setInput("");
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
@@ -173,13 +181,34 @@ export default function ChatDashboard() {
 
             if (data.messages && data.messages.length > 0) {
                 setMessages(data.messages);
-                // Simple heuristic to check if last assistant message asked a follow up
+                // Restore follow-up state from persisted assistant payload.
                 const lastMsg = data.messages[data.messages.length - 1];
-                if (lastMsg.role === "assistant" && lastMsg.content.includes("Let me ask a few follow-up questions")) {
-                    setFollowUpActive(true);
+                if (lastMsg.role === "assistant" && lastMsg.jsonPayload) {
+                    try {
+                        const payload = JSON.parse(lastMsg.jsonPayload) as FollowupStatePayload;
+                        if (payload.kind === "followup_state" && payload.pending) {
+                            setFollowUpActive(true);
+                            if (payload.askedSymptom) {
+                                setFollowUpQuestion(`Are you also experiencing ${payload.askedSymptom}?`);
+                            } else {
+                                setFollowUpQuestion("Please answer the follow-up question.");
+                            }
+                        } else {
+                            setFollowUpActive(false);
+                            setFollowUpQuestion("");
+                        }
+                    } catch {
+                        setFollowUpActive(false);
+                        setFollowUpQuestion("");
+                    }
+                } else {
+                    setFollowUpActive(false);
+                    setFollowUpQuestion("");
                 }
             } else {
                 setMessages([]);
+                setFollowUpActive(false);
+                setFollowUpQuestion("");
             }
         } catch (e) {
             console.error("Failed to load messages", e);
@@ -198,7 +227,6 @@ export default function ChatDashboard() {
         setInput("");
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
         setLoading(true);
-        setFollowUpActive(false);
 
         let activeSessionId = currentSessionId;
 
@@ -249,6 +277,7 @@ export default function ChatDashboard() {
                     ml_diagnosis?: unknown;
                     follow_up_state?: unknown;
                     follow_up_suggested?: boolean;
+                    follow_up_question?: string;
                 }>(res);
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
 
@@ -272,6 +301,10 @@ export default function ChatDashboard() {
 
                 if (data.follow_up_suggested) {
                     setFollowUpActive(true);
+                    setFollowUpQuestion(data.follow_up_question ? `Are you also experiencing ${data.follow_up_question}?` : "Please answer the follow-up question.");
+                } else {
+                    setFollowUpActive(false);
+                    setFollowUpQuestion("");
                 }
             }
         } catch (err: any) {
@@ -543,7 +576,7 @@ export default function ChatDashboard() {
                             {followUpActive ? (
                                 <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-[#e5e5e5]">
                                     <span className="text-[13px] font-medium text-slate-600 flex items-center gap-2">
-                                        <Info className="w-4 h-4" /> Please verify this symptom
+                                        <Info className="w-4 h-4" /> {followUpQuestion || "Please verify this symptom"}
                                     </span>
                                     <div className="flex gap-2">
                                         <Button size="sm" className="bg-black hover:bg-black/80 text-white w-16 h-8 text-xs rounded-full" onClick={() => sendMessage("", "yes")} disabled={loading}>Yes</Button>
