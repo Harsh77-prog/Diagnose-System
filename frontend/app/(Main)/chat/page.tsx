@@ -775,7 +775,7 @@ export default function ChatDashboard() {
                                     <span className="text-[13px] font-medium text-slate-600 flex items-center gap-2">
                                         <Info className="w-4 h-4" /> {followUpQuestion || "Please verify this symptom"}
                                     </span>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         {followUpChoices.length > 0 ? (
                                             followUpChoices.map((choice) => (
                                                 <Button
@@ -786,7 +786,7 @@ export default function ChatDashboard() {
                                                     onClick={() => sendMessage(choice, "custom")}
                                                     disabled={loading}
                                                 >
-                                                    {choice}
+                                                    {choice.replace(/_/g, " ")}
                                                 </Button>
                                             ))
                                         ) : (

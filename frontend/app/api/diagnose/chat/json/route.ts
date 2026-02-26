@@ -29,10 +29,21 @@ type FollowupState = {
   currentQuestionText: string;
   currentQuestionChoices?: string[];
   slots: {
-    gender?: "male" | "female";
-    ageGroup?: "child" | "youth" | "adult";
+    gender?: "male" | "female" | "custom";
+    ageGroup?: "infant" | "toddler" | "child" | "adolescent" | "youth" | "adult" | "middle_aged" | "senior_citizen";
     temperatureF?: number;
     durationDays?: number;
+    chiefComplaint?: "pain" | "general";
+    bodySystem?: "musculoskeletal" | "respiratory" | "gastrointestinal" | "neurologic" | "cardiovascular" | "dermatologic" | "general";
+    painLocation?: string;
+    painSeverity?: number;
+    painSwelling?: boolean;
+    painRedness?: boolean;
+    painInjury?: boolean;
+    painFever?: boolean;
+    symptomSeverity?: number;
+    progression?: "better" | "same" | "worse";
+    redFlagsPresent?: boolean;
   };
 };
 
@@ -182,26 +193,100 @@ function extractDurationDays(text: string): number | undefined {
   return undefined;
 }
 
-function extractGender(text: string): "male" | "female" | undefined {
+function extractPainSeverity(text: string): number | undefined {
   const t = normalizeToken(text);
-  if (/\b(male|man|boy)\b/.test(t)) return "male";
-  if (/\b(female|woman|girl)\b/.test(t)) return "female";
+  const direct = t.match(/\b(10|[0-9])\s*(?:\/\s*10)?\b/);
+  if (direct) {
+    const n = Number(direct[1]);
+    if (!Number.isNaN(n) && n >= 0 && n <= 10) return n;
+  }
+  const verbal: Record<string, number> = {
+    mild: 3,
+    moderate: 5,
+    severe: 8,
+  };
+  for (const [k, v] of Object.entries(verbal)) {
+    if (new RegExp(`\\b${k}\\b`).test(t)) return v;
+  }
   return undefined;
 }
 
-function extractAgeGroup(text: string): "child" | "youth" | "adult" | undefined {
+function extractPainLocation(text: string): string | undefined {
   const t = normalizeToken(text);
+  if (/\bleg\b/.test(t)) return "leg";
+  if (/\bknee\b/.test(t)) return "knee";
+  if (/\bhip\b/.test(t)) return "hip";
+  if (/\bback\b/.test(t)) return "back";
+  if (/\bneck\b/.test(t)) return "neck";
+  if (/\bankle\b/.test(t)) return "ankle";
+  if (/\bfoot\b/.test(t)) return "foot";
+  if (/\bjoint\b/.test(t)) return "joint";
+  return undefined;
+}
+
+function extractChiefComplaint(text: string): "pain" | "general" {
+  const t = normalizeToken(text);
+  if (/\bpain|ache|hurt|hurting|soreness|cramp\b/.test(t)) return "pain";
+  return "general";
+}
+
+function extractBodySystem(text: string): FollowupState["slots"]["bodySystem"] {
+  const t = normalizeToken(text);
+  if (/\bleg|knee|joint|hip|back pain|neck pain|swelling joints|painful walking|muscle\b/.test(t)) return "musculoskeletal";
+  if (/\bcough|breath|chest tight|phlegm|wheeze|sore throat|runny nose|congestion\b/.test(t)) return "respiratory";
+  if (/\bstomach|abdominal|nausea|vomit|diarrhea|constipation|acidity|indigestion|appetite\b/.test(t)) return "gastrointestinal";
+  if (/\bheadache|migraine|dizziness|vertigo|numbness|tingling|seizure\b/.test(t)) return "neurologic";
+  if (/\bchest pain|palpitation|heart|blood pressure|bp|fainting\b/.test(t)) return "cardiovascular";
+  if (/\brush|itch|skin|lesion|patch|blister|redness on skin\b/.test(t)) return "dermatologic";
+  return "general";
+}
+
+function extractProgression(text: string): FollowupState["slots"]["progression"] | undefined {
+  const t = normalizeToken(text);
+  if (/\bworse|worsening|increasing|getting bad\b/.test(t)) return "worse";
+  if (/\bbetter|improving|less\b/.test(t)) return "better";
+  if (/\bsame|unchanged|no change\b/.test(t)) return "same";
+  return undefined;
+}
+
+function extractRedFlags(text: string): boolean | undefined {
+  const t = normalizeToken(text);
+  if (/\b(chest pain|severe breathlessness|confusion|fainting|blood in sputum|blood in stool|high fever|unable to walk)\b/.test(t)) return true;
+  if (/\b(no red flag|none|no severe symptom)\b/.test(t)) return false;
+  return undefined;
+}
+
+function extractGender(text: string): "male" | "female" | "custom" | undefined {
+  const t = normalizeToken(text);
+  if (/\b(male|man|boy)\b/.test(t)) return "male";
+  if (/\b(female|woman|girl)\b/.test(t)) return "female";
+  if (/\b(custom|other|non binary|nonbinary|trans|prefer not to say)\b/.test(t)) return "custom";
+  return undefined;
+}
+
+function extractAgeGroup(text: string): FollowupState["slots"]["ageGroup"] | undefined {
+  const t = normalizeToken(text);
+  if (/\b(infant|newborn|baby)\b/.test(t)) return "infant";
+  if (/\b(toddler)\b/.test(t)) return "toddler";
   if (/\b(child|kid|kids|children|minor)\b/.test(t)) return "child";
-  if (/\b(youth|teen|teenager|adolescent)\b/.test(t)) return "youth";
+  if (/\b(adolescent)\b/.test(t)) return "adolescent";
+  if (/\b(youth|teen|teenager)\b/.test(t)) return "youth";
+  if (/\b(middle aged|middle_aged|middle age)\b/.test(t)) return "middle_aged";
+  if (/\b(senior citizen|senior|elderly|old age)\b/.test(t)) return "senior_citizen";
   if (/\b(adult|grown)\b/.test(t)) return "adult";
 
   const numericAge = t.match(/\b(?:age|aged)?\s*(\d{1,3})\b/);
   if (numericAge) {
     const age = Number(numericAge[1]);
     if (!Number.isNaN(age)) {
+      if (age <= 1) return "infant";
+      if (age <= 4) return "toddler";
       if (age <= 12) return "child";
-      if (age <= 19) return "youth";
-      return "adult";
+      if (age <= 15) return "adolescent";
+      if (age <= 24) return "youth";
+      if (age <= 59) return "adult";
+      if (age <= 69) return "middle_aged";
+      return "senior_citizen";
     }
   }
   return undefined;
@@ -228,11 +313,8 @@ function aliasSymptoms(text: string, symptomSet: Set<string>): string[] {
   if (/\bfatigue|\btired|\bweak/.test(t)) pushIf("fatigue");
   if (/\brunny nose|\bblocked nose|\bcongestion/.test(t)) pushIf("runny nose");
   if (/\bleg pain\b|\bpain in (my )?leg\b|\bleg ache\b|\blegs hurt\b/.test(t)) {
+    // Conservative mapping: avoid over-injecting symptoms from one vague complaint.
     pushIf("joint pain");
-    pushIf("knee pain");
-    pushIf("hip joint pain");
-    pushIf("painful walking");
-    pushIf("swollen legs");
   }
   if (/\bknee pain\b|\bknee ache\b/.test(t)) {
     pushIf("knee pain");
@@ -348,6 +430,121 @@ function scoreDiseases(diseases: DiseaseRow[], confirmed: Set<string>, denied: S
       probability: Number(((x.score / sum) * 100).toFixed(1)),
       matched: x.matched,
       total: x.total,
+    }))
+    .sort((a, b) => b.probability - a.probability);
+}
+
+function applyDemographicAdjustments(
+  predictions: Prediction[],
+  demographics: { gender?: FollowupState["slots"]["gender"]; ageGroup?: FollowupState["slots"]["ageGroup"] }
+): Prediction[] {
+  if (predictions.length === 0) return predictions;
+
+  const weighted = predictions.map((p) => {
+    const disease = p.disease.toLowerCase();
+    let factor = 1;
+
+    if (demographics.ageGroup === "senior_citizen" || demographics.ageGroup === "middle_aged") {
+      if (/osteoarthritis|arthritis|varicose veins|hypertension|heart attack/.test(disease)) factor *= 1.12;
+      if (/chicken pox|acne|impetigo/.test(disease)) factor *= 0.88;
+    }
+    if (demographics.ageGroup === "infant" || demographics.ageGroup === "toddler" || demographics.ageGroup === "child") {
+      if (/chicken pox|common cold|bronchial asthma|allergy|impetigo/.test(disease)) factor *= 1.1;
+      if (/osteoarthritis|varicose veins/.test(disease)) factor *= 0.8;
+    }
+    if (demographics.ageGroup === "adolescent" || demographics.ageGroup === "youth") {
+      if (/acne|allergy|migraine/.test(disease)) factor *= 1.08;
+      if (/osteoarthritis|varicose veins/.test(disease)) factor *= 0.85;
+    }
+
+    if (demographics.gender === "female") {
+      if (/urinary tract infection|uti/.test(disease)) factor *= 1.08;
+      if (/prostate/.test(disease)) factor *= 0.7;
+    } else if (demographics.gender === "male") {
+      if (/prostate/.test(disease)) factor *= 1.15;
+      if (/urinary tract infection|uti/.test(disease)) factor *= 0.95;
+    }
+
+    return {
+      ...p,
+      probability: Math.max(0.1, p.probability * factor),
+    };
+  });
+
+  const sum = weighted.reduce((acc, p) => acc + p.probability, 0);
+  if (!sum) return predictions;
+  return weighted
+    .map((p) => ({
+      ...p,
+      probability: Number(((p.probability / sum) * 100).toFixed(1)),
+    }))
+    .sort((a, b) => b.probability - a.probability);
+}
+
+function isSymptomRelevantToSystem(symptom: string, bodySystem: FollowupState["slots"]["bodySystem"]): boolean {
+  if (!bodySystem || bodySystem === "general") return true;
+  const s = symptom.toLowerCase();
+  if (bodySystem === "musculoskeletal") return /joint|knee|hip|muscle|neck pain|back pain|walking|swollen legs|swelling joints/.test(s);
+  if (bodySystem === "respiratory") return /cough|breath|phlegm|throat|runny nose|congestion|chest pain|high fever/.test(s);
+  if (bodySystem === "gastrointestinal") return /abdominal|stomach|nausea|vomiting|diarrhoea|constipation|acidity|appetite/.test(s);
+  if (bodySystem === "neurologic") return /headache|dizziness|vertigo|numbness|weakness|stiff neck/.test(s);
+  if (bodySystem === "cardiovascular") return /chest pain|fast heart rate|palpit|breathlessness|sweating/.test(s);
+  if (bodySystem === "dermatologic") return /rash|itch|skin|blister|red spots|patches/.test(s);
+  return true;
+}
+
+function applyClinicalContextAdjustments(predictions: Prediction[], slots: FollowupState["slots"]): Prediction[] {
+  if (predictions.length === 0) return predictions;
+
+  const weighted = predictions.map((p) => {
+    const disease = p.disease.toLowerCase();
+    let factor = 1;
+
+    if (slots.bodySystem === "musculoskeletal") {
+      if (/osteoarthritis|arthritis|varicose veins/.test(disease)) factor *= 1.12;
+      if (/common cold|pneumonia|tuberculosis/.test(disease)) factor *= 0.82;
+    }
+    if (slots.bodySystem === "respiratory") {
+      if (/common cold|pneumonia|tuberculosis|bronchial asthma/.test(disease)) factor *= 1.12;
+      if (/osteoarthritis|arthritis|varicose veins/.test(disease)) factor *= 0.86;
+    }
+    if (slots.bodySystem === "gastrointestinal") {
+      if (/gastroenteritis|gerd|peptic ulcer|jaundice|typhoid|hepatitis/.test(disease)) factor *= 1.1;
+      if (/osteoarthritis|migraine/.test(disease)) factor *= 0.88;
+    }
+    if (slots.bodySystem === "neurologic") {
+      if (/migraine|cervical spondylosis|paralysis|vertigo/.test(disease)) factor *= 1.1;
+    }
+    if (slots.bodySystem === "dermatologic") {
+      if (/fungal infection|allergy|psoriasis|acne|impetigo|chicken pox/.test(disease)) factor *= 1.1;
+    }
+
+    if (slots.painSwelling === true) {
+      if (/arthritis|osteoarthritis|varicose veins/.test(disease)) factor *= 1.12;
+    }
+    if (slots.painFever === true) {
+      if (/infection|flu|dengue|malaria/.test(disease)) factor *= 1.1;
+    }
+    if (slots.painInjury === true) {
+      if (/arthritis|osteoarthritis/.test(disease)) factor *= 0.92;
+    }
+    if (slots.symptomSeverity !== undefined) {
+      if (slots.symptomSeverity >= 8 && /common cold|acne/.test(disease)) factor *= 0.9;
+      if (slots.symptomSeverity <= 3 && /heart attack|pneumonia|dengue/.test(disease)) factor *= 0.9;
+    }
+    if (slots.progression === "worse") factor *= 1.05;
+    if (slots.progression === "better") factor *= 0.96;
+    if (slots.redFlagsPresent === true && /heart attack|pneumonia|tuberculosis|dengue/.test(disease)) factor *= 1.08;
+
+    return { ...p, probability: Math.max(0.1, p.probability * factor) };
+  });
+
+  const sum = weighted.reduce((acc, p) => acc + p.probability, 0);
+  if (!sum) return predictions;
+  return weighted
+    .map((p) => ({
+      ...p,
+      probability: Number(((p.probability / sum) * 100).toFixed(1)),
     }))
     .sort((a, b) => b.probability - a.probability);
 }
@@ -490,19 +687,36 @@ function nextQuestion(
   topCandidates: string[],
   slots: FollowupState["slots"]
 ): { id: string; text: string; choices?: string[] } | null {
+  if (slots.chiefComplaint === "pain") {
+    if (!slots.painLocation) return { id: "pain_location", text: "Where exactly is the pain located?" };
+    if (typeof slots.painSeverity !== "number") return { id: "pain_severity", text: "How severe is the pain on a scale of 0 to 10?" };
+    if (typeof slots.painSwelling !== "boolean") return { id: "pain_swelling", text: "Is there any swelling around the painful area?" };
+    if (typeof slots.painRedness !== "boolean") return { id: "pain_redness", text: "Do you notice redness or warmth over that area?" };
+    if (typeof slots.painInjury !== "boolean") return { id: "pain_injury", text: "Did this start after an injury, twist, or strain?" };
+    if (typeof slots.painFever !== "boolean") return { id: "pain_fever", text: "Do you also have fever with this pain?" };
+  }
+  if (!slots.durationDays) return { id: "duration", text: "How long have you had this problem?" };
+  if (typeof slots.symptomSeverity !== "number") return { id: "severity", text: "How severe are your symptoms on a 0-10 scale?" };
+  if (!slots.progression) return { id: "progression", text: "Are your symptoms getting better, same, or worse?", choices: ["better", "same", "worse"] };
+  if (typeof slots.redFlagsPresent !== "boolean") return { id: "red_flags", text: "Any severe warning signs like breathlessness, chest pain, fainting, or confusion?", choices: ["yes", "no"] };
+
   if (!slots.gender) {
-    return { id: "gender", text: "Please select your gender for better triage context.", choices: ["male", "female"] };
+    return { id: "gender", text: "Please select your gender for better triage context.", choices: ["male", "female", "custom"] };
   }
   if (!slots.ageGroup) {
-    return { id: "age_group", text: "Please select your age group.", choices: ["child", "youth", "adult"] };
+    return {
+      id: "age_group",
+      text: "Please select your age group.",
+      choices: ["infant", "toddler", "child", "adolescent", "youth", "adult", "middle_aged", "senior_citizen"],
+    };
   }
   if ((confirmed.has("high fever") || asked.has("high fever")) && !slots.temperatureF) {
     return { id: "temperature", text: "What is your current temperature (in F or C)?" };
   }
-  if (!slots.durationDays) {
-    return { id: "duration", text: "How long have you had these symptoms?" };
+  let symptom = chooseSymptomQuestion(datasets, topCandidates, asked, confirmed, denied);
+  if (symptom && slots.bodySystem && !isSymptomRelevantToSystem(symptom, slots.bodySystem)) {
+    symptom = null;
   }
-  const symptom = chooseSymptomQuestion(datasets, topCandidates, asked, confirmed, denied);
   if (!symptom) return null;
   return { id: `symptom:${symptom}`, text: `Do you also have ${symptom}?` };
 }
@@ -518,7 +732,7 @@ async function openAIFallbackDiagnosis(
   history: string[],
   message: string,
   symptoms: string[],
-  demographics: { gender?: "male" | "female"; ageGroup?: "child" | "youth" | "adult" }
+  demographics: { gender?: FollowupState["slots"]["gender"]; ageGroup?: FollowupState["slots"]["ageGroup"] }
 ) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
@@ -578,9 +792,21 @@ async function openAIFallbackDiagnosis(
   }
 }
 
+function explainQuestionPurpose(questionText: string): string {
+  const q = questionText.toLowerCase();
+  if (q.includes("where exactly")) return "Reason: location helps separate joint, muscle, nerve, and vascular causes.";
+  if (q.includes("0 to 10") || q.includes("severe")) return "Reason: severity helps estimate urgency and probable condition range.";
+  if (q.includes("how long")) return "Reason: symptom duration helps distinguish acute vs chronic causes.";
+  if (q.includes("getting better") || q.includes("worse")) return "Reason: trend over time improves diagnostic confidence.";
+  if (q.includes("warning signs")) return "Reason: red-flag screening checks for conditions needing urgent care.";
+  if (q.includes("gender") || q.includes("age group")) return "Reason: demographics can shift disease likelihood in the dataset.";
+  return "Reason: this answer helps narrow likely causes from your current symptom pattern.";
+}
+
 function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number, choices?: string[]): string {
   const symptoms = Array.from(confirmed).map(formatSymptom).join(", ");
-  return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}`;
+  const reason = explainQuestionPurpose(questionText);
+  return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}\n${reason}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -658,6 +884,23 @@ export async function POST(req: NextRequest) {
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
+    if (!slots.chiefComplaint) {
+      slots.chiefComplaint = extractChiefComplaint(userMessage);
+    }
+    if (!slots.bodySystem || slots.bodySystem === "general") {
+      slots.bodySystem = extractBodySystem(userMessage);
+    }
+    const painLocation = extractPainLocation(userMessage);
+    if (painLocation) slots.painLocation = painLocation;
+    const painSeverity = extractPainSeverity(userMessage);
+    if (typeof painSeverity === "number") {
+      slots.painSeverity = painSeverity;
+      if (typeof slots.symptomSeverity !== "number") slots.symptomSeverity = painSeverity;
+    }
+    const progression = extractProgression(userMessage);
+    if (progression) slots.progression = progression;
+    const redFlags = extractRedFlags(userMessage);
+    if (typeof redFlags === "boolean") slots.redFlagsPresent = redFlags;
 
     const temp = extractTemperatureF(userMessage);
     if (temp) slots.temperatureF = temp;
@@ -678,12 +921,58 @@ export async function POST(req: NextRequest) {
         if (answer === "no") denied.add("high fever");
       } else if (qid === "duration") {
         if (duration) slots.durationDays = duration;
+      } else if (qid === "severity") {
+        const severity = extractPainSeverity(userMessage);
+        if (typeof severity === "number") slots.symptomSeverity = severity;
+      } else if (qid === "progression") {
+        const parsedProgression = extractProgression(userMessage);
+        if (parsedProgression) slots.progression = parsedProgression;
+      } else if (qid === "red_flags") {
+        if (answer === "yes") slots.redFlagsPresent = true;
+        if (answer === "no") slots.redFlagsPresent = false;
       } else if (qid === "gender") {
         const parsedGender = extractGender(userMessage);
         if (parsedGender) slots.gender = parsedGender;
       } else if (qid === "age_group") {
         const parsedAgeGroup = extractAgeGroup(userMessage);
         if (parsedAgeGroup) slots.ageGroup = parsedAgeGroup;
+      } else if (qid === "pain_location") {
+        const parsedLocation = extractPainLocation(userMessage);
+        if (parsedLocation) {
+          slots.painLocation = parsedLocation;
+          if (parsedLocation === "knee") confirmed.add("knee pain");
+          if (parsedLocation === "hip") confirmed.add("hip joint pain");
+          if (parsedLocation === "joint" || parsedLocation === "leg") confirmed.add("joint pain");
+        }
+      } else if (qid === "pain_severity") {
+        const parsedSeverity = extractPainSeverity(userMessage);
+        if (typeof parsedSeverity === "number") slots.painSeverity = parsedSeverity;
+      } else if (qid === "pain_swelling") {
+        if (answer === "yes") {
+          slots.painSwelling = true;
+          confirmed.add("swelling joints");
+          confirmed.add("swollen legs");
+        }
+        if (answer === "no") {
+          slots.painSwelling = false;
+          denied.add("swelling joints");
+          denied.add("swollen legs");
+        }
+      } else if (qid === "pain_redness") {
+        if (answer === "yes") slots.painRedness = true;
+        if (answer === "no") slots.painRedness = false;
+      } else if (qid === "pain_injury") {
+        if (answer === "yes") slots.painInjury = true;
+        if (answer === "no") slots.painInjury = false;
+      } else if (qid === "pain_fever") {
+        if (answer === "yes") {
+          slots.painFever = true;
+          confirmed.add("high fever");
+        }
+        if (answer === "no") {
+          slots.painFever = false;
+          denied.add("high fever");
+        }
       } else if (qid.startsWith("symptom:")) {
         const symptom = qid.slice("symptom:".length);
         asked.add(symptom);
@@ -693,7 +982,13 @@ export async function POST(req: NextRequest) {
       turns += 1;
     }
 
-    const predictions = scoreDiseases(datasets.diseases, confirmed, denied);
+    const predictions = applyClinicalContextAdjustments(
+      applyDemographicAdjustments(scoreDiseases(datasets.diseases, confirmed, denied), {
+        gender: slots.gender,
+        ageGroup: slots.ageGroup,
+      }),
+      slots
+    );
     const top = predictions[0];
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
@@ -736,14 +1031,10 @@ export async function POST(req: NextRequest) {
         gender: slots.gender,
         ageGroup: slots.ageGroup,
       });
-      const aiTop = ai?.top_predictions?.[0]?.probability || 0;
-      const aiSecond = ai?.top_predictions?.[1]?.probability || 0;
-      const aiGap = aiTop - aiSecond;
-      const aiReliable = Boolean(ai && ai.confidence >= 70 && aiGap >= 15);
-      if (ai && aiReliable) {
-        const reply = `**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(ai.confidence).toFixed(
-          1
-        )}%\n\n${ai.summary || "Confidence was low in the dataset model, so this used API-assisted analysis."}\n\n${
+      if (ai) {
+        const reply = `I have no data yet so this prediction is acc to open api.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
+          ai.confidence
+        ).toFixed(1)}%\n\n${ai.summary || "Dataset confidence was low, so this used API-assisted analysis."}\n\n${
           ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
         }This is informational only and not a medical diagnosis.`;
 
@@ -770,14 +1061,9 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-
-      const reason =
-        reliability.topProbability < 62
-          ? `confidence is only ${reliability.topProbability.toFixed(1)}%`
-          : `top predictions are too close (gap ${reliability.probabilityGap.toFixed(1)}%)`;
       return NextResponse.json({
         reply:
-          `I am not confident enough to give a reliable diagnosis because ${reason}. I will avoid giving a potentially misleading prediction.\n\nPlease provide: exact pain location, pain severity (0-10), swelling/redness, fever status, and what makes it better/worse. If symptoms are severe or worsening, consult a clinician promptly.`,
+          "Dataset confidence is low and API fallback is unavailable right now. Please share detailed symptoms and consult a clinician if symptoms are severe.",
         follow_up_suggested: false,
       });
     }
