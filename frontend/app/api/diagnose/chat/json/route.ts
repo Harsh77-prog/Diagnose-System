@@ -188,6 +188,12 @@ function extractDurationDays(text: string): number | undefined {
   if (w) return Number(w[1]) * 7;
   const m = t.match(/(\d+)\s*(month|months)/);
   if (m) return Number(m[1]) * 30;
+  if (/\b(a|one)\s+day\b/.test(t)) return 1;
+  if (/\b(a|one)\s+week\b/.test(t)) return 7;
+  if (/\b(a|one)\s+month\b/.test(t)) return 30;
+  if (/\bcouple of days\b/.test(t)) return 2;
+  if (/\bfew days\b/.test(t)) return 3;
+  if (/\bseveral days\b/.test(t)) return 5;
   if (/\btoday\b|\b1 day\b/.test(t)) return 1;
   if (/\byesterday\b/.test(t)) return 2;
   return undefined;
@@ -213,9 +219,19 @@ function extractPainSeverity(text: string): number | undefined {
 
 function extractPainLocation(text: string): string | undefined {
   const t = normalizeToken(text);
+  if (/\bhead\b/.test(t)) return "head";
+  if (/\bface\b/.test(t)) return "face";
+  if (/\bchest\b/.test(t)) return "chest";
+  if (/\bstomach\b|\babdomen\b|\babdominal\b/.test(t)) return "abdomen";
+  if (/\bshoulder\b/.test(t)) return "shoulder";
+  if (/\barm\b/.test(t)) return "arm";
+  if (/\belbow\b/.test(t)) return "elbow";
+  if (/\bwrist\b/.test(t)) return "wrist";
+  if (/\bhand\b/.test(t)) return "hand";
   if (/\bleg\b/.test(t)) return "leg";
   if (/\bknee\b/.test(t)) return "knee";
   if (/\bhip\b/.test(t)) return "hip";
+  if (/\blower back\b/.test(t)) return "lower back";
   if (/\bback\b/.test(t)) return "back";
   if (/\bneck\b/.test(t)) return "neck";
   if (/\bankle\b/.test(t)) return "ankle";
@@ -243,8 +259,8 @@ function extractBodySystem(text: string): FollowupState["slots"]["bodySystem"] {
 
 function extractProgression(text: string): FollowupState["slots"]["progression"] | undefined {
   const t = normalizeToken(text);
-  if (/\bworse|worsening|increasing|getting bad\b/.test(t)) return "worse";
-  if (/\bbetter|improving|less\b/.test(t)) return "better";
+  if (/\bworse|worsening|worsened|increasing|getting bad\b/.test(t)) return "worse";
+  if (/\bbetter|improving|improved|less\b/.test(t)) return "better";
   if (/\bsame|unchanged|no change\b/.test(t)) return "same";
   return undefined;
 }
@@ -481,18 +497,6 @@ function applyDemographicAdjustments(
     .sort((a, b) => b.probability - a.probability);
 }
 
-function isSymptomRelevantToSystem(symptom: string, bodySystem: FollowupState["slots"]["bodySystem"]): boolean {
-  if (!bodySystem || bodySystem === "general") return true;
-  const s = symptom.toLowerCase();
-  if (bodySystem === "musculoskeletal") return /joint|knee|hip|muscle|neck pain|back pain|walking|swollen legs|swelling joints/.test(s);
-  if (bodySystem === "respiratory") return /cough|breath|phlegm|throat|runny nose|congestion|chest pain|high fever/.test(s);
-  if (bodySystem === "gastrointestinal") return /abdominal|stomach|nausea|vomiting|diarrhoea|constipation|acidity|appetite/.test(s);
-  if (bodySystem === "neurologic") return /headache|dizziness|vertigo|numbness|weakness|stiff neck/.test(s);
-  if (bodySystem === "cardiovascular") return /chest pain|fast heart rate|palpit|breathlessness|sweating/.test(s);
-  if (bodySystem === "dermatologic") return /rash|itch|skin|blister|red spots|patches/.test(s);
-  return true;
-}
-
 function applyClinicalContextAdjustments(predictions: Prediction[], slots: FollowupState["slots"]): Prediction[] {
   if (predictions.length === 0) return predictions;
 
@@ -569,35 +573,6 @@ function evaluatePredictionReliability(predictions: Prediction[], confirmedCount
     topProbability: top.probability,
     probabilityGap,
   };
-}
-
-function chooseSymptomQuestion(
-  datasets: DatasetCache,
-  topCandidates: string[],
-  asked: Set<string>,
-  confirmed: Set<string>,
-  denied: Set<string>
-): string | null {
-  const candidateSet = new Set(topCandidates);
-  const diseaseRows = datasets.diseases.filter((d) => candidateSet.has(d.name));
-  if (diseaseRows.length === 0) return null;
-
-  const counts = new Map<string, number>();
-  for (const d of diseaseRows) {
-    for (const s of d.symptoms) {
-      if (asked.has(s) || confirmed.has(s) || denied.has(s)) continue;
-      counts.set(s, (counts.get(s) || 0) + 1);
-    }
-  }
-
-  let best: { symptom: string; score: number } | null = null;
-  for (const [symptom, freq] of counts.entries()) {
-    const p = freq / diseaseRows.length;
-    const splitScore = 1 - Math.abs(0.5 - p);
-    const score = splitScore * 100 + freq;
-    if (!best || score > best.score) best = { symptom, score };
-  }
-  return best?.symptom ?? null;
 }
 
 function formatSymptom(s: string): string {
@@ -679,48 +654,6 @@ function makeState(state: Omit<FollowupState, "kind" | "pending">): FollowupStat
   return { kind: "followup_state", pending: true, ...state };
 }
 
-function nextQuestion(
-  datasets: DatasetCache,
-  confirmed: Set<string>,
-  denied: Set<string>,
-  asked: Set<string>,
-  topCandidates: string[],
-  slots: FollowupState["slots"]
-): { id: string; text: string; choices?: string[] } | null {
-  if (slots.chiefComplaint === "pain") {
-    if (!slots.painLocation) return { id: "pain_location", text: "Where exactly is the pain located?" };
-    if (typeof slots.painSeverity !== "number") return { id: "pain_severity", text: "How severe is the pain on a scale of 0 to 10?" };
-    if (typeof slots.painSwelling !== "boolean") return { id: "pain_swelling", text: "Is there any swelling around the painful area?" };
-    if (typeof slots.painRedness !== "boolean") return { id: "pain_redness", text: "Do you notice redness or warmth over that area?" };
-    if (typeof slots.painInjury !== "boolean") return { id: "pain_injury", text: "Did this start after an injury, twist, or strain?" };
-    if (typeof slots.painFever !== "boolean") return { id: "pain_fever", text: "Do you also have fever with this pain?" };
-  }
-  if (!slots.durationDays) return { id: "duration", text: "How long have you had this problem?" };
-  if (typeof slots.symptomSeverity !== "number") return { id: "severity", text: "How severe are your symptoms on a 0-10 scale?" };
-  if (!slots.progression) return { id: "progression", text: "Are your symptoms getting better, same, or worse?", choices: ["better", "same", "worse"] };
-  if (typeof slots.redFlagsPresent !== "boolean") return { id: "red_flags", text: "Any severe warning signs like breathlessness, chest pain, fainting, or confusion?", choices: ["yes", "no"] };
-
-  if (!slots.gender) {
-    return { id: "gender", text: "Please select your gender for better triage context.", choices: ["male", "female", "custom"] };
-  }
-  if (!slots.ageGroup) {
-    return {
-      id: "age_group",
-      text: "Please select your age group.",
-      choices: ["infant", "toddler", "child", "adolescent", "youth", "adult", "middle_aged", "senior_citizen"],
-    };
-  }
-  if ((confirmed.has("high fever") || asked.has("high fever")) && !slots.temperatureF) {
-    return { id: "temperature", text: "What is your current temperature (in F or C)?" };
-  }
-  let symptom = chooseSymptomQuestion(datasets, topCandidates, asked, confirmed, denied);
-  if (symptom && slots.bodySystem && !isSymptomRelevantToSystem(symptom, slots.bodySystem)) {
-    symptom = null;
-  }
-  if (!symptom) return null;
-  return { id: `symptom:${symptom}`, text: `Do you also have ${symptom}?` };
-}
-
 function yesNoFromText(text: string): "yes" | "no" | null {
   const t = normalizeToken(text);
   if (/\b(yes|yeah|yep|present|have|i do)\b/.test(t)) return "yes";
@@ -787,6 +720,93 @@ async function openAIFallbackDiagnosis(
       precautions: parsed.precautions || [],
       top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: Number(parsed.confidence) || 35 }],
     };
+  } catch {
+    return null;
+  }
+}
+
+async function openAILiveFollowupQuestion(params: {
+  history: string[];
+  currentMessage: string;
+  confirmedSymptoms: string[];
+  deniedSymptoms: string[];
+  topCandidates: string[];
+  askedItems: string[];
+  turns: number;
+  maxTurns: number;
+  slots: FollowupState["slots"];
+}): Promise<{ id: string; text: string; choices?: string[] } | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Return strict JSON only with keys question_id, question_text, question_choices. Ask exactly one concise medically relevant follow-up question to improve diagnosis confidence. Do not repeat already asked questions. question_choices must be null or an array of 2-8 short lowercase options.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              turns: params.turns,
+              max_turns: params.maxTurns,
+              current_message: params.currentMessage,
+              recent_history: params.history.slice(-20),
+              confirmed_symptoms: params.confirmedSymptoms,
+              denied_symptoms: params.deniedSymptoms,
+              top_candidates: params.topCandidates,
+              demographics: {
+                gender: params.slots.gender || null,
+                age_group: params.slots.ageGroup || null,
+              },
+              prior_asked_items: params.askedItems,
+              constraints: [
+                "Do not ask age group or gender here.",
+                "Ask only one question.",
+                "No diagnosis/treatment advice in the question.",
+                "Prefer yes/no style when clinically useful.",
+              ],
+            }),
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content || "";
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end < 0 || end <= start) return null;
+
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as {
+      question_id?: string;
+      question_text?: string;
+      question_choices?: string[] | null;
+    };
+    const text = (parsed.question_text || "").trim();
+    if (!text) return null;
+
+    const rawId = (parsed.question_id || `ai_followup_${Date.now()}`).toLowerCase();
+    const id = `ai:${rawId.replace(/[^a-z0-9:_-]+/g, "_").slice(0, 64)}`;
+    const choices = Array.isArray(parsed.question_choices)
+      ? parsed.question_choices
+          .map((value) => normalizeToken(String(value)))
+          .filter(Boolean)
+          .slice(0, 8)
+      : undefined;
+
+    return { id, text, choices: choices && choices.length > 0 ? choices : undefined };
   } catch {
     return null;
   }
@@ -880,7 +900,7 @@ export async function POST(req: NextRequest) {
     const asked = new Set<string>(parsedState?.askedSymptoms || []);
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let turns = parsedState?.turns || 0;
-    const maxTurns = parsedState?.maxTurns || 6;
+    const maxTurns = parsedState?.maxTurns || 10;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -907,13 +927,14 @@ export async function POST(req: NextRequest) {
     const duration = extractDurationDays(userMessage);
     if (duration) slots.durationDays = duration;
     const gender = extractGender(userMessage);
-    if (gender) slots.gender = gender;
+    if (gender && parsedState?.currentQuestionId === "gender") slots.gender = gender;
     const ageGroup = extractAgeGroup(userMessage);
-    if (ageGroup) slots.ageGroup = ageGroup;
+    if (ageGroup && parsedState?.currentQuestionId === "age_group") slots.ageGroup = ageGroup;
 
     if (parsedState && action && parsedState.currentQuestionId) {
       const qid = parsedState.currentQuestionId;
       const answer = action === "custom" ? yesNoFromText(userMessage) : action;
+      asked.add(qid);
 
       if (qid === "temperature") {
         if (temp) slots.temperatureF = temp;
@@ -943,6 +964,11 @@ export async function POST(req: NextRequest) {
           if (parsedLocation === "knee") confirmed.add("knee pain");
           if (parsedLocation === "hip") confirmed.add("hip joint pain");
           if (parsedLocation === "joint" || parsedLocation === "leg") confirmed.add("joint pain");
+        } else {
+          const normalizedFreeText = normalizeToken(userMessage);
+          if (normalizedFreeText) {
+            slots.painLocation = normalizedFreeText.slice(0, 40);
+          }
         }
       } else if (qid === "pain_severity") {
         const parsedSeverity = extractPainSeverity(userMessage);
@@ -978,6 +1004,12 @@ export async function POST(req: NextRequest) {
         asked.add(symptom);
         if (answer === "yes") confirmed.add(symptom);
         if (answer === "no") denied.add(symptom);
+      } else if (qid.startsWith("ai:")) {
+        const aiQuestionSymptoms = extractSymptoms(parsedState.currentQuestionText, datasets);
+        for (const symptom of aiQuestionSymptoms) {
+          if (answer === "yes") confirmed.add(symptom);
+          if (answer === "no") denied.add(symptom);
+        }
       }
       turns += 1;
     }
@@ -992,8 +1024,44 @@ export async function POST(req: NextRequest) {
     const top = predictions[0];
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
-    const question = nextQuestion(datasets, confirmed, denied, asked, topCandidates, slots);
     const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns);
+    let question: { id: string; text: string; choices?: string[] } | null = null;
+
+    if (!reliability.reliable && turns < maxTurns) {
+      if (!slots.ageGroup) {
+        question = {
+          id: "age_group",
+          text: "Please select your age group.",
+          choices: ["infant", "toddler", "child", "adolescent", "youth", "adult", "middle_aged", "senior_citizen"],
+        };
+      } else if (!slots.gender) {
+        question = {
+          id: "gender",
+          text: "Please select your gender for better triage context.",
+          choices: ["male", "female", "custom"],
+        };
+      } else {
+        question = await openAILiveFollowupQuestion({
+          history: priorText,
+          currentMessage: userMessage,
+          confirmedSymptoms: Array.from(confirmed),
+          deniedSymptoms: Array.from(denied),
+          topCandidates,
+          askedItems: Array.from(asked),
+          turns,
+          maxTurns,
+          slots,
+        });
+
+        if (!question) {
+          return NextResponse.json({
+            reply:
+              "Live follow-up generation is currently unavailable. Please try again shortly.",
+            follow_up_suggested: false,
+          });
+        }
+      }
+    }
 
     if (question && turns < maxTurns && !reliability.reliable) {
       const nextState = makeState({
