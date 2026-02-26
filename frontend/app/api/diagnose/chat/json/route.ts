@@ -667,7 +667,7 @@ async function openAIFallbackDiagnosis(
   symptoms: string[],
   demographics: { gender?: FollowupState["slots"]["gender"]; ageGroup?: FollowupState["slots"]["ageGroup"] }
 ) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
   if (!apiKey) return null;
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -677,7 +677,7 @@ async function openAIFallbackDiagnosis(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        model: ((process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "")) || "gpt-4o-mini",
         temperature: 0.2,
         messages: [
           {
@@ -720,7 +720,8 @@ async function openAIFallbackDiagnosis(
       precautions: parsed.precautions || [],
       top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: Number(parsed.confidence) || 35 }],
     };
-  } catch {
+  } catch (err) {
+    console.error("OpenAI fallback diagnosis crashed:", err instanceof Error ? err.stack || err.message : err);
     return null;
   }
 }
@@ -736,7 +737,7 @@ async function openAILiveFollowupQuestion(params: {
   maxTurns: number;
   slots: FollowupState["slots"];
 }): Promise<{ id: string; text: string; choices?: string[] } | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
   if (!apiKey) return null;
 
   const parseJsonObjectFromText = (raw: string): {
@@ -779,7 +780,7 @@ async function openAILiveFollowupQuestion(params: {
     }
   };
 
-  const configuredModel = (process.env.OPENAI_MODEL || "").trim();
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "");
   const models = Array.from(
     new Set(
       [configuredModel, "gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"].filter((m): m is string => Boolean(m))
@@ -860,8 +861,8 @@ async function openAILiveFollowupQuestion(params: {
 
     console.error("Live follow-up generation failed:", lastError);
     return null;
-  } catch {
-    console.error("Live follow-up generation crashed.");
+  } catch (err) {
+    console.error("Live follow-up generation crashed:", err instanceof Error ? err.stack || err.message : err);
     return null;
   }
 }
