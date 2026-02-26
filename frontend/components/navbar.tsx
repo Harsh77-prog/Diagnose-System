@@ -14,6 +14,7 @@ import {
 
 const LINKS = [
   { label: "Home", href: "/" },
+  { label: "Diagnose", href: "/chat" },
   { label: "Philosophy", href: "/Philosophy" },
   { label: "About us", href: "/about" },
 ];
