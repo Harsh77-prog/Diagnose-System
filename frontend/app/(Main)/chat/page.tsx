@@ -33,8 +33,8 @@ type DiagnosisPayload = {
     confidence?: number;
     source?: "dataset_current_session" | "api_fallback" | string;
     comparison?: {
-        dataset?: { diagnosis?: string; confidence?: number };
-        openai?: { diagnosis?: string; confidence?: number } | null;
+        dataset?: { diagnosis?: string; confidence?: number; top_predictions?: { disease: string; probability: number }[] };
+        openai?: { diagnosis?: string; confidence?: number; top_predictions?: { disease: string; probability: number }[] } | null;
     };
     top_predictions?: { disease: string; probability: number }[];
     confirmed_symptoms?: string[];
@@ -539,6 +539,14 @@ export default function ChatDashboard() {
         (s.title || "Diagnosis Chat").toLowerCase().includes(searchQuery.toLowerCase())
     );
     const panelPredictions = latestDiagnosis?.top_predictions || [];
+    const datasetPanelPredictions =
+        latestDiagnosis?.source === "dataset_current_session"
+            ? panelPredictions
+            : latestDiagnosis?.comparison?.dataset?.top_predictions || [];
+    const openAiPanelPredictions =
+        latestDiagnosis?.source === "api_fallback"
+            ? panelPredictions
+            : latestDiagnosis?.comparison?.openai?.top_predictions || [];
     const panelConfidence = Math.max(0, Math.min(100, Number(latestDiagnosis?.confidence || panelPredictions[0]?.probability || 0)));
     const panelPrecautions = latestDiagnosis?.disease_info?.precautions || [];
     const panelDescription = latestDiagnosis?.disease_info?.description || "";
@@ -723,47 +731,10 @@ export default function ChatDashboard() {
                                                     try {
                                                         const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
                                                         const predictions: { disease: string, probability: number }[] = payload.top_predictions || [];
-                                                        const source = payload.source;
-                                                        const datasetCmp = payload.comparison?.dataset;
-                                                        const openAiCmp = payload.comparison?.openai;
-                                                        const sourceLabel =
-                                                            source === "dataset_current_session"
-                                                                ? "Dataset Model"
-                                                                : source === "api_fallback"
-                                                                    ? "OpenAI API"
-                                                                    : null;
 
                                                         if (Array.isArray(predictions) && predictions.length > 0) {
                                                             return (
                                                                 <div className="mt-5 p-4 rounded-xl border border-[#e5e5e5] bg-[#f9f9f9]">
-                                                                    {sourceLabel ? (
-                                                                        <div
-                                                                            className={`mb-3 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${source === "dataset_current_session"
-                                                                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                                                                    : "bg-amber-50 text-amber-700 border border-amber-200"
-                                                                                }`}
-                                                                        >
-                                                                            Prediction Source: {sourceLabel}
-                                                                        </div>
-                                                                    ) : null}
-                                                                    {(datasetCmp || openAiCmp) ? (
-                                                                        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                                            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
-                                                                                <div className="text-[10px] font-semibold tracking-wide uppercase text-emerald-700">Dataset</div>
-                                                                                <div className="text-xs font-medium text-emerald-900 mt-1">
-                                                                                    {datasetCmp?.diagnosis ? labelize(datasetCmp.diagnosis) : "Unavailable"}
-                                                                                    {typeof datasetCmp?.confidence === "number" ? ` (${datasetCmp.confidence.toFixed(1)}%)` : ""}
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
-                                                                                <div className="text-[10px] font-semibold tracking-wide uppercase text-amber-700">OpenAI API</div>
-                                                                                <div className="text-xs font-medium text-amber-900 mt-1">
-                                                                                    {openAiCmp?.diagnosis ? labelize(openAiCmp.diagnosis) : "Unavailable"}
-                                                                                    {typeof openAiCmp?.confidence === "number" ? ` (${openAiCmp.confidence.toFixed(1)}%)` : ""}
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : null}
                                                                     <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4">Diagnosis Probabilities</div>
                                                                     {predictions.map((pred, idx) => (
                                                                         <AnimatedProgress
@@ -939,10 +910,10 @@ export default function ChatDashboard() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Prediction Chart</div>
+                        <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Dataset Prediction Chart</div>
                             <div className="space-y-2.5">
-                                {panelPredictions.slice(0, 5).map((pred) => (
+                                {(datasetPanelPredictions.slice(0, 5)).map((pred) => (
                                     <div key={pred.disease}>
                                         <div className="flex items-center justify-between text-[12px] mb-1">
                                             <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
@@ -953,6 +924,29 @@ export default function ChatDashboard() {
                                         </div>
                                     </div>
                                 ))}
+                                {datasetPanelPredictions.length === 0 ? (
+                                    <div className="text-[12px] text-slate-500">Dataset prediction chart unavailable.</div>
+                                ) : null}
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-amber-200 bg-white p-4">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-3">OpenAI Prediction Chart</div>
+                            <div className="space-y-2.5">
+                                {(openAiPanelPredictions.slice(0, 5)).map((pred) => (
+                                    <div key={pred.disease}>
+                                        <div className="flex items-center justify-between text-[12px] mb-1">
+                                            <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
+                                            <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
+                                        </div>
+                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                            <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-600" style={{ width: `${pred.probability}%` }} />
+                                        </div>
+                                    </div>
+                                ))}
+                                {openAiPanelPredictions.length === 0 ? (
+                                    <div className="text-[12px] text-slate-500">OpenAI prediction chart unavailable.</div>
+                                ) : null}
                             </div>
                         </div>
 

@@ -1214,6 +1214,10 @@ export async function POST(req: NextRequest) {
               openai: {
                 diagnosis: ai.diagnosis,
                 confidence: Number(ai.confidence.toFixed(1)),
+                top_predictions: ai.top_predictions.map((p) => ({
+                  disease: p.disease,
+                  probability: Number(p.probability.toFixed(1)),
+                })),
               },
             },
           },
@@ -1278,11 +1282,16 @@ export async function POST(req: NextRequest) {
           dataset: {
             diagnosis: diagnosis.diagnosis,
             confidence: diagnosis.confidence,
+            top_predictions: diagnosis.top_predictions,
           },
           openai: apiComparison
             ? {
                 diagnosis: apiComparison.diagnosis,
                 confidence: Number(apiComparison.confidence.toFixed(1)),
+                top_predictions: apiComparison.top_predictions.map((p) => ({
+                  disease: p.disease,
+                  probability: Number(p.probability.toFixed(1)),
+                })),
               }
             : null,
         },
