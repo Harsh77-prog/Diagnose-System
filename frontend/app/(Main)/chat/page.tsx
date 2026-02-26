@@ -48,6 +48,10 @@ function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function normalizeBrandName(text: string): string {
+    return text.replace(/\bMediCoreAI\b/g, "MedCoreAI").replace(/\bMediCore\b/g, "MedCoreAI");
+}
+
 function extractLatestDiagnosis(messages: Message[]): { messageId: string; payload: DiagnosisPayload } | null {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
         const msg = messages[i];
@@ -722,7 +726,7 @@ export default function ChatDashboard() {
                                             </div>
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
-                                                {msg.content.split("**").map((text, i) => (
+                                                {normalizeBrandName(msg.content).split("**").map((text, i) => (
                                                     i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
                                                 ))}
 
