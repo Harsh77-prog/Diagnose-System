@@ -1173,9 +1173,19 @@ export async function POST(req: NextRequest) {
         ageGroup: slots.ageGroup,
       });
       if (ai) {
-        const reply = `I have no data yet so this prediction is acc to open api.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
+        const datasetComparison = {
+          diagnosis: top.disease,
+          confidence: Number(top.probability.toFixed(1)),
+          top_predictions: predictions.slice(0, 5).map((p) => ({
+            disease: p.disease,
+            probability: Number(p.probability.toFixed(1)),
+          })),
+        };
+        const reply = `Dataset confidence remained low, so an API-assisted prediction is used.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
           ai.confidence
-        ).toFixed(1)}%\n\n${ai.summary || "Dataset confidence was low, so this used API-assisted analysis."}\n\n${
+        ).toFixed(1)}%\n\n**Dataset comparison:** ${datasetComparison.diagnosis} (${datasetComparison.confidence}%)\n\n${
+          ai.summary || "Dataset confidence was low, so this used API-assisted analysis."
+        }\n\n${
           ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
         }This is informational only and not a medical diagnosis.`;
 
@@ -1199,6 +1209,13 @@ export async function POST(req: NextRequest) {
             disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
             source: "api_fallback",
             considered_prior_history: false,
+            comparison: {
+              dataset: datasetComparison,
+              openai: {
+                diagnosis: ai.diagnosis,
+                confidence: Number(ai.confidence.toFixed(1)),
+              },
+            },
           },
         });
       }
@@ -1232,6 +1249,10 @@ export async function POST(req: NextRequest) {
       source: "dataset_current_session",
       considered_prior_history: false,
     };
+    const apiComparison = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
+      gender: slots.gender,
+      ageGroup: slots.ageGroup,
+    });
 
     const precautionsText =
       diseaseInfo.precautions.length > 0
@@ -1239,16 +1260,33 @@ export async function POST(req: NextRequest) {
         : "";
 
     const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
+    const comparisonText = apiComparison
+      ? `\n\n**OpenAI comparison:** ${apiComparison.diagnosis} (${Number(apiComparison.confidence).toFixed(1)}%)`
+      : `\n\n**OpenAI comparison:** unavailable`;
     const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
       diagnosis.confidence
     }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}\n\n${
       diseaseInfo.description || "No detailed description available in dataset."
-    }${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
+    }${precautionsText}${comparisonText}\n\nThis is informational only and not a medical diagnosis.`;
 
     return NextResponse.json({
       reply,
       follow_up_suggested: false,
-      ml_diagnosis: diagnosis,
+      ml_diagnosis: {
+        ...diagnosis,
+        comparison: {
+          dataset: {
+            diagnosis: diagnosis.diagnosis,
+            confidence: diagnosis.confidence,
+          },
+          openai: apiComparison
+            ? {
+                diagnosis: apiComparison.diagnosis,
+                confidence: Number(apiComparison.confidence.toFixed(1)),
+              }
+            : null,
+        },
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";

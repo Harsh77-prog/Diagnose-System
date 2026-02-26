@@ -32,6 +32,10 @@ type DiagnosisPayload = {
     diagnosis: string;
     confidence?: number;
     source?: "dataset_current_session" | "api_fallback" | string;
+    comparison?: {
+        dataset?: { diagnosis?: string; confidence?: number };
+        openai?: { diagnosis?: string; confidence?: number } | null;
+    };
     top_predictions?: { disease: string; probability: number }[];
     confirmed_symptoms?: string[];
     disease_info?: {
@@ -720,6 +724,8 @@ export default function ChatDashboard() {
                                                         const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
                                                         const predictions: { disease: string, probability: number }[] = payload.top_predictions || [];
                                                         const source = payload.source;
+                                                        const datasetCmp = payload.comparison?.dataset;
+                                                        const openAiCmp = payload.comparison?.openai;
                                                         const sourceLabel =
                                                             source === "dataset_current_session"
                                                                 ? "Dataset Model"
@@ -738,6 +744,24 @@ export default function ChatDashboard() {
                                                                                 }`}
                                                                         >
                                                                             Prediction Source: {sourceLabel}
+                                                                        </div>
+                                                                    ) : null}
+                                                                    {(datasetCmp || openAiCmp) ? (
+                                                                        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5">
+                                                                                <div className="text-[10px] font-semibold tracking-wide uppercase text-emerald-700">Dataset</div>
+                                                                                <div className="text-xs font-medium text-emerald-900 mt-1">
+                                                                                    {datasetCmp?.diagnosis ? labelize(datasetCmp.diagnosis) : "Unavailable"}
+                                                                                    {typeof datasetCmp?.confidence === "number" ? ` (${datasetCmp.confidence.toFixed(1)}%)` : ""}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5">
+                                                                                <div className="text-[10px] font-semibold tracking-wide uppercase text-amber-700">OpenAI API</div>
+                                                                                <div className="text-xs font-medium text-amber-900 mt-1">
+                                                                                    {openAiCmp?.diagnosis ? labelize(openAiCmp.diagnosis) : "Unavailable"}
+                                                                                    {typeof openAiCmp?.confidence === "number" ? ` (${openAiCmp.confidence.toFixed(1)}%)` : ""}
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
                                                                     ) : null}
                                                                     <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4">Diagnosis Probabilities</div>
