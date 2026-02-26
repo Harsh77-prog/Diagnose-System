@@ -379,6 +379,11 @@ function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
   const directSymptoms = extractSymptoms(text, datasets);
   if (directSymptoms.length > 0) return true;
 
+  // Informational health queries should be answered directly, not routed into triage.
+  if (/\b(what|which|tell|explain|list)\b/.test(normalized) && /\b(symptom|symptoms|sign|signs)\b/.test(normalized)) {
+    return false;
+  }
+
   const medicalKeywords = [
     "symptom",
     "symptoms",
@@ -406,7 +411,57 @@ function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
     "diabetes",
   ];
 
-  return medicalKeywords.some((k) => normalized.includes(k));
+  const hasMedicalKeyword = medicalKeywords.some((k) => normalized.includes(k));
+  if (!hasMedicalKeyword) return false;
+  return /\b(i|im|i am|my|me|mine|feeling|feel|having|suffering|experienced|experiencing)\b/.test(normalized);
+}
+
+function pickDiseaseFromSymptomQuery(text: string, datasets: DatasetCache): DiseaseRow | null {
+  const normalized = normalizeToken(text);
+  if (!/\b(symptom|symptoms|sign|signs)\b/.test(normalized)) return null;
+
+  const pattern =
+    /\b(?:symptom|symptoms|sign|signs)\s+(?:of|for)\s+([a-z0-9\s-]{2,80})$|\b(?:what|which|tell|explain|list)\s+.*\b(?:symptom|symptoms|sign|signs)\s+(?:of|for)\s+([a-z0-9\s-]{2,80})$/i;
+  const match = normalizeToken(text).match(pattern);
+  const raw = (match?.[1] || match?.[2] || "").trim().replace(/\b(disease|condition|infection|disorder)\b/g, "").trim();
+  if (!raw) return null;
+
+  const query = normalizeToken(raw);
+  let best: DiseaseRow | null = null;
+  let bestScore = 0;
+
+  for (const disease of datasets.diseases) {
+    const diseaseName = normalizeToken(disease.name);
+    let score = 0;
+    if (diseaseName === query) score = 100;
+    else if (diseaseName.includes(query)) score = 80;
+    else if (query.includes(diseaseName)) score = 70;
+    if (score > bestScore) {
+      best = disease;
+      bestScore = score;
+    }
+  }
+
+  return best;
+}
+
+function informationalDiseaseReply(text: string, datasets: DatasetCache): string | null {
+  const disease = pickDiseaseFromSymptomQuery(text, datasets);
+  if (!disease) return null;
+
+  const listedSymptoms = disease.symptoms.slice(0, 10).map(formatSymptom);
+  const description = datasets.descriptions[disease.name];
+  const precautions = (datasets.precautions[disease.name] || []).slice(0, 4);
+
+  const symptomBlock =
+    listedSymptoms.length > 0
+      ? listedSymptoms.map((s, i) => `${i + 1}. ${s}`).join("\n")
+      : "Symptoms are not available in the local dataset for this condition.";
+  const descriptionBlock = description ? `\n\nAbout ${disease.name}: ${description}` : "";
+  const precautionBlock =
+    precautions.length > 0 ? `\n\nGeneral precautions:\n${precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}` : "";
+
+  return `Common symptoms of **${disease.name}**:\n${symptomBlock}${descriptionBlock}${precautionBlock}\n\nThis is educational information, not a diagnosis.`;
 }
 
 function friendlyReplyForGeneralChat(text: string): string {
@@ -420,6 +475,17 @@ function friendlyReplyForGeneralChat(text: string): string {
   }
   if (/\b(thank you|thanks)\b/.test(t)) {
     return "You're welcome. Share any symptoms anytime when you want a medical assessment.";
+  }
+  if (/\b(diet|dietary|nutrition|healthy eating|food habits|eating habits)\b/.test(t)) {
+    return [
+      "Healthy dietary habits:",
+      "1. Build meals around vegetables, fruits, whole grains, and lean proteins.",
+      "2. Prefer water over sugary drinks and limit alcohol.",
+      "3. Keep processed foods, excess salt, and added sugar low.",
+      "4. Use portion control and eat slowly to avoid overeating.",
+      "5. Include healthy fats (nuts, seeds, olive oil) in moderate amounts.",
+      "6. Maintain regular meal timing and avoid late heavy meals.",
+    ].join("\n");
   }
 
   return "I can continue normal conversation. When you want a health prediction, describe your medical issue or symptoms.";
@@ -954,6 +1020,14 @@ export async function POST(req: NextRequest) {
     }
 
     const parsedState = parseState(currentMessages);
+    const directInfoReply = !parsedState ? informationalDiseaseReply(userMessage, datasets) : null;
+    if (directInfoReply) {
+      return NextResponse.json({
+        reply: directInfoReply,
+        follow_up_suggested: false,
+      });
+    }
+
     const existingFinalDiagnosis = parseExistingFinalDiagnosis(currentMessages);
     const shouldStartMedicalFlow = Boolean(parsedState) || hasMedicalIntent(userMessage, datasets);
     if (!shouldStartMedicalFlow) {
