@@ -21,6 +21,20 @@ type Message = {
     isInitial?: boolean;
 };
 
+async function parseResponseJson<T>(res: Response): Promise<T> {
+    const raw = await res.text();
+
+    if (!raw) {
+        throw new Error(`Empty response body (status ${res.status})`);
+    }
+
+    try {
+        return JSON.parse(raw) as T;
+    } catch {
+        throw new Error(`Invalid JSON response (status ${res.status})`);
+    }
+}
+
 // Component for rendering animated ML Disease Probability Bars
 function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, percentage: number, delay?: number }) {
     const [width, setWidth] = useState(0);
@@ -123,7 +137,7 @@ export default function ChatDashboard() {
     async function fetchSessions() {
         try {
             const res = await fetch("/api/chat/sessions");
-            const data = await res.json();
+            const data = await parseResponseJson<{ sessions?: ChatSession[] }>(res);
             if (data.sessions && data.sessions.length > 0) {
                 setSessions(data.sessions);
             }
@@ -155,7 +169,7 @@ export default function ChatDashboard() {
 
         try {
             const res = await fetch(`/api/chat/sessions/${id}/messages`);
-            const data = await res.json();
+            const data = await parseResponseJson<{ messages?: Message[] }>(res);
 
             if (data.messages && data.messages.length > 0) {
                 setMessages(data.messages);
@@ -197,11 +211,12 @@ export default function ChatDashboard() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ title: generatedTitle })
                 });
-                const data = await res.json();
+                const data = await parseResponseJson<{ session?: ChatSession }>(res);
                 if (data.session) {
-                    activeSessionId = data.session.id;
+                    const createdSession = data.session;
+                    activeSessionId = createdSession.id;
                     setCurrentSessionId(activeSessionId);
-                    setSessions(prev => [data.session, ...prev]);
+                    setSessions(prev => [createdSession, ...prev]);
                 } else {
                     throw new Error("Failed to create session");
                 }
@@ -228,7 +243,12 @@ export default function ChatDashboard() {
                     }),
                 });
 
-                const data = await res.json();
+                const data = await parseResponseJson<{
+                    error?: string;
+                    reply?: string;
+                    ml_diagnosis?: unknown;
+                    follow_up_suggested?: boolean;
+                }>(res);
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
 
                 // Save Assistant Message to DB
@@ -244,7 +264,7 @@ export default function ChatDashboard() {
 
                 // Fetch DB messages again to restore perfect sync
                 const syncRes = await fetch(`/api/chat/sessions/${activeSessionId}/messages`);
-                const syncData = await syncRes.json();
+                const syncData = await parseResponseJson<{ messages?: Message[] }>(syncRes);
                 if (syncData.messages && syncData.messages.length > 0) {
                     setMessages(syncData.messages);
                 }
@@ -255,11 +275,46 @@ export default function ChatDashboard() {
             }
         } catch (err: any) {
             console.error("Chat Error:", err);
-            setMessages(prev => [...prev, {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: `Error: ${err.message}`
-            }]);
+            const fallbackMessage = `Error: ${err?.message || "Unexpected chat error"}`;
+
+            if (activeSessionId) {
+                try {
+                    await fetch(`/api/chat/sessions/${activeSessionId}/messages`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            role: "assistant",
+                            content: fallbackMessage,
+                            jsonPayload: null
+                        })
+                    });
+
+                    const syncRes = await fetch(`/api/chat/sessions/${activeSessionId}/messages`);
+                    const syncData = await parseResponseJson<{ messages?: Message[] }>(syncRes);
+                    if (syncData.messages && syncData.messages.length > 0) {
+                        setMessages(syncData.messages);
+                    } else {
+                        setMessages(prev => [...prev, {
+                            id: (Date.now() + 1).toString(),
+                            role: "assistant",
+                            content: fallbackMessage
+                        }]);
+                    }
+                } catch (persistErr) {
+                    console.error("Failed to persist fallback assistant message:", persistErr);
+                    setMessages(prev => [...prev, {
+                        id: (Date.now() + 1).toString(),
+                        role: "assistant",
+                        content: fallbackMessage
+                    }]);
+                }
+            } else {
+                setMessages(prev => [...prev, {
+                    id: (Date.now() + 1).toString(),
+                    role: "assistant",
+                    content: fallbackMessage
+                }]);
+            }
         } finally {
             setLoading(false);
         }
