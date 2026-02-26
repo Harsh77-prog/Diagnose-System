@@ -63,39 +63,6 @@ export const authOptions: AuthOptions = {
   },
 
   callbacks: {
-    //   async signIn({ user, account }) {
-    //   if (account?.provider === "google") {
-    //     const existingUser = await prisma.user.findUnique({
-    //       where: { email: user.email! },
-    //       include: { accounts: true },
-    //     })
-
-    //     if (!existingUser) return false
-
-    //     const alreadyLinked = existingUser.accounts.some(
-    //       (acc) => acc.provider === "google"
-    //     )
-
-    //     if (!alreadyLinked) {
-    //       await prisma.account.create({
-    //         data: {
-    //           userId: existingUser.id,
-    //           type: "oauth",
-    //           provider: "google",
-    //           providerAccountId: account.providerAccountId!,
-    //           access_token: account.access_token,
-    //           refresh_token: account.refresh_token,
-    //           expires_at: account.expires_at,
-    //           token_type: account.token_type,
-    //           scope: account.scope,
-    //           id_token: account.id_token,
-    //         },
-    //       })
-    //     }
-    //   }
-
-    //   return true
-    // },
     async jwt({ token, user, trigger, session }: any) {
       if (user) {
         const dbUser = await prisma.user.findUnique({

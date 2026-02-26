@@ -901,7 +901,7 @@ function explainQuestionPurpose(questionText: string): string {
   return "Reason: this answer helps narrow likely causes from your current symptom pattern.";
 }
 
-function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number, choices?: string[]): string {
+function replyForQuestion(questionText: string, confirmed: Set<string>, turns: number): string {
   const symptoms = Array.from(confirmed).map(formatSymptom).join(", ");
   const reason = explainQuestionPurpose(questionText);
   return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}\n${reason}`;
@@ -1170,7 +1170,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json({
-        reply: replyForQuestion(question.text, confirmed, turns, question.choices),
+        reply: replyForQuestion(question.text, confirmed, turns),
         follow_up_suggested: true,
         follow_up_question: question.text,
         follow_up_choices: question.choices || null,

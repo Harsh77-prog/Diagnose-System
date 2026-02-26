@@ -1,10 +1,8 @@
 "use client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Activity,
   ArrowRight,
-  Bandage,
   Brain,
   ClipboardPlus,
   Globe,
@@ -19,7 +17,6 @@ import {
 } from "@/components/ui/accordion";
 import { Process1 } from "@/components/process1";
 import { Separator } from "@/components/ui/separator";
-import { InView } from "@/components/ui/in-view";
 import { useRouter } from "next/navigation";
 
 const faqs = [
