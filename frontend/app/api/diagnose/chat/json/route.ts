@@ -47,6 +47,7 @@ type FollowupState = {
     redFlagsPresent?: boolean;
     imageAvailable?: boolean;
     imageProvided?: boolean;
+    imageObservationShown?: boolean;
   };
 };
 
@@ -65,6 +66,59 @@ type ImagePredictionResult = {
   best_confidence: number;
   per_dataset: ImagePredictionPerDataset[];
 };
+
+function imageSpecificQuestion(prediction: ImagePredictionResult): string {
+  const dataset = prediction.best_dataset;
+  if (dataset === "dermamnist") {
+    return "Is the affected skin area also itchy, painful, or spreading?";
+  }
+  if (dataset === "retinamnist") {
+    return "Are you also having blurred vision, eye pain, or visual distortion?";
+  }
+  if (dataset === "chestmnist") {
+    return "Do you also have cough, fever, chest discomfort, or breathing difficulty?";
+  }
+  if (dataset === "bloodmnist") {
+    return "Do you also have fever, weakness, unusual bleeding, or frequent infections?";
+  }
+  return "Do you also have pain, swelling, fever, or worsening symptoms in this area?";
+}
+
+function addImageGuidedSymptoms(
+  prediction: ImagePredictionResult,
+  confirmed: Set<string>,
+  denied: Set<string>,
+  answer: "yes" | "no" | null
+): void {
+  const dataset = prediction.best_dataset;
+  if (answer === "yes") {
+    if (dataset === "dermamnist") {
+      confirmed.add("skin rash");
+      confirmed.add("itching");
+    } else if (dataset === "retinamnist") {
+      confirmed.add("blurred and distorted vision");
+      confirmed.add("redness of eyes");
+    } else if (dataset === "chestmnist") {
+      confirmed.add("cough");
+      confirmed.add("breathlessness");
+      confirmed.add("high fever");
+    } else if (dataset === "bloodmnist") {
+      confirmed.add("fatigue");
+      confirmed.add("high fever");
+    }
+  } else if (answer === "no") {
+    if (dataset === "dermamnist") {
+      denied.add("itching");
+    } else if (dataset === "retinamnist") {
+      denied.add("blurred and distorted vision");
+    } else if (dataset === "chestmnist") {
+      denied.add("cough");
+      denied.add("breathlessness");
+    } else if (dataset === "bloodmnist") {
+      denied.add("fatigue");
+    }
+  }
+}
 
 type Prediction = { disease: string; probability: number; matched: number; total: number };
 
@@ -1256,6 +1310,10 @@ export async function POST(req: NextRequest) {
           slots.imageAvailable = true;
           slots.imageProvided = true;
         }
+      } else if (qid === "image_condition_confirm") {
+        if (imagePrediction) {
+          addImageGuidedSymptoms(imagePrediction, confirmed, denied, answer);
+        }
       } else if (qid === "pain_location") {
         const parsedLocation = extractPainLocation(userMessage);
         if (parsedLocation) {
@@ -1311,6 +1369,54 @@ export async function POST(req: NextRequest) {
         }
       }
       turns += 1;
+    }
+
+    if (hasImagePayload && imagePrediction && !slots.imageObservationShown) {
+      slots.imageObservationShown = true;
+      const topThree = imagePrediction.per_dataset.slice(0, 3);
+      const evidenceLines = topThree
+        .map(
+          (p, idx) =>
+            `${idx + 1}. ${p.dataset}: ${p.top_label_name} (${Number(p.top_confidence).toFixed(1)}%)`
+        )
+        .join("\n");
+      const question = imageSpecificQuestion(imagePrediction);
+      const reply = [
+        "I analyzed your uploaded image using trained MedMNIST image models.",
+        "",
+        `Top image-model observations:`,
+        evidenceLines,
+        "",
+        `Primary image signal: **${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${Number(
+          imagePrediction.best_confidence
+        ).toFixed(1)}%)**`,
+        "",
+        "This image result is generated from your local image datasets/models, not a fake placeholder.",
+        "",
+        `**Question ${turns + 1}:** ${question}`,
+      ].join("\n");
+
+      const nextState = makeState({
+        turns,
+        maxTurns,
+        confirmedSymptoms: Array.from(confirmed),
+        deniedSymptoms: Array.from(denied),
+        askedSymptoms: Array.from(asked),
+        topCandidates: parsedState?.topCandidates || [],
+        currentQuestionId: "image_condition_confirm",
+        currentQuestionText: question,
+        currentQuestionChoices: ["yes", "no"],
+        imagePrediction,
+        slots,
+      });
+
+      return NextResponse.json({
+        reply,
+        follow_up_suggested: true,
+        follow_up_question: question,
+        follow_up_choices: ["yes", "no"],
+        follow_up_state: nextState,
+      });
     }
 
     const predictions = applyClinicalContextAdjustments(

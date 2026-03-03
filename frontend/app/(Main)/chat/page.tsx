@@ -22,6 +22,11 @@ type Message = {
     isInitial?: boolean;
 };
 
+type UserMessagePayload = {
+    image_preview?: string;
+    image_name?: string;
+};
+
 type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
@@ -61,6 +66,22 @@ function extractLatestDiagnosis(messages: Message[]): { messageId: string; paylo
             const parsed = JSON.parse(msg.jsonPayload) as Partial<DiagnosisPayload>;
             if (parsed?.diagnosis && Array.isArray(parsed.top_predictions)) {
                 return { messageId: msg.id, payload: parsed as DiagnosisPayload };
+            }
+        } catch {
+            continue;
+        }
+    }
+    return null;
+}
+
+function extractLatestUploadedImage(messages: Message[]): { preview: string; name?: string } | null {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const msg = messages[i];
+        if (msg.role !== "user" || !msg.jsonPayload) continue;
+        try {
+            const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
+            if (parsed.image_preview) {
+                return { preview: parsed.image_preview, name: parsed.image_name };
             }
         } catch {
             continue;
@@ -250,6 +271,7 @@ export default function ChatDashboard() {
     const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
     const [latestDiagnosis, setLatestDiagnosis] = useState<DiagnosisPayload | null>(null);
     const [latestDiagnosisMessageId, setLatestDiagnosisMessageId] = useState<string | null>(null);
+    const [latestUploadedImage, setLatestUploadedImage] = useState<{ preview: string; name?: string } | null>(null);
     const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
     const [mobilePanel, setMobilePanel] = useState<"none" | "history" | "prediction">("none");
 
@@ -311,6 +333,10 @@ export default function ChatDashboard() {
             setResultPanelMinimized(false);
         }
     }, [messages, latestDiagnosisMessageId]);
+
+    useEffect(() => {
+        setLatestUploadedImage(extractLatestUploadedImage(messages));
+    }, [messages]);
 
     async function fetchSessions() {
         try {
@@ -429,7 +455,15 @@ export default function ChatDashboard() {
         const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
         const pendingAttachments = [...attachments];
         const firstImage = pendingAttachments.find((f) => f.type.startsWith("image/")) || null;
-        const optimisticUserMessage: Message = { id: Date.now().toString(), role: "user", content: sentText };
+        const imageDataUrl = firstImage ? await fileToBase64(firstImage) : null;
+        const optimisticUserMessage: Message = {
+            id: Date.now().toString(),
+            role: "user",
+            content: sentText,
+            jsonPayload: imageDataUrl
+                ? JSON.stringify({ image_preview: imageDataUrl, image_name: firstImage?.name } as UserMessagePayload)
+                : null,
+        };
         setMessages(prev => [...prev, optimisticUserMessage]);
 
         setInput("");
@@ -464,7 +498,11 @@ export default function ChatDashboard() {
                 await fetch(`/api/chat/sessions/${activeSessionId}/messages`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ role: "user", content: sentText })
+                    body: JSON.stringify({
+                        role: "user",
+                        content: sentText,
+                        jsonPayload: imageDataUrl ? { image_preview: imageDataUrl, image_name: firstImage?.name } : null
+                    })
                 });
 
                 // Ask ML Engine
@@ -477,7 +515,7 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         message: sentText,
                         session_action: action || null,
-                        image_base64: firstImage ? await fileToBase64(firstImage) : null,
+                        image_base64: imageDataUrl,
                         image_filename: firstImage?.name || null,
                         image_mime: firstImage?.type || null
                     }),
@@ -797,6 +835,16 @@ export default function ChatDashboard() {
                                             <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
                                             <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
                                         </div>
+                                        {latestUploadedImage ? (
+                                            <div className="rounded-2xl border border-sky-200 bg-white p-4">
+                                                <div className="text-xs font-semibold uppercase tracking-wider text-sky-700 mb-2">Uploaded Medical Image</div>
+                                                <img
+                                                    src={latestUploadedImage.preview}
+                                                    alt={latestUploadedImage.name || "Uploaded medical image"}
+                                                    className="w-full max-h-64 object-contain rounded-xl border border-slate-200"
+                                                />
+                                            </div>
+                                        ) : null}
 
                                         <div className="rounded-2xl border border-emerald-200 bg-white p-4">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Top Predictions</div>
@@ -931,6 +979,23 @@ export default function ChatDashboard() {
                                         {msg.role === "user" ? (
                                             <div className="bg-[#f4f4f4] text-[15px] leading-relaxed text-[#0f0f0f] px-5 py-2.5 rounded-2xl rounded-tr-md">
                                                 <div className="whitespace-pre-wrap">{msg.content}</div>
+                                                {msg.jsonPayload && (() => {
+                                                    try {
+                                                        const payload = JSON.parse(msg.jsonPayload) as UserMessagePayload;
+                                                        if (!payload.image_preview) return null;
+                                                        return (
+                                                            <div className="mt-2">
+                                                                <img
+                                                                    src={payload.image_preview}
+                                                                    alt={payload.image_name || "Uploaded medical image"}
+                                                                    className="max-h-56 w-auto rounded-xl border border-slate-300"
+                                                                />
+                                                            </div>
+                                                        );
+                                                    } catch {
+                                                        return null;
+                                                    }
+                                                })()}
                                             </div>
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
@@ -1197,6 +1262,16 @@ export default function ChatDashboard() {
                                 </div>
                             </div>
                         </div>
+                        {latestUploadedImage ? (
+                            <div className="rounded-2xl border border-sky-200 bg-white p-4">
+                                <div className="text-xs font-semibold uppercase tracking-wider text-sky-700 mb-3">Uploaded Medical Image</div>
+                                <img
+                                    src={latestUploadedImage.preview}
+                                    alt={latestUploadedImage.name || "Uploaded medical image"}
+                                    className="w-full max-h-72 object-contain rounded-xl border border-slate-200"
+                                />
+                            </div>
+                        ) : null}
 
                         <div className="rounded-2xl border border-emerald-200 bg-white p-4">
                             <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Dataset Prediction Chart</div>
