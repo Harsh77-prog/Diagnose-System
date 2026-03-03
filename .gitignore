@@ -1,0 +1,6 @@
+node_modules/
+backend/medical_ML/data/medmnist_images/
+*.pth
+*.pt
+venv/
+__pycache__/ 
