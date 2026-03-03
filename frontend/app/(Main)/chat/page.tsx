@@ -27,6 +27,27 @@ type UserMessagePayload = {
     image_name?: string;
 };
 
+function toHindiBasic(text: string): string {
+    const replacements: Array<[RegExp, string]> = [
+        [/Likely condition/gi, "???? ???? ??????"],
+        [/Confidence/gi, "????? ?????"],
+        [/Question/gi, "????"],
+        [/Symptoms considered/gi, "????? ??? ??? ?? ?????"],
+        [/Top image-model observations/gi, "???? ???? ?? ?? ????"],
+        [/Primary image signal/gi, "???? ?? ????? ?????"],
+        [/Home Remedies/gi, "?? ?? ???? ???? ???? ????"],
+        [/Lifestyle Changes/gi, "???????? ?? ????? ??? ?????"],
+        [/Diet Adjustments/gi, "????-???? ?? ???? ?????"],
+        [/Yes/gi, "???"],
+        [/No/gi, "????"],
+    ];
+    let out = text;
+    for (const [pattern, value] of replacements) {
+        out = out.replace(pattern, value);
+    }
+    return out;
+}
+
 type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
@@ -274,6 +295,7 @@ export default function ChatDashboard() {
     const [latestUploadedImage, setLatestUploadedImage] = useState<{ preview: string; name?: string } | null>(null);
     const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
     const [mobilePanel, setMobilePanel] = useState<"none" | "history" | "prediction">("none");
+    const [hindiByMessage, setHindiByMessage] = useState<Record<string, boolean>>({});
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -971,8 +993,15 @@ export default function ChatDashboard() {
                                     <div className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"} min-w-0 ${msg.role === "user" ? 'max-w-[85%] md:max-w-[75%]' : 'max-w-full'}`}>
 
                                         {msg.role === "assistant" && (
-                                            <div className="font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">
-                                                MedCoreAI
+                                            <div className="w-full flex items-center justify-between font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">
+                                                <span>MedCoreAI</span>
+                                                <button
+                                                    type="button"
+                                                    className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${hindiByMessage[msg.id] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
+                                                    onClick={() => setHindiByMessage((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                                                >
+                                                    Hindi
+                                                </button>
                                             </div>
                                         )}
 
@@ -999,7 +1028,7 @@ export default function ChatDashboard() {
                                             </div>
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
-                                                {normalizeBrandName(msg.content).split("**").map((text, i) => (
+                                                {(hindiByMessage[msg.id] ? toHindiBasic(normalizeBrandName(msg.content)) : normalizeBrandName(msg.content)).split("**").map((text, i) => (
                                                     i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
                                                 ))}
 
@@ -1390,3 +1419,4 @@ export default function ChatDashboard() {
         </div >
     );
 }
+

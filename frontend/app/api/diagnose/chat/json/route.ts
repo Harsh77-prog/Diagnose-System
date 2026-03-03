@@ -897,6 +897,31 @@ function blendFinalConfidence(textConfidence: number, imageConfidence?: number):
   return Number(Math.max(0, Math.min(99.9, blended)).toFixed(1));
 }
 
+function toHindiBasic(text: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/Likely condition/gi, "???? ???? ??????"],
+    [/Confidence/gi, "????? ?????"],
+    [/Symptoms considered/gi, "????? ??? ??? ?? ?????"],
+    [/Question/gi, "????"],
+    [/Top image-model observations/gi, "???? ???? ?? ?? ????"],
+    [/Primary image signal/gi, "???? ?? ????? ?????"],
+    [/Image analysis source/gi, "???? ???? ?? ?????"],
+    [/Image model signal/gi, "???? ???? ?? ?????"],
+    [/Not used \(text-only prediction\)/gi, "???? ???? ?? ?? (????? ??????? ??)"],
+    [/Home Remedies/gi, "?? ?? ???? ???? ???? ????"],
+    [/Lifestyle Changes/gi, "???????? ?? ????? ??? ?????"],
+    [/Diet Adjustments/gi, "????-???? ?? ???? ?????"],
+    [/This is informational only and not a medical diagnosis/gi, "?? ????? ??????? ??, ????? ?????? ???? ????? ????"],
+    [/Yes/gi, "???"],
+    [/No/gi, "????"],
+  ];
+  let out = text;
+  for (const [pattern, value] of replacements) {
+    out = out.replace(pattern, value);
+  }
+  return `???? ????? (???):\n\n${out}`;
+}
+
 async function openAIFallbackDiagnosis(
   history: string[],
   message: string,
@@ -1261,6 +1286,19 @@ export async function POST(req: NextRequest) {
       const predicted = await fetchImagePrediction(imageBase64);
       if (predicted) {
         imagePrediction = predicted;
+      } else {
+        const reply =
+          "I received your image, but I could not run MedMNIST image-model inference right now. Please ensure backend image models are trained and available, then upload again.";
+        return NextResponse.json({
+          reply,
+          reply_hi: toHindiBasic(reply),
+          follow_up_suggested: false,
+          image_analysis: {
+            used: false,
+            source: "medmnist_models",
+            status: "unavailable",
+          },
+        });
       }
     }
 
@@ -1412,10 +1450,17 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         reply,
+        reply_hi: toHindiBasic(reply),
         follow_up_suggested: true,
         follow_up_question: question,
+        follow_up_question_hi: toHindiBasic(`Question: ${question}`),
         follow_up_choices: ["yes", "no"],
         follow_up_state: nextState,
+        image_analysis: {
+          used: true,
+          source: "medmnist_models",
+          status: "ok",
+        },
       });
     }
 
@@ -1543,10 +1588,10 @@ export async function POST(req: NextRequest) {
         };
         const combinedConfidence = blendFinalConfidence(Number(ai.confidence.toFixed(1)), imagePrediction?.best_confidence);
         const imageText = imagePrediction
-          ? `\n\n**Image model signal:** ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(
+          ? `\n\n**Image analysis source:** MedMNIST trained image models\n**Image model signal:** ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(
               1
             )}%)`
-          : "";
+          : `\n\n**Image analysis source:** Not used (text-only prediction)`;
         const reply = `Dataset confidence remained low, so an API-assisted prediction is used.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
           combinedConfidence
         ).toFixed(1)}%\n\n**Dataset comparison:** ${datasetComparison.diagnosis} (${datasetComparison.confidence}%)${imageText}\n\n${
@@ -1557,6 +1602,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           reply,
+          reply_hi: toHindiBasic(reply),
           follow_up_suggested: false,
           ml_diagnosis: {
             diagnosis: ai.diagnosis,
@@ -1577,6 +1623,10 @@ export async function POST(req: NextRequest) {
             considered_prior_history: false,
             image_prediction: imagePrediction,
             used_image: Boolean(imagePrediction),
+            image_analysis: {
+              used: Boolean(imagePrediction),
+              source: imagePrediction ? "medmnist_models" : "text_only",
+            },
             comparison: {
               dataset: datasetComparison,
               openai: {
@@ -1635,8 +1685,8 @@ export async function POST(req: NextRequest) {
 
     const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
     const imageText = imagePrediction
-      ? `\n\nImage model signal: ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(1)}%)`
-      : "";
+      ? `\n\nImage analysis source: MedMNIST trained image models\nImage model signal: ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(1)}%)`
+      : `\n\nImage analysis source: Not used (text-only prediction)`;
     const comparisonText = apiComparison
       ? `\n\n**OpenAI comparison:** ${apiComparison.diagnosis} (${Number(apiComparison.confidence).toFixed(1)}%)`
       : `\n\n**OpenAI comparison:** unavailable`;
@@ -1648,9 +1698,14 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       reply,
+      reply_hi: toHindiBasic(reply),
       follow_up_suggested: false,
       ml_diagnosis: {
         ...diagnosis,
+        image_analysis: {
+          used: Boolean(imagePrediction),
+          source: imagePrediction ? "medmnist_models" : "text_only",
+        },
         comparison: {
           dataset: {
             diagnosis: diagnosis.diagnosis,
@@ -1675,3 +1730,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
