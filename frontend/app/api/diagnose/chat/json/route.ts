@@ -96,6 +96,68 @@ function describeFetchError(err: unknown): string {
   return `${err.name}: ${err.message}${causeText}`;
 }
 
+function containsAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(text));
+}
+
+function inferPreferredImageDatasets(
+  message: string,
+  slots: FollowupState["slots"],
+  confirmedSymptoms: Set<string>
+): string[] {
+  const t = normalizeToken(message);
+  const preferred: string[] = [];
+  const push = (v: string) => {
+    if (!preferred.includes(v)) preferred.push(v);
+  };
+
+  const hasSkinKeywords =
+    slots.bodySystem === "dermatologic" ||
+    containsAny(t, [/\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness)\b/]) ||
+    confirmedSymptoms.has("skin rash") ||
+    confirmedSymptoms.has("itching");
+  if (hasSkinKeywords) push("dermamnist");
+
+  const hasEyeKeywords =
+    containsAny(t, [/\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual)\b/]) ||
+    confirmedSymptoms.has("blurred and distorted vision") ||
+    confirmedSymptoms.has("visual disturbances");
+  if (hasEyeKeywords) push("retinamnist");
+
+  const hasChestKeywords =
+    slots.bodySystem === "respiratory" ||
+    containsAny(t, [/\b(cough|chest|breath|breathing|phlegm|wheeze)\b/]);
+  if (hasChestKeywords) push("chestmnist");
+
+  if (containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin)\b/])) push("bloodmnist");
+  if (containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide)\b/])) push("pathmnist");
+
+  return preferred;
+}
+
+function alignImagePredictionWithContext(
+  prediction: ImagePredictionResult,
+  message: string,
+  slots: FollowupState["slots"],
+  confirmedSymptoms: Set<string>
+): ImagePredictionResult {
+  const preferred = inferPreferredImageDatasets(message, slots, confirmedSymptoms);
+  if (preferred.length === 0) return prediction;
+
+  const byDataset = new Map(prediction.per_dataset.map((p) => [p.dataset, p]));
+  const chosen = preferred.map((d) => byDataset.get(d)).find(Boolean);
+  if (!chosen) return prediction;
+
+  const reordered = [chosen, ...prediction.per_dataset.filter((p) => p.dataset !== chosen.dataset)];
+  return {
+    best_dataset: chosen.dataset,
+    best_label_index: chosen.top_label_index,
+    best_label_name: chosen.top_label_name,
+    best_confidence: chosen.top_confidence,
+    per_dataset: reordered,
+  };
+}
+
 function imageSpecificQuestion(prediction: ImagePredictionResult): string {
   const dataset = prediction.best_dataset;
   if (dataset === "dermamnist") {
@@ -353,7 +415,7 @@ function extractBodySystem(text: string): FollowupState["slots"]["bodySystem"] {
   if (/\bleg|knee|joint|hip|back pain|neck pain|swelling joints|painful walking|muscle\b/.test(t)) return "musculoskeletal";
   if (/\bcough|breath|chest tight|phlegm|wheeze|sore throat|runny nose|congestion\b/.test(t)) return "respiratory";
   if (/\bstomach|abdominal|nausea|vomit|diarrhea|constipation|acidity|indigestion|appetite\b/.test(t)) return "gastrointestinal";
-  if (/\bheadache|migraine|dizziness|vertigo|numbness|tingling|seizure\b/.test(t)) return "neurologic";
+  if (/\bheadache|migraine|dizziness|vertigo|numbness|tingling|seizure|vision|blurred|eye|retina|visual\b/.test(t)) return "neurologic";
   if (/\bchest pain|palpitation|heart|blood pressure|bp|fainting\b/.test(t)) return "cardiovascular";
   if (/\brush|itch|skin|lesion|patch|blister|redness on skin\b/.test(t)) return "dermatologic";
   return "general";
@@ -430,6 +492,23 @@ function aliasSymptoms(text: string, symptomSet: Set<string>): string[] {
   if (/\bvomit|\bvomiting\b/.test(t)) pushIf("vomiting");
   if (/\bfatigue|\btired|\bweak/.test(t)) pushIf("fatigue");
   if (/\brunny nose|\bblocked nose|\bcongestion/.test(t)) pushIf("runny nose");
+  if (/\bitch|itchy|itching\b/.test(t)) {
+    pushIf("itching");
+    pushIf("internal itching");
+  }
+  if (/\bskin rash|rash|rashes|red patch|skin patch|skin lesion|lesion\b/.test(t)) {
+    pushIf("skin rash");
+    pushIf("nodal skin eruptions");
+  }
+  if (/\bred spots?\b/.test(t)) pushIf("red spots over body");
+  if (/\boozing|ooze|discharge|crust\b/.test(t)) pushIf("yellow crust ooze");
+  if (/\bblurred vision|blurry vision|blurred|blurry|distorted vision\b/.test(t)) {
+    pushIf("blurred and distorted vision");
+    pushIf("visual disturbances");
+  }
+  if (/\bdark spots?|floaters?|flashes of light|visual disturbance\b/.test(t)) pushIf("visual disturbances");
+  if (/\beye pain|pain behind (the )?eyes?\b/.test(t)) pushIf("pain behind the eyes");
+  if (/\bred eyes?|eye redness\b/.test(t)) pushIf("redness of eyes");
   if (/\bleg pain\b|\bpain in (my )?leg\b|\bleg ache\b|\blegs hurt\b/.test(t)) {
     // Conservative mapping: avoid over-injecting symptoms from one vague complaint.
     pushIf("joint pain");
@@ -732,13 +811,21 @@ function applyClinicalContextAdjustments(predictions: Prediction[], slots: Follo
     .sort((a, b) => b.probability - a.probability);
 }
 
-function evaluatePredictionReliability(predictions: Prediction[], confirmedCount: number, turns: number): {
+function evaluatePredictionReliability(
+  predictions: Prediction[],
+  confirmedCount: number,
+  turns: number,
+  imagePrediction?: ImagePredictionResult | null
+): {
   reliable: boolean;
   topProbability: number;
   probabilityGap: number;
 } {
   const top = predictions[0];
-  if (!top) return { reliable: false, topProbability: 0, probabilityGap: 0 };
+  if (!top) {
+    const imageStrongOnly = Boolean(imagePrediction && imagePrediction.best_confidence >= 85 && confirmedCount >= 1);
+    return { reliable: imageStrongOnly, topProbability: imagePrediction?.best_confidence || 0, probabilityGap: 0 };
+  }
 
   const second = predictions[1];
   const probabilityGap = second ? top.probability - second.probability : top.probability;
@@ -746,9 +833,10 @@ function evaluatePredictionReliability(predictions: Prediction[], confirmedCount
   const enoughFollowup = turns >= 2;
   const strongConfidence = top.probability >= 62;
   const clearSeparation = probabilityGap >= 12;
+  const strongImageSignal = Boolean(imagePrediction && imagePrediction.best_confidence >= 85);
 
   return {
-    reliable: strongConfidence && clearSeparation && (enoughSymptoms || enoughFollowup),
+    reliable: (strongConfidence && clearSeparation && (enoughSymptoms || enoughFollowup)) || (strongImageSignal && enoughSymptoms),
     topProbability: top.probability,
     probabilityGap,
   };
@@ -1298,7 +1386,7 @@ export async function POST(req: NextRequest) {
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let turns = parsedState?.turns || 0;
-    const maxTurns = parsedState?.maxTurns || 10;
+    const maxTurns = parsedState?.maxTurns || 6;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -1334,7 +1422,7 @@ export async function POST(req: NextRequest) {
       slots.imageProvided = true;
       const imageFetch = await fetchImagePrediction(imageBase64, userId);
       if (imageFetch.prediction) {
-        imagePrediction = imageFetch.prediction;
+        imagePrediction = alignImagePredictionWithContext(imageFetch.prediction, userMessage, slots, confirmed);
       } else {
         const backendReason = imageFetch.error ? ` Backend reason: ${imageFetch.error}` : "";
         console.error("[diagnose:image] image inference unavailable", {
@@ -1529,7 +1617,7 @@ export async function POST(req: NextRequest) {
     const top = predictions[0];
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
-    const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns);
+    const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns, imagePrediction);
     let question: { id: string; text: string; choices?: string[] } | null = null;
 
     if (!reliability.reliable && turns < maxTurns) {
@@ -1620,6 +1708,39 @@ export async function POST(req: NextRequest) {
     }
 
     if (!top) {
+      if (imagePrediction) {
+        const reply = `I could not reach a confident text-only disease match, but your uploaded image produced a usable signal.\n\n**Image-led likely finding: ${imagePrediction.best_label_name}**\nSource dataset: ${imagePrediction.best_dataset}\nImage confidence: ${imagePrediction.best_confidence.toFixed(
+          1
+        )}%\n\nPlease use this as triage guidance and consult a clinician for confirmation.`;
+        return NextResponse.json({
+          reply,
+          follow_up_suggested: false,
+          image_analysis: {
+            used: true,
+            source: "medmnist_models",
+            status: "ok",
+          },
+          ml_diagnosis: {
+            diagnosis: imagePrediction.best_label_name,
+            confidence: Number(imagePrediction.best_confidence.toFixed(1)),
+            diagnosis_type: "image_guided",
+            top_predictions: imagePrediction.per_dataset.slice(0, 5).map((p) => ({
+              disease: `${p.dataset}:${p.top_label_name}`,
+              probability: Number(p.top_confidence.toFixed(1)),
+            })),
+            confirmed_symptoms: Array.from(confirmed),
+            followups_asked: turns,
+            demographics: {
+              gender: slots.gender || null,
+              age_group: slots.ageGroup || null,
+            },
+            source: "image_guided",
+            considered_prior_history: false,
+            image_prediction: imagePrediction,
+            used_image: true,
+          },
+        });
+      }
       return NextResponse.json({
         reply:
           "I cannot make a safe prediction from the current details. Please share exact symptom location, severity (0-10), duration, and any triggering factors.",
