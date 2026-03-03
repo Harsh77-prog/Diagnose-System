@@ -137,3 +137,33 @@ async def image_predict(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Image prediction failed: {exc}")
 
     return {"image_prediction": prediction}
+
+
+@router.post("/translate")
+async def translate_endpoint(request: Request) -> dict[str, Any]:
+    """JSON body: { text, target_lang? }. Returns machine-translated text."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON")
+
+    text = (body.get("text") or "").strip()
+    target_lang = (body.get("target_lang") or "hi").strip()
+    if not text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    try:
+        from translator.service import translate_text
+
+        translated = translate_text(text=text, target_lang=target_lang)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Translation failed: {exc}",
+        )
+
+    return {
+        "source_text": text,
+        "target_lang": target_lang,
+        "translated_text": translated,
+    }

@@ -897,31 +897,6 @@ function blendFinalConfidence(textConfidence: number, imageConfidence?: number):
   return Number(Math.max(0, Math.min(99.9, blended)).toFixed(1));
 }
 
-function toHindiBasic(text: string): string {
-  const replacements: Array<[RegExp, string]> = [
-    [/Likely condition/gi, "???? ???? ??????"],
-    [/Confidence/gi, "????? ?????"],
-    [/Symptoms considered/gi, "????? ??? ??? ?? ?????"],
-    [/Question/gi, "????"],
-    [/Top image-model observations/gi, "???? ???? ?? ?? ????"],
-    [/Primary image signal/gi, "???? ?? ????? ?????"],
-    [/Image analysis source/gi, "???? ???? ?? ?????"],
-    [/Image model signal/gi, "???? ???? ?? ?????"],
-    [/Not used \(text-only prediction\)/gi, "???? ???? ?? ?? (????? ??????? ??)"],
-    [/Home Remedies/gi, "?? ?? ???? ???? ???? ????"],
-    [/Lifestyle Changes/gi, "???????? ?? ????? ??? ?????"],
-    [/Diet Adjustments/gi, "????-???? ?? ???? ?????"],
-    [/This is informational only and not a medical diagnosis/gi, "?? ????? ??????? ??, ????? ?????? ???? ????? ????"],
-    [/Yes/gi, "???"],
-    [/No/gi, "????"],
-  ];
-  let out = text;
-  for (const [pattern, value] of replacements) {
-    out = out.replace(pattern, value);
-  }
-  return `???? ????? (???):\n\n${out}`;
-}
-
 async function openAIFallbackDiagnosis(
   history: string[],
   message: string,
@@ -1291,7 +1266,6 @@ export async function POST(req: NextRequest) {
           "I received your image, but I could not run MedMNIST image-model inference right now. Please ensure backend image models are trained and available, then upload again.";
         return NextResponse.json({
           reply,
-          reply_hi: toHindiBasic(reply),
           follow_up_suggested: false,
           image_analysis: {
             used: false,
@@ -1450,10 +1424,8 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         reply,
-        reply_hi: toHindiBasic(reply),
         follow_up_suggested: true,
         follow_up_question: question,
-        follow_up_question_hi: toHindiBasic(`Question: ${question}`),
         follow_up_choices: ["yes", "no"],
         follow_up_state: nextState,
         image_analysis: {
@@ -1602,7 +1574,6 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({
           reply,
-          reply_hi: toHindiBasic(reply),
           follow_up_suggested: false,
           ml_diagnosis: {
             diagnosis: ai.diagnosis,
@@ -1698,7 +1669,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       reply,
-      reply_hi: toHindiBasic(reply),
       follow_up_suggested: false,
       ml_diagnosis: {
         ...diagnosis,

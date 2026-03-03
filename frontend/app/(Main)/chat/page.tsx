@@ -27,27 +27,6 @@ type UserMessagePayload = {
     image_name?: string;
 };
 
-function toHindiBasic(text: string): string {
-    const replacements: Array<[RegExp, string]> = [
-        [/Likely condition/gi, "???? ???? ??????"],
-        [/Confidence/gi, "????? ?????"],
-        [/Question/gi, "????"],
-        [/Symptoms considered/gi, "????? ??? ??? ?? ?????"],
-        [/Top image-model observations/gi, "???? ???? ?? ?? ????"],
-        [/Primary image signal/gi, "???? ?? ????? ?????"],
-        [/Home Remedies/gi, "?? ?? ???? ???? ???? ????"],
-        [/Lifestyle Changes/gi, "???????? ?? ????? ??? ?????"],
-        [/Diet Adjustments/gi, "????-???? ?? ???? ?????"],
-        [/Yes/gi, "???"],
-        [/No/gi, "????"],
-    ];
-    let out = text;
-    for (const [pattern, value] of replacements) {
-        out = out.replace(pattern, value);
-    }
-    return out;
-}
-
 type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
@@ -296,6 +275,8 @@ export default function ChatDashboard() {
     const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
     const [mobilePanel, setMobilePanel] = useState<"none" | "history" | "prediction">("none");
     const [hindiByMessage, setHindiByMessage] = useState<Record<string, boolean>>({});
+    const [translatedByMessage, setTranslatedByMessage] = useState<Record<string, string>>({});
+    const [translatingByMessage, setTranslatingByMessage] = useState<Record<string, boolean>>({});
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -626,6 +607,27 @@ export default function ChatDashboard() {
             }
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function ensureHindiForMessage(msg: Message) {
+        if (msg.role !== "assistant") return;
+        if (translatedByMessage[msg.id] || translatingByMessage[msg.id]) return;
+        try {
+            setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
+            const res = await fetch("/api/diagnose/translate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
+            });
+            const data = await parseResponseJson<{ translated_text?: string; error?: string }>(res);
+            if (!res.ok) throw new Error(data.error || "Translation failed");
+            setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
+        } catch (err) {
+            console.error("Hindi translation failed:", err);
+            setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: msg.content }));
+        } finally {
+            setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: false }));
         }
     }
 
@@ -998,9 +1000,15 @@ export default function ChatDashboard() {
                                                 <button
                                                     type="button"
                                                     className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${hindiByMessage[msg.id] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
-                                                    onClick={() => setHindiByMessage((prev) => ({ ...prev, [msg.id]: !prev[msg.id] }))}
+                                                    onClick={async () => {
+                                                        const next = !hindiByMessage[msg.id];
+                                                        setHindiByMessage((prev) => ({ ...prev, [msg.id]: next }));
+                                                        if (next) {
+                                                            await ensureHindiForMessage(msg);
+                                                        }
+                                                    }}
                                                 >
-                                                    Hindi
+                                                    {translatingByMessage[msg.id] ? "Hindi..." : "Hindi"}
                                                 </button>
                                             </div>
                                         )}
@@ -1028,7 +1036,7 @@ export default function ChatDashboard() {
                                             </div>
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
-                                                {(hindiByMessage[msg.id] ? toHindiBasic(normalizeBrandName(msg.content)) : normalizeBrandName(msg.content)).split("**").map((text, i) => (
+                                                {(hindiByMessage[msg.id] ? (translatedByMessage[msg.id] || normalizeBrandName(msg.content)) : normalizeBrandName(msg.content)).split("**").map((text, i) => (
                                                     i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
                                                 ))}
 

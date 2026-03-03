@@ -21,3 +21,6 @@ venv/
 .venv/
 __pycache__/
 **/__pycache__/
+
+# MedMNIST archives
+backend/medical_ML/data/*.npz
