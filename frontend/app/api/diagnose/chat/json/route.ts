@@ -28,6 +28,7 @@ type FollowupState = {
   currentQuestionId: string;
   currentQuestionText: string;
   currentQuestionChoices?: string[];
+  imagePrediction?: ImagePredictionResult | null;
   slots: {
     gender?: "male" | "female" | "custom";
     ageGroup?: "infant" | "toddler" | "child" | "adolescent" | "youth" | "adult" | "middle_aged" | "senior_citizen";
@@ -44,7 +45,25 @@ type FollowupState = {
     symptomSeverity?: number;
     progression?: "better" | "same" | "worse";
     redFlagsPresent?: boolean;
+    imageAvailable?: boolean;
+    imageProvided?: boolean;
   };
+};
+
+type ImagePredictionPerDataset = {
+  dataset: string;
+  top_label_index: number;
+  top_label_name: string;
+  top_confidence: number;
+  scores?: Array<{ label_index: number; label_name: string; confidence: number }>;
+};
+
+type ImagePredictionResult = {
+  best_dataset: string;
+  best_label_index: number;
+  best_label_name: string;
+  best_confidence: number;
+  per_dataset: ImagePredictionPerDataset[];
 };
 
 type Prediction = { disease: string; probability: number; matched: number; total: number };
@@ -725,6 +744,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           currentQuestionId: p.currentQuestionId,
           currentQuestionText: p.currentQuestionText,
           currentQuestionChoices: p.currentQuestionChoices || undefined,
+          imagePrediction: (p as FollowupState).imagePrediction || null,
           slots: p.slots || {},
         };
       }
@@ -786,6 +806,41 @@ function yesNoFromText(text: string): "yes" | "no" | null {
   if (/\b(yes|yeah|yep|present|have|i do)\b/.test(t)) return "yes";
   if (/\b(no|not|none|dont|don't|never)\b/.test(t)) return "no";
   return null;
+}
+
+function cleanBase64Payload(value?: string | null): string {
+  if (!value) return "";
+  const payload = value.trim();
+  if (!payload) return "";
+  if (payload.startsWith("data:") && payload.includes(",")) return payload.split(",", 2)[1].trim();
+  return payload;
+}
+
+async function fetchImagePrediction(imageBase64: string): Promise<ImagePredictionResult | null> {
+  const backendUrl = (process.env.DIAGNOSE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(`${backendUrl}/api/diagnose/image-predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_base64: imageBase64 }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { image_prediction?: ImagePredictionResult };
+    return payload.image_prediction || null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function blendFinalConfidence(textConfidence: number, imageConfidence?: number): number {
+  if (typeof imageConfidence !== "number") return Number(textConfidence.toFixed(1));
+  const blended = textConfidence * 0.7 + imageConfidence * 0.3;
+  return Number(Math.max(0, Math.min(99.9, blended)).toFixed(1));
 }
 
 async function openAIFallbackDiagnosis(
@@ -1042,10 +1097,15 @@ export async function POST(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as {
       message?: string;
       session_action?: "yes" | "no" | "custom" | null;
+      image_base64?: string | null;
+      image_filename?: string | null;
+      image_mime?: string | null;
     };
     const userMessage = (body.message || "").trim();
     if (!userMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
     const action = body.session_action || null;
+    const imageBase64 = cleanBase64Payload(body.image_base64);
+    const hasImagePayload = imageBase64.length > 0;
 
     const chatSession = await prisma.chatSession.findUnique({ where: { id: sessionId } });
     if (!chatSession || chatSession.userId !== userId) {
@@ -1108,6 +1168,7 @@ export async function POST(req: NextRequest) {
     const denied = new Set<string>(parsedState?.deniedSymptoms || []);
     const asked = new Set<string>(parsedState?.askedSymptoms || []);
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
+    let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let turns = parsedState?.turns || 0;
     const maxTurns = parsedState?.maxTurns || 10;
 
@@ -1140,6 +1201,15 @@ export async function POST(req: NextRequest) {
     const ageGroup = extractAgeGroup(userMessage);
     if (ageGroup && parsedState?.currentQuestionId === "age_group") slots.ageGroup = ageGroup;
 
+    if (hasImagePayload) {
+      slots.imageAvailable = true;
+      slots.imageProvided = true;
+      const predicted = await fetchImagePrediction(imageBase64);
+      if (predicted) {
+        imagePrediction = predicted;
+      }
+    }
+
     if (parsedState && action && parsedState.currentQuestionId) {
       const qid = parsedState.currentQuestionId;
       const answer = action === "custom" ? yesNoFromText(userMessage) : action;
@@ -1167,6 +1237,25 @@ export async function POST(req: NextRequest) {
       } else if (qid === "age_group") {
         const parsedAgeGroup = extractAgeGroup(userMessage);
         if (parsedAgeGroup) slots.ageGroup = parsedAgeGroup;
+      } else if (qid === "image_available") {
+        if (answer === "yes") {
+          slots.imageAvailable = true;
+          if (hasImagePayload) {
+            slots.imageProvided = true;
+          } else {
+            slots.imageProvided = false;
+          }
+        }
+        if (answer === "no") {
+          slots.imageAvailable = false;
+          slots.imageProvided = false;
+          imagePrediction = null;
+        }
+      } else if (qid === "image_upload") {
+        if (hasImagePayload) {
+          slots.imageAvailable = true;
+          slots.imageProvided = true;
+        }
       } else if (qid === "pain_location") {
         const parsedLocation = extractPainLocation(userMessage);
         if (parsedLocation) {
@@ -1250,6 +1339,17 @@ export async function POST(req: NextRequest) {
           text: "Please select your gender for better triage context.",
           choices: ["male", "female", "custom"],
         };
+      } else if (typeof slots.imageAvailable !== "boolean") {
+        question = {
+          id: "image_available",
+          text: "Do you have a related medical image for this issue (skin/retina/chest/pathology/blood cell)?",
+          choices: ["yes", "no"],
+        };
+      } else if (slots.imageAvailable === true && !slots.imageProvided) {
+        question = {
+          id: "image_upload",
+          text: "Please upload one medical image now and send a short message (for example: 'uploaded image').",
+        };
       } else {
         const askedTracker = new Set<string>(asked);
         let generated: { id: string; text: string; choices?: string[] } | null = null;
@@ -1300,6 +1400,7 @@ export async function POST(req: NextRequest) {
         currentQuestionId: question.id,
         currentQuestionText: question.text,
         currentQuestionChoices: question.choices,
+        imagePrediction,
         slots,
       });
 
@@ -1334,9 +1435,15 @@ export async function POST(req: NextRequest) {
             probability: Number(p.probability.toFixed(1)),
           })),
         };
+        const combinedConfidence = blendFinalConfidence(Number(ai.confidence.toFixed(1)), imagePrediction?.best_confidence);
+        const imageText = imagePrediction
+          ? `\n\n**Image model signal:** ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(
+              1
+            )}%)`
+          : "";
         const reply = `Dataset confidence remained low, so an API-assisted prediction is used.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
-          ai.confidence
-        ).toFixed(1)}%\n\n**Dataset comparison:** ${datasetComparison.diagnosis} (${datasetComparison.confidence}%)\n\n${
+          combinedConfidence
+        ).toFixed(1)}%\n\n**Dataset comparison:** ${datasetComparison.diagnosis} (${datasetComparison.confidence}%)${imageText}\n\n${
           ai.summary || "Dataset confidence was low, so this used API-assisted analysis."
         }\n\n${
           ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
@@ -1347,7 +1454,7 @@ export async function POST(req: NextRequest) {
           follow_up_suggested: false,
           ml_diagnosis: {
             diagnosis: ai.diagnosis,
-            confidence: Number(ai.confidence.toFixed(1)),
+            confidence: combinedConfidence,
             diagnosis_type: "api_fallback",
             top_predictions: ai.top_predictions.map((p) => ({
               disease: p.disease,
@@ -1362,6 +1469,8 @@ export async function POST(req: NextRequest) {
             disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
             source: "api_fallback",
             considered_prior_history: false,
+            image_prediction: imagePrediction,
+            used_image: Boolean(imagePrediction),
             comparison: {
               dataset: datasetComparison,
               openai: {
@@ -1390,7 +1499,7 @@ export async function POST(req: NextRequest) {
 
     const diagnosis = {
       diagnosis: top.disease,
-      confidence: Number(top.probability.toFixed(1)),
+      confidence: blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence),
       diagnosis_type: top.probability >= 67 ? "confident" : "best_guess",
       top_predictions: predictions.slice(0, 5).map((p) => ({
         disease: p.disease,
@@ -1405,6 +1514,8 @@ export async function POST(req: NextRequest) {
       disease_info: diseaseInfo,
       source: "dataset_current_session",
       considered_prior_history: false,
+      image_prediction: imagePrediction,
+      used_image: Boolean(imagePrediction),
     };
     const apiComparison = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
       gender: slots.gender,
@@ -1417,12 +1528,15 @@ export async function POST(req: NextRequest) {
         : "";
 
     const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
+    const imageText = imagePrediction
+      ? `\n\nImage model signal: ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(1)}%)`
+      : "";
     const comparisonText = apiComparison
       ? `\n\n**OpenAI comparison:** ${apiComparison.diagnosis} (${Number(apiComparison.confidence).toFixed(1)}%)`
       : `\n\n**OpenAI comparison:** unavailable`;
     const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
       diagnosis.confidence
-    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}\n\n${
+    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}${imageText}\n\n${
       diseaseInfo.description || "No detailed description available in dataset."
     }${precautionsText}${comparisonText}\n\nThis is informational only and not a medical diagnosis.`;
 

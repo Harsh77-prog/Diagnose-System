@@ -219,6 +219,15 @@ function generateChatTitle(prompt: string) {
     return title || "New Diagnosis";
 }
 
+function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Failed to read file"));
+        reader.readAsDataURL(file);
+    });
+}
+
 const DIAGNOSIS_TRIGGER_HELP =
     "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have jaundice and yellow eyes`.";
 
@@ -418,6 +427,8 @@ export default function ChatDashboard() {
         if (!text.trim() && !action) return;
 
         const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
+        const pendingAttachments = [...attachments];
+        const firstImage = pendingAttachments.find((f) => f.type.startsWith("image/")) || null;
         const optimisticUserMessage: Message = { id: Date.now().toString(), role: "user", content: sentText };
         setMessages(prev => [...prev, optimisticUserMessage]);
 
@@ -465,7 +476,10 @@ export default function ChatDashboard() {
                     },
                     body: JSON.stringify({
                         message: sentText,
-                        session_action: action || null
+                        session_action: action || null,
+                        image_base64: firstImage ? await fileToBase64(firstImage) : null,
+                        image_filename: firstImage?.name || null,
+                        image_mime: firstImage?.type || null
                     }),
                 });
 

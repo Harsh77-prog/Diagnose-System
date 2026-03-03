@@ -14,6 +14,7 @@ from chroma_store import get_full_history
 from report_parser import parse_report_content
 
 router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
+_image_predictor = None
 
 
 def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, session_action: Optional[str] = None):
@@ -26,6 +27,17 @@ def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, sessio
         user_message=user_message,
         session_action=session_action,
     )
+
+
+def _get_image_predictor():
+    global _image_predictor
+    if _image_predictor is not None:
+        return _image_predictor
+
+    from image_predictor import ImagePredictor
+
+    _image_predictor = ImagePredictor(model_dir="medical_ML/models")
+    return _image_predictor
 
 
 @router.post("/chat")
@@ -99,3 +111,29 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
         session_action=session_action,
     )
     return result
+
+
+@router.post("/image-predict")
+async def image_predict(request: Request) -> dict[str, Any]:
+    """JSON body: { image_base64 }. Runs prediction across trained MedMNIST image models."""
+    require_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON")
+
+    image_base64 = (body.get("image_base64") or "").strip()
+    if not image_base64:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image_base64 is required")
+
+    try:
+        predictor = _get_image_predictor()
+        prediction = predictor.predict_all(image_base64)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Image prediction failed: {exc}")
+
+    return {"image_prediction": prediction}

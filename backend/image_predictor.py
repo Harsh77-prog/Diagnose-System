@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import base64
+import io
+from pathlib import Path
+from typing import Any
+
+import medmnist
+import torch
+import torch.nn as nn
+from medmnist import INFO
+from PIL import Image
+from torchvision import transforms
+
+
+DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
+
+
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes: int) -> None:
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(64 * 7 * 7, 128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.features(x)
+        return self.classifier(x)
+
+
+class ImagePredictor:
+    def __init__(self, model_dir: str) -> None:
+        self.model_dir = Path(model_dir)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.transform = transforms.Compose(
+            [
+                transforms.Resize((28, 28)),
+                transforms.Lambda(lambda img: img.convert("RGB")),
+                transforms.ToTensor(),
+            ]
+        )
+        self._models: dict[str, SimpleCNN] = {}
+        self._load_all_models()
+
+    def _load_all_models(self) -> None:
+        for dataset_name in DATASETS:
+            model_path = self.model_dir / f"{dataset_name}_model.pth"
+            if not model_path.exists():
+                continue
+
+            num_classes = len(INFO[dataset_name]["label"])
+            model = SimpleCNN(num_classes=num_classes).to(self.device)
+            state = torch.load(model_path, map_location=self.device)
+            model.load_state_dict(state)
+            model.eval()
+            self._models[dataset_name] = model
+
+    def available_datasets(self) -> list[str]:
+        return sorted(self._models.keys())
+
+    def predict_all(self, image_base64: str) -> dict[str, Any]:
+        if not self._models:
+            raise RuntimeError(
+                "No image models found. Train models first with backend/train_model.py."
+            )
+
+        image_bytes = self._decode_base64(image_base64)
+        image = Image.open(io.BytesIO(image_bytes))
+        tensor = self.transform(image).unsqueeze(0).to(self.device)
+
+        predictions: list[dict[str, Any]] = []
+        for dataset_name, model in self._models.items():
+            info = INFO[dataset_name]
+            labels = info["label"]
+
+            with torch.no_grad():
+                logits = model(tensor)
+                if dataset_name == "chestmnist":
+                    probs = torch.sigmoid(logits).squeeze(0)
+                    top_idx = int(torch.argmax(probs).item())
+                    top_conf = float(probs[top_idx].item() * 100.0)
+                    label_name = labels[str(top_idx)]
+                    all_scores = [
+                        {
+                            "label_index": idx,
+                            "label_name": labels[str(idx)],
+                            "confidence": round(float(score.item() * 100.0), 2),
+                        }
+                        for idx, score in enumerate(probs)
+                    ]
+                else:
+                    probs = torch.softmax(logits, dim=1).squeeze(0)
+                    top_idx = int(torch.argmax(probs).item())
+                    top_conf = float(probs[top_idx].item() * 100.0)
+                    label_name = labels[str(top_idx)]
+                    all_scores = [
+                        {
+                            "label_index": idx,
+                            "label_name": labels[str(idx)],
+                            "confidence": round(float(score.item() * 100.0), 2),
+                        }
+                        for idx, score in enumerate(probs)
+                    ]
+
+            predictions.append(
+                {
+                    "dataset": dataset_name,
+                    "top_label_index": top_idx,
+                    "top_label_name": label_name,
+                    "top_confidence": round(top_conf, 2),
+                    "scores": sorted(all_scores, key=lambda x: x["confidence"], reverse=True)[:5],
+                }
+            )
+
+        best = max(predictions, key=lambda p: p["top_confidence"])
+        return {
+            "best_dataset": best["dataset"],
+            "best_label_index": best["top_label_index"],
+            "best_label_name": best["top_label_name"],
+            "best_confidence": best["top_confidence"],
+            "per_dataset": sorted(predictions, key=lambda p: p["top_confidence"], reverse=True),
+        }
+
+    @staticmethod
+    def _decode_base64(image_base64: str) -> bytes:
+        payload = image_base64.strip()
+        if "," in payload and payload.lower().startswith("data:"):
+            payload = payload.split(",", 1)[1]
+        try:
+            return base64.b64decode(payload, validate=True)
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError("Invalid image_base64 payload") from exc

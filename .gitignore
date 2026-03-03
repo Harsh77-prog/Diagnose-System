@@ -1,6 +1,23 @@
 node_modules/
+
+# MedMNIST and dataset artifacts
 backend/medical_ML/data/medmnist_images/
+medmnist_images/
+dataset/
+datasets/
+**/dataset/
+**/datasets/
+**/medmnist_images/
+backend/medical_ML/data/**/*.png
+backend/medical_ML/data/**/*.jpg
+backend/medical_ML/data/**/*.jpeg
+
+# Model weights
 *.pth
 *.pt
+
+# Python runtime and virtual environments
 venv/
-__pycache__/ 
+.venv/
+__pycache__/
+**/__pycache__/
