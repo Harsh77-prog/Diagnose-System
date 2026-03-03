@@ -80,9 +80,11 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --scrollbar-track: oklch(0.97 0 0);
-  --scrollbar-thumb: oklch(0.556 0 0);
-  --scrollbar-thumb-strong: oklch(0.445 0 0);
+  --scrollbar-track: oklch(0.985 0 0);
+  --scrollbar-thumb: oklch(0.63 0.12 200);
+  --scrollbar-thumb-strong: oklch(0.54 0.16 220);
+  --scrollbar-glow: oklch(0.78 0.22 200 / 45%);
+  --scrollbar-line: oklch(0.82 0.02 250 / 70%);
 }
 
 .dark {
@@ -118,8 +120,10 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --scrollbar-track: oklch(0.205 0 0);
-  --scrollbar-thumb: oklch(0.708 0 0);
-  --scrollbar-thumb-strong: oklch(0.922 0 0);
+  --scrollbar-thumb: oklch(0.76 0.12 200);
+  --scrollbar-thumb-strong: oklch(0.85 0.18 210);
+  --scrollbar-glow: oklch(0.78 0.22 200 / 55%);
+  --scrollbar-line: oklch(0.88 0.02 250 / 55%);
 }
 
 @layer base {
@@ -134,37 +138,40 @@
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 
 *::-webkit-scrollbar-track {
-  background: linear-gradient(
-    90deg,
-    transparent 0,
-    transparent 3px,
-    var(--scrollbar-track) 3px,
-    var(--scrollbar-track) 7px,
-    transparent 7px
-  );
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0,
+      transparent 6px,
+      color-mix(in oklch, var(--scrollbar-line), transparent 35%) 6px,
+      color-mix(in oklch, var(--scrollbar-line), transparent 35%) 10px
+    ),
+    linear-gradient(90deg, transparent 0, var(--scrollbar-track) 45%, transparent 100%);
 }
 
 *::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    180deg,
-    var(--scrollbar-thumb) 0%,
-    var(--scrollbar-thumb-strong) 100%
-  );
+  background:
+    linear-gradient(180deg, #ffffff80 0%, #ffffff00 30%),
+    linear-gradient(180deg, var(--scrollbar-thumb) 0%, var(--scrollbar-thumb-strong) 100%);
   border-radius: 999px;
-  border: 2px solid var(--scrollbar-track);
+  border: 2px solid color-mix(in oklch, var(--scrollbar-track), transparent 10%);
+  box-shadow:
+    0 0 12px var(--scrollbar-glow),
+    inset 0 0 0 1px color-mix(in oklch, var(--scrollbar-thumb-strong), #ffffff 35%);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(
-    180deg,
-    var(--scrollbar-thumb-strong) 0%,
-    var(--scrollbar-thumb) 100%
-  );
+  background:
+    linear-gradient(180deg, #ffffffb3 0%, #ffffff00 35%),
+    linear-gradient(180deg, var(--scrollbar-thumb-strong) 0%, var(--scrollbar-thumb) 100%);
+  box-shadow:
+    0 0 18px var(--scrollbar-glow),
+    inset 0 0 0 1px color-mix(in oklch, var(--scrollbar-thumb-strong), #ffffff 45%);
 }
 
 *::-webkit-scrollbar-corner {
