@@ -652,6 +652,52 @@ function evaluatePredictionReliability(predictions: Prediction[], confirmedCount
   };
 }
 
+function pickFallbackQuestionFromDataset(
+  datasets: DatasetCache,
+  confirmed: Set<string>,
+  denied: Set<string>,
+  asked: Set<string>,
+  topCandidates: string[]
+): { id: string; text: string; choices?: string[] } | null {
+  if (!datasets.loaded) return null;
+
+  const candidateSet = new Set(topCandidates.map((name) => normalizeToken(name)));
+  const candidateDiseases =
+    candidateSet.size === 0
+      ? datasets.diseases
+      : datasets.diseases.filter((d) => candidateSet.has(normalizeToken(d.name)));
+
+  if (candidateDiseases.length === 0) return null;
+
+  const scores = new Map<string, number>();
+  for (let i = 0; i < candidateDiseases.length; i += 1) {
+    const disease = candidateDiseases[i];
+    const weight = 1 + Math.max(0, candidateDiseases.length - i - 1) * 0.05;
+    for (const symptom of disease.symptoms) {
+      if (confirmed.has(symptom) || denied.has(symptom)) continue;
+      if (asked.has(symptom) || asked.has(`symptom:${symptom}`)) continue;
+      scores.set(symptom, (scores.get(symptom) || 0) + weight);
+    }
+  }
+
+  if (scores.size === 0) return null;
+
+  let bestSymptom = "";
+  let bestScore = -1;
+  for (const [symptom, score] of scores.entries()) {
+    if (score > bestScore || (score === bestScore && symptom < bestSymptom)) {
+      bestSymptom = symptom;
+      bestScore = score;
+    }
+  }
+
+  if (!bestSymptom) return null;
+  const text = `Have you experienced ${formatSymptom(bestSymptom)}?`;
+  if (asked.has(questionTextKey(text))) return null;
+
+  return { id: `symptom:${bestSymptom}`, text, choices: ["yes", "no"] };
+}
+
 function formatSymptom(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -1231,9 +1277,12 @@ export async function POST(req: NextRequest) {
         question = generated;
 
         if (!question) {
+          question = pickFallbackQuestionFromDataset(datasets, confirmed, denied, askedTracker, topCandidates);
+        }
+        if (!question) {
           return NextResponse.json({
             reply:
-              "Live follow-up generation is currently unavailable. Please try again shortly. If this continues, verify OPENAI_API_KEY and OPENAI_MODEL.",
+              "Live follow-up generation is currently unavailable and a dataset fallback could not be selected. Please try again shortly. If this continues, verify OPENAI_API_KEY and OPENAI_MODEL.",
             follow_up_suggested: false,
           });
         }
