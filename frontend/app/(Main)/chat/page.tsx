@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple } from "lucide-react";
+import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple, Paperclip, Image as ImageIcon, FileText, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -230,6 +231,7 @@ export default function ChatDashboard() {
     const [messages, setMessages] = useState<Message[]>([]);
 
     const [input, setInput] = useState("");
+    const [attachments, setAttachments] = useState<File[]>([]);
     const [loading, setLoading] = useState(false);
     const [followUpActive, setFollowUpActive] = useState(false);
     const [followUpQuestion, setFollowUpQuestion] = useState<string>("");
@@ -244,6 +246,8 @@ export default function ChatDashboard() {
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const reportInputRef = useRef<HTMLInputElement>(null);
 
     // Auth redirection
     useEffect(() => {
@@ -273,6 +277,16 @@ export default function ChatDashboard() {
             textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
         }
     }, [input]);
+
+    function handleFileAdd(files: FileList | null) {
+        if (!files || files.length === 0) return;
+        const incoming = Array.from(files);
+        setAttachments((prev) => [...prev, ...incoming]);
+    }
+
+    function removeAttachment(index: number) {
+        setAttachments((prev) => prev.filter((_, i) => i !== index));
+    }
 
     // Track latest diagnosis and auto-open result panel
     useEffect(() => {
@@ -408,6 +422,7 @@ export default function ChatDashboard() {
         setMessages(prev => [...prev, optimisticUserMessage]);
 
         setInput("");
+        setAttachments([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
         setLoading(true);
 
@@ -996,13 +1011,89 @@ export default function ChatDashboard() {
                                 </div>
                             ) : null}
 
+                            {attachments.length > 0 ? (
+                                <div className="px-3 pt-3 flex flex-wrap gap-2">
+                                    {attachments.map((file, index) => (
+                                        <div
+                                            key={`${file.name}-${index}`}
+                                            className="flex items-center gap-2 rounded-full border border-[#e5e5e5] bg-white px-3 py-1.5 text-xs text-slate-700 shadow-sm"
+                                        >
+                                            <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                                            <span className="max-w-[220px] truncate">{file.name}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => removeAttachment(index)}
+                                                className="rounded-full p-0.5 text-slate-500 hover:text-slate-800"
+                                                aria-label="Remove attachment"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : null}
+
                             <form
                                 onSubmit={(e) => {
                                     e.preventDefault();
                                     sendMessage(input, followUpActive ? "custom" : undefined);
                                 }}
-                                className="flex items-end p-2.5"
+                                className="flex items-end gap-2 p-2.5"
                             >
+                                <input
+                                    ref={imageInputRef}
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        handleFileAdd(e.target.files);
+                                        e.currentTarget.value = "";
+                                    }}
+                                />
+                                <input
+                                    ref={reportInputRef}
+                                    type="file"
+                                    accept=".pdf,.doc,.docx,.txt,.csv"
+                                    multiple
+                                    className="hidden"
+                                    onChange={(e) => {
+                                        handleFileAdd(e.target.files);
+                                        e.currentTarget.value = "";
+                                    }}
+                                />
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-9 w-9 rounded-full border-[#e5e5e5] bg-white text-slate-600 hover:bg-[#f7f7f7]"
+                                            aria-label="Add attachment"
+                                        >
+                                            <PlusSquare className="w-4 h-4" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="start" className="w-56 p-2">
+                                        <div className="text-[11px] uppercase tracking-wide text-slate-500 px-2 pb-1">Upload</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => imageInputRef.current?.click()}
+                                            className="w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                        >
+                                            <ImageIcon className="w-4 h-4" />
+                                            Upload image
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => reportInputRef.current?.click()}
+                                            className="w-full flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                            Upload reports
+                                        </button>
+                                    </PopoverContent>
+                                </Popover>
                                 <textarea
                                     ref={textareaRef}
                                     value={input}
