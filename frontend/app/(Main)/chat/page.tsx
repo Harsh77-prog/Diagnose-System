@@ -610,9 +610,10 @@ export default function ChatDashboard() {
         }
     }
 
-    async function ensureHindiForMessage(msg: Message) {
-        if (msg.role !== "assistant") return;
-        if (translatedByMessage[msg.id] || translatingByMessage[msg.id]) return;
+    async function ensureHindiForMessage(msg: Message): Promise<boolean> {
+        if (msg.role !== "assistant") return false;
+        if (translatedByMessage[msg.id]) return true;
+        if (translatingByMessage[msg.id]) return false;
         try {
             setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
             const res = await fetch("/api/diagnose/translate", {
@@ -623,9 +624,10 @@ export default function ChatDashboard() {
             const data = await parseResponseJson<{ translated_text?: string; error?: string }>(res);
             if (!res.ok) throw new Error(data.error || "Translation failed");
             setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
+            return true;
         } catch (err) {
             console.error("Hindi translation failed:", err);
-            setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: msg.content }));
+            return false;
         } finally {
             setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: false }));
         }
@@ -995,17 +997,19 @@ export default function ChatDashboard() {
                                     <div className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"} min-w-0 ${msg.role === "user" ? 'max-w-[85%] md:max-w-[75%]' : 'max-w-full'}`}>
 
                                         {msg.role === "assistant" && (
-                                            <div className="w-full flex items-center justify-between font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">
+                                            <div className="w-full flex items-center gap-2 font-semibold text-slate-800 text-[13px] mb-1.5 px-1 tracking-tight">
                                                 <span>MedCoreAI</span>
                                                 <button
                                                     type="button"
                                                     className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${hindiByMessage[msg.id] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
                                                     onClick={async () => {
-                                                        const next = !hindiByMessage[msg.id];
-                                                        setHindiByMessage((prev) => ({ ...prev, [msg.id]: next }));
-                                                        if (next) {
-                                                            await ensureHindiForMessage(msg);
+                                                        const isHindiEnabled = !!hindiByMessage[msg.id];
+                                                        if (isHindiEnabled) {
+                                                            setHindiByMessage((prev) => ({ ...prev, [msg.id]: false }));
+                                                            return;
                                                         }
+                                                        const translated = await ensureHindiForMessage(msg);
+                                                        setHindiByMessage((prev) => ({ ...prev, [msg.id]: translated }));
                                                     }}
                                                 >
                                                     {translatingByMessage[msg.id] ? "Hindi..." : "Hindi"}
