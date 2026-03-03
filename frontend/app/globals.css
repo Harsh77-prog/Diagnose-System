@@ -81,10 +81,10 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --scrollbar-track: oklch(0.985 0 0);
-  --scrollbar-thumb: oklch(0.63 0.12 200);
-  --scrollbar-thumb-strong: oklch(0.54 0.16 220);
-  --scrollbar-glow: oklch(0.78 0.22 200 / 45%);
-  --scrollbar-line: oklch(0.82 0.02 250 / 70%);
+  --scrollbar-thumb: oklch(0.45 0 0);
+  --scrollbar-thumb-strong: oklch(0.3 0 0);
+  --scrollbar-glow: oklch(0.4 0 0 / 24%);
+  --scrollbar-line: oklch(0.7 0 0 / 55%);
 }
 
 .dark {
@@ -120,10 +120,10 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --scrollbar-track: oklch(0.205 0 0);
-  --scrollbar-thumb: oklch(71.496% 0.00596 211.718);
-  --scrollbar-thumb-strong: oklch(70.576% 0.00008 271.152);
-  --scrollbar-glow: oklch(0% 0 0 / 0.55);
-  --scrollbar-line: oklch(80.152% 0.00009 271.152 / 0.55);
+  --scrollbar-thumb: oklch(0.62 0 0);
+  --scrollbar-thumb-strong: oklch(0.78 0 0);
+  --scrollbar-glow: oklch(0% 0 0 / 0.4);
+  --scrollbar-line: oklch(0.7 0 0 / 0.45);
 }
 
 @layer base {
