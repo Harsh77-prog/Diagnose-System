@@ -13,7 +13,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
 
-    const backendUrl = (process.env.DIAGNOSE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+    const backendUrl = (
+      process.env.DIAGNOSE_BACKEND_URL ||
+      process.env.BACKEND_URL ||
+      "http://127.0.0.1:8000"
+    ).replace(/\/+$/, "");
     const res = await fetch(`${backendUrl}/api/diagnose/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -34,4 +38,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

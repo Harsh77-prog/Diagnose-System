@@ -893,7 +893,11 @@ function cleanBase64Payload(value?: string | null): string {
 }
 
 async function fetchImagePrediction(imageBase64: string, userId: string): Promise<ImagePredictionFetchResult> {
-  const backendUrl = (process.env.DIAGNOSE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  const backendUrl = (
+    process.env.DIAGNOSE_BACKEND_URL ||
+    process.env.BACKEND_URL ||
+    "http://127.0.0.1:8000"
+  ).replace(/\/+$/, "");
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
