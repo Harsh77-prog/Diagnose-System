@@ -74,6 +74,13 @@ type ImagePredictionFetchResult = {
   status: number | null;
 };
 
+function resolveImageTimeoutMs(): number {
+  const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
+  return 120000;
+}
+
 function describeFetchError(err: unknown): string {
   if (!(err instanceof Error)) return "Unknown fetch error";
   const maybeCause = (err as Error & { cause?: unknown }).cause as
@@ -899,8 +906,9 @@ async function fetchImagePrediction(imageBase64: string, userId: string): Promis
     "http://127.0.0.1:8000"
   ).replace(/\/+$/, "");
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
+  const timeoutMs = resolveImageTimeoutMs();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (sharedSecret) {
@@ -943,6 +951,7 @@ async function fetchImagePrediction(imageBase64: string, userId: string): Promis
     console.error("[diagnose:image] fetch failed", {
       error: errorText,
       backendUrl,
+      timeoutMs,
       hasSharedSecret: Boolean(sharedSecret),
     });
     return {
