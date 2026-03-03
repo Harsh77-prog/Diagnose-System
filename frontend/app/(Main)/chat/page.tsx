@@ -830,7 +830,7 @@ export default function ChatDashboard() {
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="rounded-2xl bg-gradient-to-br from-[#111827] to-[#1f2937] text-white p-4">
+                                        <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 text-white p-4 med-lift med-fade-up">
                                             <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
                                             <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
                                             <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
@@ -846,8 +846,8 @@ export default function ChatDashboard() {
                                             </div>
                                         ) : null}
 
-                                        <div className="rounded-2xl border border-emerald-200 bg-white p-4">
-                                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Top Predictions</div>
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Top Predictions</div>
                                             <div className="space-y-2.5">
                                                 {(panelPredictions.slice(0, 5)).map((pred) => (
                                                     <div key={pred.disease}>
@@ -856,7 +856,7 @@ export default function ChatDashboard() {
                                                             <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
                                                         </div>
                                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600" style={{ width: `${pred.probability}%` }} />
+                                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500" style={{ width: `${pred.probability}%` }} />
                                                         </div>
                                                     </div>
                                                 ))}
@@ -870,36 +870,36 @@ export default function ChatDashboard() {
                                             </p>
                                         </div>
 
-                                        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4">
-                                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800 mb-2">Home Remedies</div>
+                                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Home Remedies</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
                                                 {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
                                                     </li>
                                                 ))}
                                             </ul>
                                         </div>
 
-                                        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4">
-                                            <div className="text-xs font-semibold uppercase tracking-wider text-violet-800 mb-2">Lifestyle Changes</div>
+                                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Lifestyle Changes</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
                                                 {(guidance?.lifestyle || []).map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
                                                     </li>
                                                 ))}
                                             </ul>
                                         </div>
 
-                                        <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-white p-4">
-                                            <div className="text-xs font-semibold uppercase tracking-wider text-orange-800 mb-2">Diet Adjustments</div>
+                                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
+                                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Diet Adjustments</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
                                                 {(guidance?.diet || []).map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
+                                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
                                                     </li>
                                                 ))}
@@ -914,7 +914,7 @@ export default function ChatDashboard() {
 
                 <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 scroll-smooth font-sans">
                     <div className="max-w-3xl mx-auto w-full">
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 px-4 py-2.5 text-[12px] md:text-[13px]">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 text-slate-700 px-4 py-2.5 text-[12px] md:text-[13px] med-fade-up">
                             {DIAGNOSIS_TRIGGER_HELP}
                         </div>
                     </div>
@@ -957,7 +957,7 @@ export default function ChatDashboard() {
                     ) : (
                         <div className="w-full flex flex-col space-y-6">
                             {messages.map((msg) => (
-                                <div key={msg.id} className={`flex max-w-3xl mx-auto w-full group ${msg.role === "user" ? "justify-end" : "justify-start"} px-2 md:px-0`}>
+                                <div key={msg.id} className={`flex max-w-3xl mx-auto w-full group med-fade-up ${msg.role === "user" ? "justify-end" : "justify-start"} px-2 md:px-0`}>
                                     {/* Assistant Avatar */}
                                     {msg.role === "assistant" && (
                                         <div className="shrink-0 mr-4 mt-1">
@@ -977,7 +977,7 @@ export default function ChatDashboard() {
                                         )}
 
                                         {msg.role === "user" ? (
-                                            <div className="bg-[#f4f4f4] text-[15px] leading-relaxed text-[#0f0f0f] px-5 py-2.5 rounded-2xl rounded-tr-md">
+                                            <div className="bg-slate-100 text-[15px] leading-relaxed text-[#0f0f0f] px-5 py-2.5 rounded-2xl rounded-tr-md border border-slate-200">
                                                 <div className="whitespace-pre-wrap">{msg.content}</div>
                                                 {msg.jsonPayload && (() => {
                                                     try {
@@ -1059,7 +1059,7 @@ export default function ChatDashboard() {
                 {/* Main Input Area - Floating ChatGPT Style */}
                 <div className="shrink-0 pt-2 pb-6 px-4 md:px-8 bg-white w-full border-t border-slate-100">
                     <div className="max-w-3xl mx-auto w-full">
-                        <div className="bg-[#f4f4f4] rounded-[24px] border border-[#e5e5e5] hover:border-[#d4d4d4] shadow-sm overflow-hidden focus-within:ring-1 focus-within:ring-[#d4d4d4] transition-all flex flex-col">
+                        <div className="bg-slate-50 rounded-[24px] border border-slate-200 hover:border-slate-300 shadow-sm overflow-hidden focus-within:ring-1 focus-within:ring-slate-300 transition-all flex flex-col med-lift">
                             {followUpActive ? (
                                 <div className="p-3 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-[#e5e5e5]">
                                     <span className="text-[13px] font-medium text-slate-600 flex items-center gap-2">
@@ -1233,7 +1233,7 @@ export default function ChatDashboard() {
                     </div>
                 ) : (
                     <div className="w-[340px] h-full overflow-y-auto p-4 space-y-4">
-                        <div className="rounded-2xl bg-gradient-to-br from-[#111827] to-[#1f2937] text-white p-4">
+                        <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-700 text-white p-4 med-lift med-fade-up">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
@@ -1253,9 +1253,9 @@ export default function ChatDashboard() {
                             <div className="mt-4 flex items-center gap-4">
                                 <div
                                     className="h-16 w-16 rounded-full grid place-items-center text-xs font-semibold"
-                                    style={{ background: `conic-gradient(#10b981 ${panelConfidence}%, #374151 ${panelConfidence}% 100%)` }}
+                                    style={{ background: `conic-gradient(#334155 ${panelConfidence}%, #94a3b8 ${panelConfidence}% 100%)` }}
                                 >
-                                    <div className="h-12 w-12 rounded-full bg-[#111827] grid place-items-center">{Math.round(panelConfidence)}%</div>
+                                    <div className="h-12 w-12 rounded-full bg-slate-900 grid place-items-center med-ring-pulse">{Math.round(panelConfidence)}%</div>
                                 </div>
                                 <div className="text-xs text-slate-300 leading-relaxed">
                                     Model confidence gauge based on your confirmed symptoms and follow-up responses.
@@ -1263,8 +1263,8 @@ export default function ChatDashboard() {
                             </div>
                         </div>
                         {latestUploadedImage ? (
-                            <div className="rounded-2xl border border-sky-200 bg-white p-4">
-                                <div className="text-xs font-semibold uppercase tracking-wider text-sky-700 mb-3">Uploaded Medical Image</div>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Uploaded Medical Image</div>
                                 <img
                                     src={latestUploadedImage.preview}
                                     alt={latestUploadedImage.name || "Uploaded medical image"}
@@ -1273,8 +1273,8 @@ export default function ChatDashboard() {
                             </div>
                         ) : null}
 
-                        <div className="rounded-2xl border border-emerald-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700 mb-3">Dataset Prediction Chart</div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Dataset Prediction Chart</div>
                             <div className="space-y-2.5">
                                 {(datasetPanelPredictions.slice(0, 5)).map((pred) => (
                                     <div key={pred.disease}>
@@ -1283,7 +1283,7 @@ export default function ChatDashboard() {
                                             <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
                                         </div>
                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600" style={{ width: `${pred.probability}%` }} />
+                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500" style={{ width: `${pred.probability}%` }} />
                                         </div>
                                     </div>
                                 ))}
@@ -1293,8 +1293,8 @@ export default function ChatDashboard() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border border-amber-200 bg-white p-4">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700 mb-3">OpenAI Prediction Chart</div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">OpenAI Prediction Chart</div>
                             <div className="space-y-2.5">
                                 {(openAiPanelPredictions.slice(0, 5)).map((pred) => (
                                     <div key={pred.disease}>
@@ -1303,7 +1303,7 @@ export default function ChatDashboard() {
                                             <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
                                         </div>
                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-600" style={{ width: `${pred.probability}%` }} />
+                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${pred.probability}%` }} />
                                         </div>
                                     </div>
                                 ))}
@@ -1313,9 +1313,9 @@ export default function ChatDashboard() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="h-6 w-6 rounded-lg bg-amber-100 text-amber-700 grid place-items-center">
+                                <div className="h-6 w-6 rounded-lg bg-slate-100 text-slate-700 grid place-items-center">
                                     <Sparkles className="w-3.5 h-3.5" />
                                 </div>
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Explanation</div>
@@ -1334,51 +1334,51 @@ export default function ChatDashboard() {
                             ) : null}
                         </div>
 
-                        <div className="rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4">
+                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="h-6 w-6 rounded-lg bg-emerald-100 text-emerald-700 grid place-items-center">
+                                <div className="h-6 w-6 rounded-lg bg-slate-100 text-slate-700 grid place-items-center">
                                     <ShieldCheck className="w-3.5 h-3.5" />
                                 </div>
-                                <div className="text-xs font-semibold uppercase tracking-wider text-emerald-800">Home Remedies</div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Home Remedies</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>
                                     </li>
                                 ))}
                             </ul>
                         </div>
 
-                        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4">
+                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="h-6 w-6 rounded-lg bg-violet-100 text-violet-700 grid place-items-center">
+                                <div className="h-6 w-6 rounded-lg bg-slate-100 text-slate-700 grid place-items-center">
                                     <HeartPulse className="w-3.5 h-3.5" />
                                 </div>
-                                <div className="text-xs font-semibold uppercase tracking-wider text-violet-800">Lifestyle Changes</div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Lifestyle Changes</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(guidance?.lifestyle || []).map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>
                                     </li>
                                 ))}
                             </ul>
                         </div>
 
-                        <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-white p-4 mb-4">
+                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 mb-4 med-lift med-fade-up">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="h-6 w-6 rounded-lg bg-orange-100 text-orange-700 grid place-items-center">
+                                <div className="h-6 w-6 rounded-lg bg-slate-100 text-slate-700 grid place-items-center">
                                     <Apple className="w-3.5 h-3.5" />
                                 </div>
-                                <div className="text-xs font-semibold uppercase tracking-wider text-orange-800">Diet Adjustments</div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Diet Adjustments</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
                                 {(guidance?.diet || []).map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-orange-500 shrink-0" />
+                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>
                                     </li>
                                 ))}

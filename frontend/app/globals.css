@@ -177,3 +177,41 @@
 *::-webkit-scrollbar-corner {
   background: var(--scrollbar-track);
 }
+
+@keyframes medFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes medGlowPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--ring), transparent 75%);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in oklch, var(--ring), transparent 92%);
+  }
+}
+
+.med-fade-up {
+  animation: medFadeUp 280ms ease-out both;
+}
+
+.med-lift {
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.med-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -18px color-mix(in oklch, var(--foreground), transparent 45%);
+}
+
+.med-ring-pulse {
+  animation: medGlowPulse 2.4s ease-in-out infinite;
+}
