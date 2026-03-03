@@ -5,7 +5,7 @@ import io
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import medmnist
 import torch
@@ -54,43 +54,53 @@ class ImagePredictor:
             ]
         )
         self._models: dict[str, SimpleCNN] = {}
+        self._available_model_files: dict[str, Path] = {}
         LOGGER.info(
             "ImagePredictor init | cwd=%s | model_dir=%s | device=%s",
             os.getcwd(),
             self.model_dir,
             self.device,
         )
-        self._load_all_models()
+        self._discover_model_files()
 
-    def _load_all_models(self) -> None:
+    def _discover_model_files(self) -> None:
         missing_files: list[str] = []
         for dataset_name in DATASETS:
             model_path = self.model_dir / f"{dataset_name}_model.pth"
             if not model_path.exists():
                 missing_files.append(str(model_path))
                 continue
-
-            try:
-                num_classes = len(INFO[dataset_name]["label"])
-                model = SimpleCNN(num_classes=num_classes).to(self.device)
-                state = torch.load(model_path, map_location=self.device)
-                model.load_state_dict(state)
-                model.eval()
-                self._models[dataset_name] = model
-                LOGGER.info("Loaded model | dataset=%s | path=%s", dataset_name, model_path)
-            except Exception:  # noqa: BLE001
-                LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
+            self._available_model_files[dataset_name] = model_path
 
         LOGGER.info(
-            "Model load summary | loaded=%s | missing_count=%d",
-            sorted(self._models.keys()),
+            "Model file discovery | available=%s | missing_count=%d",
+            sorted(self._available_model_files.keys()),
             len(missing_files),
         )
         if missing_files:
             LOGGER.warning("Missing model files: %s", missing_files)
 
+    def _ensure_model_loaded(self, dataset_name: str) -> bool:
+        if dataset_name in self._models:
+            return True
+        model_path = self._available_model_files.get(dataset_name)
+        if not model_path:
+            return False
+        try:
+            num_classes = len(INFO[dataset_name]["label"])
+            model = SimpleCNN(num_classes=num_classes).to(self.device)
+            state = torch.load(model_path, map_location=self.device)
+            model.load_state_dict(state)
+            model.eval()
+            self._models[dataset_name] = model
+            LOGGER.info("Loaded model on demand | dataset=%s | path=%s", dataset_name, model_path)
+            return True
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
+            return False
+
     def available_datasets(self) -> list[str]:
-        return sorted(self._models.keys())
+        return sorted(self._available_model_files.keys())
 
     def diagnostics(self) -> dict[str, Any]:
         expected_files = {d: str(self.model_dir / f"{d}_model.pth") for d in DATASETS}
@@ -99,13 +109,28 @@ class ImagePredictor:
             "model_dir": str(self.model_dir),
             "model_dir_exists": self.model_dir.exists(),
             "expected_model_files": expected_files,
+            "available_model_files": {k: str(v) for k, v in self._available_model_files.items()},
             "loaded_datasets": self.available_datasets(),
-            "missing_datasets": sorted([d for d in DATASETS if d not in self._models]),
+            "models_in_memory": sorted(self._models.keys()),
+            "missing_datasets": sorted([d for d in DATASETS if d not in self._available_model_files]),
             "device": str(self.device),
         }
 
-    def predict_all(self, image_base64: str) -> dict[str, Any]:
-        if not self._models:
+    def _normalize_requested_datasets(self, requested: Iterable[str] | None) -> list[str]:
+        if not requested:
+            return DATASETS.copy()
+        out: list[str] = []
+        for item in requested:
+            normalized = (item or "").strip().lower()
+            if normalized in DATASETS and normalized not in out:
+                out.append(normalized)
+        return out if out else DATASETS.copy()
+
+    def predict_selected(self, image_base64: str, requested_datasets: Iterable[str] | None = None) -> dict[str, Any]:
+        selected = self._normalize_requested_datasets(requested_datasets)
+        ready: list[str] = [d for d in selected if self._ensure_model_loaded(d)]
+
+        if not ready:
             LOGGER.error("No image models available at inference time | diagnostics=%s", self.diagnostics())
             raise RuntimeError(
                 "No image models found. Train models first with backend/train_model.py."
@@ -116,7 +141,8 @@ class ImagePredictor:
         tensor = self.transform(image).unsqueeze(0).to(self.device)
 
         predictions: list[dict[str, Any]] = []
-        for dataset_name, model in self._models.items():
+        for dataset_name in ready:
+            model = self._models[dataset_name]
             info = INFO[dataset_name]
             labels = info["label"]
 
@@ -167,6 +193,13 @@ class ImagePredictor:
             "best_confidence": best["top_confidence"],
             "per_dataset": sorted(predictions, key=lambda p: p["top_confidence"], reverse=True),
         }
+
+    def predict_all(self, image_base64: str) -> dict[str, Any]:
+        return self.predict_selected(image_base64=image_base64, requested_datasets=DATASETS)
+
+    def warmup(self, requested_datasets: Iterable[str] | None = None) -> list[str]:
+        selected = self._normalize_requested_datasets(requested_datasets)
+        return [d for d in selected if self._ensure_model_loaded(d)]
 
     @staticmethod
     def _decode_base64(image_base64: str) -> bytes:

@@ -18,11 +18,14 @@ export async function POST(req: NextRequest) {
       process.env.BACKEND_URL ||
       "http://127.0.0.1:8000"
     ).replace(/\/+$/, "");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`${backendUrl}/api/diagnose/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, target_lang: targetLang }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
 
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {

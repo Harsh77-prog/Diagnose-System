@@ -135,27 +135,40 @@ function inferPreferredImageDatasets(
   return preferred;
 }
 
-function alignImagePredictionWithContext(
-  prediction: ImagePredictionResult,
+function scoreImageDatasetsWithContext(
+  imagePrediction: ImagePredictionResult,
   message: string,
   slots: FollowupState["slots"],
   confirmedSymptoms: Set<string>
-): ImagePredictionResult {
-  const preferred = inferPreferredImageDatasets(message, slots, confirmedSymptoms);
-  if (preferred.length === 0) return prediction;
+): Array<ImagePredictionPerDataset & { context_weight: number; context_score: number }> {
+  const preferred = new Set(inferPreferredImageDatasets(message, slots, confirmedSymptoms));
+  const hasEvidenceForBloodOrPath = Array.from(preferred).some((d) => d === "bloodmnist" || d === "pathmnist");
+  return imagePrediction.per_dataset.map((p) => {
+    let contextWeight = 0.55;
+    if (preferred.has(p.dataset)) contextWeight = 1;
+    if ((p.dataset === "bloodmnist" || p.dataset === "pathmnist") && !hasEvidenceForBloodOrPath) {
+      contextWeight = 0.4;
+    }
+    return {
+      ...p,
+      context_weight: contextWeight,
+      context_score: Number((p.top_confidence * contextWeight).toFixed(2)),
+    };
+  });
+}
 
-  const byDataset = new Map(prediction.per_dataset.map((p) => [p.dataset, p]));
-  const chosen = preferred.map((d) => byDataset.get(d)).find(Boolean);
-  if (!chosen) return prediction;
-
-  const reordered = [chosen, ...prediction.per_dataset.filter((p) => p.dataset !== chosen.dataset)];
-  return {
-    best_dataset: chosen.dataset,
-    best_label_index: chosen.top_label_index,
-    best_label_name: chosen.top_label_name,
-    best_confidence: chosen.top_confidence,
-    per_dataset: reordered,
-  };
+function pickPrimaryImageSignal(
+  imagePrediction: ImagePredictionResult,
+  message: string,
+  slots: FollowupState["slots"],
+  confirmedSymptoms: Set<string>
+): {
+  primary: ImagePredictionPerDataset;
+  scored: Array<ImagePredictionPerDataset & { context_weight: number; context_score: number }>;
+} {
+  const scored = scoreImageDatasetsWithContext(imagePrediction, message, slots, confirmedSymptoms);
+  const primary = [...scored].sort((a, b) => b.context_score - a.context_score)[0] || imagePrediction.per_dataset[0];
+  return { primary, scored };
 }
 
 function imageSpecificQuestion(prediction: ImagePredictionResult): string {
@@ -830,10 +843,10 @@ function evaluatePredictionReliability(
   const second = predictions[1];
   const probabilityGap = second ? top.probability - second.probability : top.probability;
   const enoughSymptoms = confirmedCount >= 2;
-  const enoughFollowup = turns >= 2;
-  const strongConfidence = top.probability >= 62;
-  const clearSeparation = probabilityGap >= 12;
-  const strongImageSignal = Boolean(imagePrediction && imagePrediction.best_confidence >= 85);
+  const enoughFollowup = turns >= 1;
+  const strongConfidence = top.probability >= 55;
+  const clearSeparation = probabilityGap >= 8;
+  const strongImageSignal = Boolean(imagePrediction && imagePrediction.best_confidence >= 70);
 
   return {
     reliable: (strongConfidence && clearSeparation && (enoughSymptoms || enoughFollowup)) || (strongImageSignal && enoughSymptoms),
@@ -907,7 +920,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           kind: "followup_state",
           pending: true,
           turns: p.turns || 0,
-          maxTurns: p.maxTurns || 6,
+          maxTurns: p.maxTurns || 5,
           confirmedSymptoms: p.confirmedSymptoms || [],
           deniedSymptoms: p.deniedSymptoms || [],
           askedSymptoms: p.askedSymptoms || [],
@@ -987,7 +1000,11 @@ function cleanBase64Payload(value?: string | null): string {
   return payload;
 }
 
-async function fetchImagePrediction(imageBase64: string, userId: string): Promise<ImagePredictionFetchResult> {
+async function fetchImagePrediction(
+  imageBase64: string,
+  userId: string,
+  preferredDatasets: string[] = []
+): Promise<ImagePredictionFetchResult> {
   const backendUrl = (
     process.env.DIAGNOSE_BACKEND_URL ||
     process.env.BACKEND_URL ||
@@ -1006,12 +1023,13 @@ async function fetchImagePrediction(imageBase64: string, userId: string): Promis
     const res = await fetch(`${backendUrl}/api/diagnose/image-predict`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ image_base64: imageBase64 }),
+      body: JSON.stringify({ image_base64: imageBase64, preferred_datasets: preferredDatasets }),
       signal: controller.signal,
     });
     const payload = (await res.json().catch(() => ({}))) as {
       image_prediction?: ImagePredictionResult;
       image_debug?: Record<string, unknown>;
+      latency_ms?: number;
       detail?: string;
     };
     if (!res.ok) {
@@ -1053,94 +1071,38 @@ async function fetchImagePrediction(imageBase64: string, userId: string): Promis
   }
 }
 
+async function requestImageWarmup(userId: string, preferredDatasets: string[] = []): Promise<void> {
+  const backendUrl = (
+    process.env.DIAGNOSE_BACKEND_URL ||
+    process.env.BACKEND_URL ||
+    "http://127.0.0.1:8000"
+  ).replace(/\/+$/, "");
+  const sharedSecret = (process.env.SHARED_SECRET || "").trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sharedSecret) {
+      headers["X-Internal-Secret"] = sharedSecret;
+      headers["X-User-Id"] = userId;
+    }
+    await fetch(`${backendUrl}/api/diagnose/image-predict/warmup`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ preferred_datasets: preferredDatasets }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    console.warn("[diagnose:image] warmup skipped", err instanceof Error ? err.message : err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function blendFinalConfidence(textConfidence: number, imageConfidence?: number): number {
   if (typeof imageConfidence !== "number") return Number(textConfidence.toFixed(1));
   const blended = textConfidence * 0.7 + imageConfidence * 0.3;
   return Number(Math.max(0, Math.min(99.9, blended)).toFixed(1));
-}
-
-async function openAIFallbackDiagnosis(
-  history: string[],
-  message: string,
-  symptoms: string[],
-  demographics: { gender?: FollowupState["slots"]["gender"]; ageGroup?: FollowupState["slots"]["ageGroup"] }
-) {
-  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
-  if (!apiKey) return null;
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: ((process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "")) || "gpt-4o-mini",
-        temperature: 0.2,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Return strict JSON only with keys diagnosis, confidence, top_predictions (array of up to 5 {disease, probability}), summary, precautions (string array).",
-          },
-          {
-            role: "user",
-            content: `History:\n${history.slice(-15).join("\n")}\n\nCurrent message: ${message}\nSymptoms: ${symptoms.join(
-              ", "
-            )}\nDemographics: gender=${demographics.gender || "unknown"}, age_group=${
-              demographics.ageGroup || "unknown"
-            }`,
-          },
-        ],
-      }),
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content || "";
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start < 0 || end < 0 || end <= start) return null;
-    const parsed = JSON.parse(raw.slice(start, end + 1)) as {
-      diagnosis?: string;
-      confidence?: number;
-      summary?: string;
-      precautions?: string[];
-      top_predictions?: Array<{ disease: string; probability: number }>;
-    };
-    if (!parsed.diagnosis) return null;
-
-    let top = (parsed.top_predictions || [])
-      .slice(0, 5)
-      .map((p) => ({ disease: p.disease, probability: Number(p.probability) || 0 }));
-
-    const maxProbability = top.reduce((m, p) => Math.max(m, p.probability), 0);
-    if (maxProbability > 0 && maxProbability <= 1) {
-      top = top.map((p) => ({ ...p, probability: p.probability * 100 }));
-    }
-    const totalProbability = top.reduce((sum, p) => sum + p.probability, 0);
-    if (totalProbability > 0) {
-      top = top.map((p) => ({
-        ...p,
-        probability: Number(((p.probability / totalProbability) * 100).toFixed(1)),
-      }));
-    }
-
-    let confidence = Number(parsed.confidence);
-    if (Number.isNaN(confidence)) confidence = 35;
-    if (confidence > 0 && confidence <= 1) confidence *= 100;
-    confidence = Number(Math.max(0, Math.min(100, confidence)).toFixed(1));
-
-    return {
-      diagnosis: parsed.diagnosis,
-      confidence,
-      summary: parsed.summary || "",
-      precautions: parsed.precautions || [],
-      top_predictions: top.length > 0 ? top : [{ disease: parsed.diagnosis, probability: confidence }],
-    };
-  } catch (err) {
-    console.error("OpenAI fallback diagnosis crashed:", err instanceof Error ? err.stack || err.message : err);
-    return null;
-  }
 }
 
 async function openAILiveFollowupQuestion(params: {
@@ -1346,7 +1308,7 @@ export async function POST(req: NextRequest) {
     if (!datasets.loaded) {
       return NextResponse.json({
         reply:
-          "Dataset is unavailable right now. Please share your symptoms, duration, and temperature so I can continue with API-assisted guidance.",
+          "Dataset is unavailable right now. Please share your symptoms, duration, and temperature once dataset services are restored.",
         follow_up_suggested: false,
         resource_note: "dataset_unavailable",
       });
@@ -1386,7 +1348,7 @@ export async function POST(req: NextRequest) {
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let turns = parsedState?.turns || 0;
-    const maxTurns = parsedState?.maxTurns || 6;
+    const maxTurns = parsedState?.maxTurns || 5;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -1420,9 +1382,17 @@ export async function POST(req: NextRequest) {
     if (hasImagePayload) {
       slots.imageAvailable = true;
       slots.imageProvided = true;
-      const imageFetch = await fetchImagePrediction(imageBase64, userId);
+      const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
+      const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
-        imagePrediction = alignImagePredictionWithContext(imageFetch.prediction, userMessage, slots, confirmed);
+        const signal = pickPrimaryImageSignal(imageFetch.prediction, userMessage, slots, confirmed);
+        imagePrediction = {
+          ...imageFetch.prediction,
+          best_dataset: signal.primary.dataset,
+          best_label_index: signal.primary.top_label_index,
+          best_label_name: signal.primary.top_label_name,
+          best_confidence: signal.primary.top_confidence,
+        };
       } else {
         const backendReason = imageFetch.error ? ` Backend reason: ${imageFetch.error}` : "";
         console.error("[diagnose:image] image inference unavailable", {
@@ -1477,6 +1447,8 @@ export async function POST(req: NextRequest) {
       } else if (qid === "image_available") {
         if (answer === "yes") {
           slots.imageAvailable = true;
+          const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
+          void requestImageWarmup(userId, preferredDatasets);
           if (hasImagePayload) {
             slots.imageProvided = true;
           } else {
@@ -1557,22 +1529,31 @@ export async function POST(req: NextRequest) {
     if (hasImagePayload && imagePrediction && !slots.imageObservationShown) {
       slots.imageObservationShown = true;
       const topThree = imagePrediction.per_dataset.slice(0, 3);
+      const imageSignal = pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed);
+      const rawTop = imagePrediction.per_dataset[0];
       const evidenceLines = topThree
         .map(
           (p, idx) =>
             `${idx + 1}. ${p.dataset}: ${p.top_label_name} (${Number(p.top_confidence).toFixed(1)}%)`
         )
         .join("\n");
-      const question = imageSpecificQuestion(imagePrediction);
+      const question = imageSpecificQuestion({
+        ...imagePrediction,
+        best_dataset: imageSignal.primary.dataset,
+        best_label_index: imageSignal.primary.top_label_index,
+        best_label_name: imageSignal.primary.top_label_name,
+        best_confidence: imageSignal.primary.top_confidence,
+      });
       const reply = [
         "I analyzed your uploaded image using trained MedMNIST image models.",
         "",
         `Top image-model observations:`,
         evidenceLines,
         "",
-        `Primary image signal: **${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${Number(
-          imagePrediction.best_confidence
+        `Primary image signal (context-weighted): **${imageSignal.primary.dataset} -> ${imageSignal.primary.top_label_name} (${Number(
+          imageSignal.primary.top_confidence
         ).toFixed(1)}%)**`,
+        `Raw highest-confidence dataset: ${rawTop.dataset} -> ${rawTop.top_label_name} (${Number(rawTop.top_confidence).toFixed(1)}%)`,
         "",
         "This image result is generated from your local image datasets/models, not a fake placeholder.",
         "",
@@ -1748,90 +1729,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!reliability.reliable) {
-      const ai = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
-        gender: slots.gender,
-        ageGroup: slots.ageGroup,
-      });
-      if (ai) {
-        const datasetComparison = {
-          diagnosis: top.disease,
-          confidence: Number(top.probability.toFixed(1)),
-          top_predictions: predictions.slice(0, 5).map((p) => ({
-            disease: p.disease,
-            probability: Number(p.probability.toFixed(1)),
-          })),
-        };
-        const combinedConfidence = blendFinalConfidence(Number(ai.confidence.toFixed(1)), imagePrediction?.best_confidence);
-        const imageText = imagePrediction
-          ? `\n\n**Image analysis source:** MedMNIST trained image models\n**Image model signal:** ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(
-              1
-            )}%)`
-          : `\n\n**Image analysis source:** Not used (text-only prediction)`;
-        const reply = `Dataset confidence remained low, so an API-assisted prediction is used.\n\n**Likely condition (API-assisted): ${ai.diagnosis}**\nConfidence: ${Number(
-          combinedConfidence
-        ).toFixed(1)}%\n\n**Dataset comparison:** ${datasetComparison.diagnosis} (${datasetComparison.confidence}%)${imageText}\n\n${
-          ai.summary || "Dataset confidence was low, so this used API-assisted analysis."
-        }\n\n${
-          ai.precautions.length > 0 ? `**Precautions:**\n${ai.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}\n\n` : ""
-        }This is informational only and not a medical diagnosis.`;
-
-        return NextResponse.json({
-          reply,
-          follow_up_suggested: false,
-          ml_diagnosis: {
-            diagnosis: ai.diagnosis,
-            confidence: combinedConfidence,
-            diagnosis_type: "api_fallback",
-            top_predictions: ai.top_predictions.map((p) => ({
-              disease: p.disease,
-              probability: Number(p.probability.toFixed(1)),
-            })),
-            confirmed_symptoms: Array.from(confirmed),
-            followups_asked: turns,
-            demographics: {
-              gender: slots.gender || null,
-              age_group: slots.ageGroup || null,
-            },
-            disease_info: { description: ai.summary || "", precautions: ai.precautions || [] },
-            source: "api_fallback",
-            considered_prior_history: false,
-            image_prediction: imagePrediction,
-            used_image: Boolean(imagePrediction),
-            image_analysis: {
-              used: Boolean(imagePrediction),
-              source: imagePrediction ? "medmnist_models" : "text_only",
-            },
-            comparison: {
-              dataset: datasetComparison,
-              openai: {
-                diagnosis: ai.diagnosis,
-                confidence: Number(ai.confidence.toFixed(1)),
-                top_predictions: ai.top_predictions.map((p) => ({
-                  disease: p.disease,
-                  probability: Number(p.probability.toFixed(1)),
-                })),
-              },
-            },
-          },
-        });
-      }
-      return NextResponse.json({
-        reply:
-          "Dataset confidence is low and API fallback is unavailable right now. Please share detailed symptoms and consult a clinician if symptoms are severe.",
-        follow_up_suggested: false,
-      });
-    }
-
     const diseaseInfo = {
       description: datasets.descriptions[top.disease] || "",
       precautions: datasets.precautions[top.disease] || [],
     };
 
+    const imageSignal = imagePrediction
+      ? pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed).primary
+      : null;
+    const rawImageTop = imagePrediction ? imagePrediction.per_dataset[0] : null;
     const diagnosis = {
       diagnosis: top.disease,
       confidence: blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence),
-      diagnosis_type: top.probability >= 67 ? "confident" : "best_guess",
+      diagnosis_type: reliability.reliable ? "confident_dataset_multimodal" : "provisional_dataset_multimodal",
       top_predictions: predictions.slice(0, 5).map((p) => ({
         disease: p.disease,
         probability: Number(p.probability.toFixed(1)),
@@ -1848,28 +1758,28 @@ export async function POST(req: NextRequest) {
       image_prediction: imagePrediction,
       used_image: Boolean(imagePrediction),
     };
-    const apiComparison = await openAIFallbackDiagnosis(priorText, userMessage, Array.from(confirmed), {
-      gender: slots.gender,
-      ageGroup: slots.ageGroup,
-    });
 
     const precautionsText =
       diseaseInfo.precautions.length > 0
         ? `\n\n**Precautions:**\n${diseaseInfo.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
         : "";
 
+    const certaintyText = reliability.reliable
+      ? "Model certainty is acceptable from current text and image evidence."
+      : "Model certainty is moderate; this is a provisional dataset-based prediction and may change with more symptoms.";
     const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
     const imageText = imagePrediction
-      ? `\n\nImage analysis source: MedMNIST trained image models\nImage model signal: ${imagePrediction.best_dataset} -> ${imagePrediction.best_label_name} (${imagePrediction.best_confidence.toFixed(1)}%)`
+      ? `\n\nImage analysis source: MedMNIST trained image models\nPrimary context-weighted image signal: ${imageSignal?.dataset} -> ${imageSignal?.top_label_name} (${Number(
+          imageSignal?.top_confidence || 0
+        ).toFixed(1)}%)\nRaw highest-confidence image signal: ${rawImageTop?.dataset} -> ${rawImageTop?.top_label_name} (${Number(
+          rawImageTop?.top_confidence || 0
+        ).toFixed(1)}%)`
       : `\n\nImage analysis source: Not used (text-only prediction)`;
-    const comparisonText = apiComparison
-      ? `\n\n**OpenAI comparison:** ${apiComparison.diagnosis} (${Number(apiComparison.confidence).toFixed(1)}%)`
-      : `\n\n**OpenAI comparison:** unavailable`;
     const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
       diagnosis.confidence
-    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}${imageText}\n\n${
+    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}${imageText}\n\n${certaintyText}\n\n${
       diseaseInfo.description || "No detailed description available in dataset."
-    }${precautionsText}${comparisonText}\n\nThis is informational only and not a medical diagnosis.`;
+    }${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
 
     return NextResponse.json({
       reply,
@@ -1879,23 +1789,6 @@ export async function POST(req: NextRequest) {
         image_analysis: {
           used: Boolean(imagePrediction),
           source: imagePrediction ? "medmnist_models" : "text_only",
-        },
-        comparison: {
-          dataset: {
-            diagnosis: diagnosis.diagnosis,
-            confidence: diagnosis.confidence,
-            top_predictions: diagnosis.top_predictions,
-          },
-          openai: apiComparison
-            ? {
-                diagnosis: apiComparison.diagnosis,
-                confidence: Number(apiComparison.confidence.toFixed(1)),
-                top_predictions: apiComparison.top_predictions.map((p) => ({
-                  disease: p.disease,
-                  probability: Number(p.probability.toFixed(1)),
-                })),
-              }
-            : null,
         },
       },
     });

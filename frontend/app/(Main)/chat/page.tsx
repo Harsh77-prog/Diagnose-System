@@ -37,12 +37,14 @@ type FollowupStatePayload = {
 type DiagnosisPayload = {
     diagnosis: string;
     confidence?: number;
-    source?: "dataset_current_session" | "api_fallback" | string;
-    comparison?: {
-        dataset?: { diagnosis?: string; confidence?: number; top_predictions?: { disease: string; probability: number }[] };
-        openai?: { diagnosis?: string; confidence?: number; top_predictions?: { disease: string; probability: number }[] } | null;
-    };
+    source?: "dataset_current_session" | "image_guided" | string;
     top_predictions?: { disease: string; probability: number }[];
+    image_prediction?: {
+        best_dataset?: string;
+        best_label_name?: string;
+        best_confidence?: number;
+        per_dataset?: { dataset: string; top_label_name: string; top_confidence: number }[];
+    };
     confirmed_symptoms?: string[];
     disease_info?: {
         description?: string;
@@ -641,14 +643,8 @@ export default function ChatDashboard() {
         (s.title || "Diagnosis Chat").toLowerCase().includes(searchQuery.toLowerCase())
     );
     const panelPredictions = latestDiagnosis?.top_predictions || [];
-    const datasetPanelPredictions =
-        latestDiagnosis?.source === "dataset_current_session"
-            ? panelPredictions
-            : latestDiagnosis?.comparison?.dataset?.top_predictions || [];
-    const openAiPanelPredictions =
-        latestDiagnosis?.source === "api_fallback"
-            ? panelPredictions
-            : latestDiagnosis?.comparison?.openai?.top_predictions || [];
+    const datasetPanelPredictions = panelPredictions;
+    const imagePanelPredictions = latestDiagnosis?.image_prediction?.per_dataset || [];
     const panelConfidence = Math.max(0, Math.min(100, Number(latestDiagnosis?.confidence || panelPredictions[0]?.probability || 0)));
     const panelPrecautions = latestDiagnosis?.disease_info?.precautions || [];
     const panelDescription = latestDiagnosis?.disease_info?.description || "";
@@ -1335,21 +1331,21 @@ export default function ChatDashboard() {
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">OpenAI Prediction Chart</div>
+                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Image Model Signals</div>
                             <div className="space-y-2.5">
-                                {(openAiPanelPredictions.slice(0, 5)).map((pred) => (
-                                    <div key={pred.disease}>
+                                {(imagePanelPredictions.slice(0, 5)).map((pred) => (
+                                    <div key={`${pred.dataset}:${pred.top_label_name}`}>
                                         <div className="flex items-center justify-between text-[12px] mb-1">
-                                            <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
-                                            <span className="text-slate-500">{pred.probability.toFixed(1)}%</span>
+                                            <span className="font-medium text-slate-700">{labelize(pred.dataset)} - {labelize(pred.top_label_name)}</span>
+                                            <span className="text-slate-500">{Number(pred.top_confidence).toFixed(1)}%</span>
                                         </div>
                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${pred.probability}%` }} />
+                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${Number(pred.top_confidence)}%` }} />
                                         </div>
                                     </div>
                                 ))}
-                                {openAiPanelPredictions.length === 0 ? (
-                                    <div className="text-[12px] text-slate-500">OpenAI prediction chart unavailable.</div>
+                                {imagePanelPredictions.length === 0 ? (
+                                    <div className="text-[12px] text-slate-500">Image model chart unavailable for this response.</div>
                                 ) : null}
                             </div>
                         </div>

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -132,7 +133,7 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
 
 @router.post("/image-predict")
 async def image_predict(request: Request) -> dict[str, Any]:
-    """JSON body: { image_base64 }. Runs prediction across trained MedMNIST image models."""
+    """JSON body: { image_base64, preferred_datasets? }. Runs prediction across trained MedMNIST image models."""
     try:
         user_id = require_user_id(request)
     except HTTPException:
@@ -151,18 +152,25 @@ async def image_predict(request: Request) -> dict[str, Any]:
     image_base64 = (body.get("image_base64") or "").strip()
     if not image_base64:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="image_base64 is required")
+    preferred_datasets = body.get("preferred_datasets")
+    if preferred_datasets is not None and not isinstance(preferred_datasets, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="preferred_datasets must be an array")
 
     try:
+        started = time.perf_counter()
         predictor = _get_image_predictor()
-        prediction = predictor.predict_all(image_base64)
+        prediction = predictor.predict_selected(image_base64, preferred_datasets)
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
         debug = predictor.diagnostics()
         LOGGER.info(
-            "Image prediction success | user_id=%s | loaded_datasets=%s | best_dataset=%s | best_label=%s | best_confidence=%.2f",
+            "Image prediction success | user_id=%s | requested=%s | in_memory=%s | best_dataset=%s | best_label=%s | best_confidence=%.2f | duration_ms=%s",
             user_id,
-            debug["loaded_datasets"],
+            preferred_datasets if isinstance(preferred_datasets, list) else "all",
+            debug["models_in_memory"],
             prediction["best_dataset"],
             prediction["best_label_name"],
             prediction["best_confidence"],
+            duration_ms,
         )
     except ValueError as exc:
         LOGGER.warning("Image prediction value error: %s", exc)
@@ -182,7 +190,34 @@ async def image_predict(request: Request) -> dict[str, Any]:
         LOGGER.exception("Image prediction unexpected error")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Image prediction failed: {exc}")
 
-    return {"image_prediction": prediction, "image_debug": debug}
+    return {"image_prediction": prediction, "image_debug": debug, "latency_ms": duration_ms}
+
+
+@router.post("/image-predict/warmup")
+async def image_predict_warmup(request: Request) -> dict[str, Any]:
+    """JSON body: { preferred_datasets? }. Preloads selected model weights into memory."""
+    require_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    preferred_datasets = body.get("preferred_datasets")
+    if preferred_datasets is not None and not isinstance(preferred_datasets, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="preferred_datasets must be an array")
+
+    predictor = _get_image_predictor()
+    requested = preferred_datasets if isinstance(preferred_datasets, list) else None
+    started = time.perf_counter()
+    warmed = predictor.warmup(requested)
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    debug = predictor.diagnostics()
+    return {
+        "ok": True,
+        "warmed_datasets": warmed,
+        "latency_ms": duration_ms,
+        "image_debug": debug,
+    }
 
 
 @router.post("/translate")

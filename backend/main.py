@@ -4,6 +4,7 @@ FastAPI app: /api/diagnose/* (chat, upload-report, history). Auth via NextAuth J
 Powered by BioBERT + ML Ensemble — no OpenAI API needed.
 """
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,7 +43,15 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "ml_engine_loaded": "lazy"}
+    backend_root = Path(__file__).resolve().parent
+    model_dir = backend_root / "medical_ML" / "models"
+    model_files = sorted(str(p.name) for p in model_dir.glob("*_model.pth")) if model_dir.exists() else []
+    return {
+        "status": "ok",
+        "ml_engine_loaded": "lazy",
+        "image_models_available": model_files,
+        "image_model_count": len(model_files),
+    }
 
 
 if __name__ == "__main__":
