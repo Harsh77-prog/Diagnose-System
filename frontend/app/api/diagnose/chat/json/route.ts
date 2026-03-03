@@ -74,6 +74,21 @@ type ImagePredictionFetchResult = {
   status: number | null;
 };
 
+function describeFetchError(err: unknown): string {
+  if (!(err instanceof Error)) return "Unknown fetch error";
+  const maybeCause = (err as Error & { cause?: unknown }).cause as
+    | { code?: string; errno?: string; address?: string; port?: number }
+    | undefined;
+  const causeBits = [
+    maybeCause?.code ? `code=${maybeCause.code}` : "",
+    maybeCause?.errno ? `errno=${maybeCause.errno}` : "",
+    maybeCause?.address ? `address=${maybeCause.address}` : "",
+    typeof maybeCause?.port === "number" ? `port=${maybeCause.port}` : "",
+  ].filter(Boolean);
+  const causeText = causeBits.length > 0 ? ` (${causeBits.join(", ")})` : "";
+  return `${err.name}: ${err.message}${causeText}`;
+}
+
 function imageSpecificQuestion(prediction: ImagePredictionResult): string {
   const dataset = prediction.best_dataset;
   if (dataset === "dermamnist") {
@@ -920,7 +935,7 @@ async function fetchImagePrediction(imageBase64: string, userId: string): Promis
       status: res.status,
     };
   } catch (err) {
-    const errorText = err instanceof Error ? err.message : "Unknown fetch error";
+    const errorText = describeFetchError(err);
     console.error("[diagnose:image] fetch failed", {
       error: errorText,
       backendUrl,
