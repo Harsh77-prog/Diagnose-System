@@ -35,3 +35,10 @@ yarn-error.log
 # OS files
 .DS_Store
 Thumbs.db
+
+
+backend/medical_ML/data/
+*.pth
+*.pt
+venv/
+__pycache__/
