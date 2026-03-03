@@ -3,10 +3,17 @@ MedCoreAI Diagnosis Backend.
 FastAPI app: /api/diagnose/* (chat, upload-report, history). Auth via NextAuth JWT.
 Powered by BioBERT + ML Ensemble — no OpenAI API needed.
 """
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.diagnose import router as diagnose_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 app = FastAPI(
     title="MedCoreAI Diagnosis API",

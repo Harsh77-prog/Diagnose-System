@@ -12,6 +12,8 @@ DATASETS = [
     "bloodmnist",
 ]
 SPLITS = ("train", "val", "test")
+PROJECT_ROOT = Path(__file__).resolve().parent
+DATASET_ROOT = PROJECT_ROOT / "medical_ML" / "data"
 
 
 def download_dataset(dataset_name: str, root: Path) -> None:
@@ -23,8 +25,10 @@ def download_dataset(dataset_name: str, root: Path) -> None:
 
 
 def main() -> None:
-    dataset_root = Path("backend/medical_ML/data").resolve()
+    dataset_root = DATASET_ROOT.resolve()
     dataset_root.mkdir(parents=True, exist_ok=True)
+    print(f"Project root: {PROJECT_ROOT}")
+    print(f"Dataset root: {dataset_root}")
 
     for name in DATASETS:
         print(f"Downloading {name}...")

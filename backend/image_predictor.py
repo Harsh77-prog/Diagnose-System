@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,7 @@ from torchvision import transforms
 
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
+LOGGER = logging.getLogger("medcore.image_predictor")
 
 
 class SimpleCNN(nn.Module):
@@ -41,7 +44,7 @@ class SimpleCNN(nn.Module):
 
 class ImagePredictor:
     def __init__(self, model_dir: str) -> None:
-        self.model_dir = Path(model_dir)
+        self.model_dir = Path(model_dir).resolve()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.transform = transforms.Compose(
             [
@@ -51,26 +54,59 @@ class ImagePredictor:
             ]
         )
         self._models: dict[str, SimpleCNN] = {}
+        LOGGER.info(
+            "ImagePredictor init | cwd=%s | model_dir=%s | device=%s",
+            os.getcwd(),
+            self.model_dir,
+            self.device,
+        )
         self._load_all_models()
 
     def _load_all_models(self) -> None:
+        missing_files: list[str] = []
         for dataset_name in DATASETS:
             model_path = self.model_dir / f"{dataset_name}_model.pth"
             if not model_path.exists():
+                missing_files.append(str(model_path))
                 continue
 
-            num_classes = len(INFO[dataset_name]["label"])
-            model = SimpleCNN(num_classes=num_classes).to(self.device)
-            state = torch.load(model_path, map_location=self.device)
-            model.load_state_dict(state)
-            model.eval()
-            self._models[dataset_name] = model
+            try:
+                num_classes = len(INFO[dataset_name]["label"])
+                model = SimpleCNN(num_classes=num_classes).to(self.device)
+                state = torch.load(model_path, map_location=self.device)
+                model.load_state_dict(state)
+                model.eval()
+                self._models[dataset_name] = model
+                LOGGER.info("Loaded model | dataset=%s | path=%s", dataset_name, model_path)
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
+
+        LOGGER.info(
+            "Model load summary | loaded=%s | missing_count=%d",
+            sorted(self._models.keys()),
+            len(missing_files),
+        )
+        if missing_files:
+            LOGGER.warning("Missing model files: %s", missing_files)
 
     def available_datasets(self) -> list[str]:
         return sorted(self._models.keys())
 
+    def diagnostics(self) -> dict[str, Any]:
+        expected_files = {d: str(self.model_dir / f"{d}_model.pth") for d in DATASETS}
+        return {
+            "cwd": os.getcwd(),
+            "model_dir": str(self.model_dir),
+            "model_dir_exists": self.model_dir.exists(),
+            "expected_model_files": expected_files,
+            "loaded_datasets": self.available_datasets(),
+            "missing_datasets": sorted([d for d in DATASETS if d not in self._models]),
+            "device": str(self.device),
+        }
+
     def predict_all(self, image_base64: str) -> dict[str, Any]:
         if not self._models:
+            LOGGER.error("No image models available at inference time | diagnostics=%s", self.diagnostics())
             raise RuntimeError(
                 "No image models found. Train models first with backend/train_model.py."
             )

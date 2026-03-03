@@ -10,6 +10,9 @@ from torchvision import transforms
 
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
+PROJECT_ROOT = Path(__file__).resolve().parent
+DATA_DIR = PROJECT_ROOT / "medical_ML" / "data"
+MODEL_DIR = PROJECT_ROOT / "medical_ML" / "models"
 
 
 class SimpleCNN(nn.Module):
@@ -39,11 +42,12 @@ def build_loader(dataset_name: str, batch_size: int, split: str = "train") -> Da
     info = INFO[dataset_name]
     dataset_class = getattr(medmnist, info["python_class"])
     transform = transforms.Compose([transforms.Lambda(lambda x: x.convert("RGB")), transforms.ToTensor()])
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     dataset = dataset_class(
         split=split,
         transform=transform,
         download=True,
-        root="backend/medical_ML/data",
+        root=str(DATA_DIR),
     )
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split == "train"))
 
@@ -82,14 +86,17 @@ def train_single_dataset(
         avg_loss = running_loss / max(1, len(train_loader))
         print(f"[{dataset_name}] Epoch {epoch + 1}/{epochs} - loss: {avg_loss:.4f}")
 
-    output_dir = Path("backend/medical_ML/models")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{dataset_name}_model.pth"
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = MODEL_DIR / f"{dataset_name}_model.pth"
     torch.save(model.state_dict(), output_path)
     return output_path
 
 
 def main() -> None:
+    print(f"Project root: {PROJECT_ROOT}")
+    print(f"Data dir: {DATA_DIR}")
+    print(f"Model dir: {MODEL_DIR}")
+    print(f"Torch CUDA available: {torch.cuda.is_available()}")
     for dataset_name in DATASETS:
         print(f"\nTraining model for {dataset_name}...")
         saved_path = train_single_dataset(dataset_name=dataset_name)

@@ -5,6 +5,9 @@ ML-powered — no OpenAI dependency.
 """
 from __future__ import annotations
 
+import logging
+import os
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
@@ -15,6 +18,7 @@ from report_parser import parse_report_content
 
 router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
 _image_predictor = None
+LOGGER = logging.getLogger("medcore.router.diagnose")
 
 
 def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, session_action: Optional[str] = None):
@@ -36,7 +40,20 @@ def _get_image_predictor():
 
     from image_predictor import ImagePredictor
 
-    _image_predictor = ImagePredictor(model_dir="medical_ML/models")
+    backend_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        backend_root / "medical_ML" / "models",
+        Path.cwd() / "medical_ML" / "models",
+        Path.cwd() / "backend" / "medical_ML" / "models",
+    ]
+    chosen = next((p for p in candidates if p.exists()), candidates[0])
+    LOGGER.info(
+        "Initializing ImagePredictor | cwd=%s | chosen=%s | candidates=%s",
+        os.getcwd(),
+        chosen,
+        [str(c) for c in candidates],
+    )
+    _image_predictor = ImagePredictor(model_dir=str(chosen))
     return _image_predictor
 
 
@@ -116,7 +133,16 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
 @router.post("/image-predict")
 async def image_predict(request: Request) -> dict[str, Any]:
     """JSON body: { image_base64 }. Runs prediction across trained MedMNIST image models."""
-    require_user_id(request)
+    try:
+        user_id = require_user_id(request)
+    except HTTPException:
+        LOGGER.warning(
+            "Unauthorized /image-predict call | has_auth=%s | has_internal_secret=%s | has_user_id_header=%s",
+            bool(request.headers.get("Authorization")),
+            bool(request.headers.get("X-Internal-Secret")),
+            bool(request.headers.get("X-User-Id")),
+        )
+        raise
     try:
         body = await request.json()
     except Exception:
@@ -129,14 +155,34 @@ async def image_predict(request: Request) -> dict[str, Any]:
     try:
         predictor = _get_image_predictor()
         prediction = predictor.predict_all(image_base64)
+        debug = predictor.diagnostics()
+        LOGGER.info(
+            "Image prediction success | user_id=%s | loaded_datasets=%s | best_dataset=%s | best_label=%s | best_confidence=%.2f",
+            user_id,
+            debug["loaded_datasets"],
+            prediction["best_dataset"],
+            prediction["best_label_name"],
+            prediction["best_confidence"],
+        )
     except ValueError as exc:
+        LOGGER.warning("Image prediction value error: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+        debug = {}
+        try:
+            debug = predictor.diagnostics()  # type: ignore[name-defined]
+        except Exception:  # noqa: BLE001
+            pass
+        LOGGER.exception("Image prediction runtime error | diagnostics=%s", debug)
+        detail = str(exc)
+        if debug:
+            detail = f"{detail} | diagnostics={debug}"
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
     except Exception as exc:
+        LOGGER.exception("Image prediction unexpected error")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Image prediction failed: {exc}")
 
-    return {"image_prediction": prediction}
+    return {"image_prediction": prediction, "image_debug": debug}
 
 
 @router.post("/translate")

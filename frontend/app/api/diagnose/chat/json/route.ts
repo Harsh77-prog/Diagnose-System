@@ -67,6 +67,13 @@ type ImagePredictionResult = {
   per_dataset: ImagePredictionPerDataset[];
 };
 
+type ImagePredictionFetchResult = {
+  prediction: ImagePredictionResult | null;
+  debug: Record<string, unknown> | null;
+  error: string | null;
+  status: number | null;
+};
+
 function imageSpecificQuestion(prediction: ImagePredictionResult): string {
   const dataset = prediction.best_dataset;
   if (dataset === "dermamnist") {
@@ -870,22 +877,61 @@ function cleanBase64Payload(value?: string | null): string {
   return payload;
 }
 
-async function fetchImagePrediction(imageBase64: string): Promise<ImagePredictionResult | null> {
+async function fetchImagePrediction(imageBase64: string, userId: string): Promise<ImagePredictionFetchResult> {
   const backendUrl = (process.env.DIAGNOSE_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
+  const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (sharedSecret) {
+      headers["X-Internal-Secret"] = sharedSecret;
+      headers["X-User-Id"] = userId;
+    }
     const res = await fetch(`${backendUrl}/api/diagnose/image-predict`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ image_base64: imageBase64 }),
       signal: controller.signal,
     });
-    if (!res.ok) return null;
-    const payload = (await res.json()) as { image_prediction?: ImagePredictionResult };
-    return payload.image_prediction || null;
-  } catch {
-    return null;
+    const payload = (await res.json().catch(() => ({}))) as {
+      image_prediction?: ImagePredictionResult;
+      image_debug?: Record<string, unknown>;
+      detail?: string;
+    };
+    if (!res.ok) {
+      const errorText = payload.detail || `Backend returned HTTP ${res.status}`;
+      console.error("[diagnose:image] backend error", {
+        status: res.status,
+        error: errorText,
+        debug: payload.image_debug || null,
+      });
+      return {
+        prediction: null,
+        debug: payload.image_debug || null,
+        error: errorText,
+        status: res.status,
+      };
+    }
+    return {
+      prediction: payload.image_prediction || null,
+      debug: payload.image_debug || null,
+      error: payload.image_prediction ? null : "Backend returned no image_prediction payload",
+      status: res.status,
+    };
+  } catch (err) {
+    const errorText = err instanceof Error ? err.message : "Unknown fetch error";
+    console.error("[diagnose:image] fetch failed", {
+      error: errorText,
+      backendUrl,
+      hasSharedSecret: Boolean(sharedSecret),
+    });
+    return {
+      prediction: null,
+      debug: null,
+      error: errorText,
+      status: null,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -1258,12 +1304,18 @@ export async function POST(req: NextRequest) {
     if (hasImagePayload) {
       slots.imageAvailable = true;
       slots.imageProvided = true;
-      const predicted = await fetchImagePrediction(imageBase64);
-      if (predicted) {
-        imagePrediction = predicted;
+      const imageFetch = await fetchImagePrediction(imageBase64, userId);
+      if (imageFetch.prediction) {
+        imagePrediction = imageFetch.prediction;
       } else {
+        const backendReason = imageFetch.error ? ` Backend reason: ${imageFetch.error}` : "";
+        console.error("[diagnose:image] image inference unavailable", {
+          status: imageFetch.status,
+          reason: imageFetch.error,
+          debug: imageFetch.debug,
+        });
         const reply =
-          "I received your image, but I could not run MedMNIST image-model inference right now. Please ensure backend image models are trained and available, then upload again.";
+          `I received your image, but I could not run MedMNIST image-model inference right now.${backendReason} Please ensure backend image models are trained and available, then upload again.`;
         return NextResponse.json({
           reply,
           follow_up_suggested: false,
@@ -1271,6 +1323,9 @@ export async function POST(req: NextRequest) {
             used: false,
             source: "medmnist_models",
             status: "unavailable",
+            backend_status: imageFetch.status,
+            backend_reason: imageFetch.error,
+            backend_debug: imageFetch.debug,
           },
         });
       }
