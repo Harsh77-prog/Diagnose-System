@@ -81,6 +81,16 @@ function resolveImageTimeoutMs(): number {
   return 120000;
 }
 
+function resolveBackendUrl(): string {
+  return (process.env.BACKEND_URL || "").trim().replace(/\/+$/, "");
+}
+
+function backendLikelyMisconfigured(backendUrl: string): boolean {
+  const isVercel = Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  const isLocalTarget = /:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(backendUrl);
+  return isVercel && isLocalTarget;
+}
+
 function describeFetchError(err: unknown): string {
   if (!(err instanceof Error)) return "Unknown fetch error";
   const maybeCause = (err as Error & { cause?: unknown }).cause as
@@ -1005,11 +1015,24 @@ async function fetchImagePrediction(
   userId: string,
   preferredDatasets: string[] = []
 ): Promise<ImagePredictionFetchResult> {
-  const backendUrl = (
-    process.env.DIAGNOSE_BACKEND_URL ||
-    process.env.BACKEND_URL ||
-    "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const backendUrl = resolveBackendUrl();
+  if (!backendUrl) {
+    return {
+      prediction: null,
+      debug: null,
+      error: "BACKEND_URL is not configured.",
+      status: 503,
+    };
+  }
+  if (backendLikelyMisconfigured(backendUrl)) {
+    return {
+      prediction: null,
+      debug: null,
+      error:
+        "Image backend URL is set to localhost in a Vercel deployment. Set BACKEND_URL to your public backend URL.",
+      status: 503,
+    };
+  }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
   const controller = new AbortController();
@@ -1033,7 +1056,10 @@ async function fetchImagePrediction(
       detail?: string;
     };
     if (!res.ok) {
-      const errorText = payload.detail || `Backend returned HTTP ${res.status}`;
+      let errorText = payload.detail || `Backend returned HTTP ${res.status}`;
+      if (res.status === 401 || res.status === 403) {
+        errorText = `${errorText}. Check SHARED_SECRET matches in frontend and backend deployments.`;
+      }
       console.error("[diagnose:image] backend error", {
         status: res.status,
         error: errorText,
@@ -1053,7 +1079,8 @@ async function fetchImagePrediction(
       status: res.status,
     };
   } catch (err) {
-    const errorText = describeFetchError(err);
+    let errorText = describeFetchError(err);
+    errorText = `${errorText}. Check BACKEND_URL is reachable from Vercel.`;
     console.error("[diagnose:image] fetch failed", {
       error: errorText,
       backendUrl,
@@ -1072,14 +1099,12 @@ async function fetchImagePrediction(
 }
 
 async function requestImageWarmup(userId: string, preferredDatasets: string[] = []): Promise<void> {
-  const backendUrl = (
-    process.env.DIAGNOSE_BACKEND_URL ||
-    process.env.BACKEND_URL ||
-    "http://127.0.0.1:8000"
-  ).replace(/\/+$/, "");
+  const backendUrl = resolveBackendUrl();
+  if (!backendUrl) return;
+  if (backendLikelyMisconfigured(backendUrl)) return;
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (sharedSecret) {
@@ -1093,6 +1118,9 @@ async function requestImageWarmup(userId: string, preferredDatasets: string[] = 
       signal: controller.signal,
     });
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      return;
+    }
     console.warn("[diagnose:image] warmup skipped", err instanceof Error ? err.message : err);
   } finally {
     clearTimeout(timer);

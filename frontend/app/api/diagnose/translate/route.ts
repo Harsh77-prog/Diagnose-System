@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function fallbackTranslation(text: string, targetLang: string, error: string, status = 200) {
+  return NextResponse.json(
+    {
+      source_text: text,
+      target_lang: targetLang,
+      translated_text: text,
+      translation_unavailable: true,
+      error,
+    },
+    { status }
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
@@ -13,31 +26,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "text is required" }, { status: 400 });
     }
 
-    const backendUrl = (
-      process.env.DIAGNOSE_BACKEND_URL ||
-      process.env.BACKEND_URL ||
-      "http://127.0.0.1:8000"
-    ).replace(/\/+$/, "");
+    const backendUrl = (process.env.BACKEND_URL || "").trim().replace(/\/+$/, "");
+    if (!backendUrl) {
+      return fallbackTranslation(text, targetLang, "BACKEND_URL is not configured", 500);
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(`${backendUrl}/api/diagnose/translate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, target_lang: targetLang }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timer));
+    let res: Response;
+    try {
+      res = await fetch(`${backendUrl}/api/diagnose/translate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, target_lang: targetLang }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      const message =
+        err instanceof Error ? `Translation backend unavailable: ${err.message}` : "Translation backend unavailable";
+      return fallbackTranslation(text, targetLang, message);
+    }
+    clearTimeout(timer);
 
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
-      return NextResponse.json(
-        { error: payload?.detail || payload?.error || "Translation failed" },
-        { status: res.status }
-      );
+      const backendError = payload?.detail || payload?.error || "Translation failed";
+      return fallbackTranslation(text, targetLang, `Translation backend error: ${backendError}`);
     }
 
     return NextResponse.json(payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return fallbackTranslation("", "hi", message, 500);
   }
 }
