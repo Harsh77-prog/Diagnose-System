@@ -1850,9 +1850,11 @@ export async function POST(req: NextRequest) {
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
     const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns, imagePrediction);
+    const minTurnsForFinal = 10;
+    const needsMoreFollowups = turns < minTurnsForFinal || !reliability.reliable;
     let question: { id: string; text: string; choices?: string[] } | null = null;
 
-    if (!reliability.reliable && turns < maxTurns) {
+    if (needsMoreFollowups && turns < maxTurns) {
       if (!slots.ageGroup) {
         question = {
           id: "age_group",
@@ -1915,7 +1917,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (question && turns < maxTurns && !reliability.reliable) {
+    if (question && turns < maxTurns && needsMoreFollowups) {
       const nextState = makeState({
         turns,
         maxTurns,
