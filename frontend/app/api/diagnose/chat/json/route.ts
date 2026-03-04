@@ -86,7 +86,7 @@ function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
-  return 120000;
+  return 180000;
 }
 
 function resolveBackendUrl(): string {
@@ -1046,50 +1046,78 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (sharedSecret) {
-      headers["X-Internal-Secret"] = sharedSecret;
-      headers["X-User-Id"] = userId;
-    }
-    const res = await fetch(`${backendUrl}/api/diagnose/image-predict`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ image_base64: imageBase64, preferred_datasets: preferredDatasets }),
-      signal: controller.signal,
-    });
-    const payload = (await res.json().catch(() => ({}))) as {
-      image_prediction?: ImagePredictionResult;
-      image_debug?: Record<string, unknown>;
-      latency_ms?: number;
-      detail?: string;
-    };
-    if (!res.ok) {
-      let errorText = payload.detail || `Backend returned HTTP ${res.status}`;
-      if (res.status === 401 || res.status === 403) {
-        errorText = `${errorText}. Check SHARED_SECRET matches in frontend and backend deployments.`;
+  const runRequest = async (requestTimeoutMs: number): Promise<ImagePredictionFetchResult> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (sharedSecret) {
+        headers["X-Internal-Secret"] = sharedSecret;
+        headers["X-User-Id"] = userId;
       }
-      console.error("[diagnose:image] backend error", {
-        status: res.status,
-        error: errorText,
-        debug: payload.image_debug || null,
+      const res = await fetch(`${backendUrl}/api/diagnose/image-predict`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ image_base64: imageBase64, preferred_datasets: preferredDatasets }),
+        signal: controller.signal,
       });
+      const payload = (await res.json().catch(() => ({}))) as {
+        image_prediction?: ImagePredictionResult;
+        image_debug?: Record<string, unknown>;
+        latency_ms?: number;
+        detail?: string;
+      };
+      if (!res.ok) {
+        let errorText = payload.detail || `Backend returned HTTP ${res.status}`;
+        if (res.status === 401 || res.status === 403) {
+          errorText = `${errorText}. Check SHARED_SECRET matches in frontend and backend deployments.`;
+        }
+        console.error("[diagnose:image] backend error", {
+          status: res.status,
+          error: errorText,
+          debug: payload.image_debug || null,
+        });
+        return {
+          prediction: null,
+          debug: payload.image_debug || null,
+          error: errorText,
+          status: res.status,
+        };
+      }
       return {
-        prediction: null,
+        prediction: payload.image_prediction || null,
         debug: payload.image_debug || null,
-        error: errorText,
+        error: payload.image_prediction ? null : "Backend returned no image_prediction payload",
         status: res.status,
       };
+    } finally {
+      clearTimeout(timer);
     }
-    return {
-      prediction: payload.image_prediction || null,
-      debug: payload.image_debug || null,
-      error: payload.image_prediction ? null : "Backend returned no image_prediction payload",
-      status: res.status,
-    };
+  };
+  try {
+    return await runRequest(timeoutMs);
   } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      const retryTimeoutMs = Math.min(300000, timeoutMs + 120000);
+      console.warn("[diagnose:image] first attempt timed out; retrying once", {
+        timeoutMs,
+        retryTimeoutMs,
+      });
+      try {
+        return await runRequest(retryTimeoutMs);
+      } catch (retryErr) {
+        const timeoutText =
+          retryErr instanceof Error && retryErr.name === "AbortError"
+            ? `Image inference timed out after ${retryTimeoutMs}ms.`
+            : describeFetchError(retryErr);
+        return {
+          prediction: null,
+          debug: null,
+          error: `${timeoutText} Backend may be cold-starting or overloaded. Try again in 20-30 seconds.`,
+          status: null,
+        };
+      }
+    }
     let errorText = describeFetchError(err);
     errorText = `${errorText}. Check BACKEND_URL is reachable from Vercel.`;
     console.error("[diagnose:image] fetch failed", {
@@ -1104,8 +1132,6 @@ async function fetchImagePrediction(
       error: errorText,
       status: null,
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -1115,7 +1141,7 @@ async function requestImageWarmup(userId: string, preferredDatasets: string[] = 
   if (backendLikelyMisconfigured(backendUrl)) return;
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const timer = setTimeout(() => controller.abort(), 45000);
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (sharedSecret) {
