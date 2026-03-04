@@ -1064,7 +1064,7 @@ export default function ChatDashboard() {
                                                                         {imageSignals.slice(0, 5).map((pred, idx) => (
                                                                             <div key={`${pred.dataset}:${pred.top_label_name}:${idx}`}>
                                                                                 <div className="flex items-center justify-between text-[12px] mb-1">
-                                                                                    <span className="text-slate-700 font-medium">{labelize(pred.dataset)} -> {labelize(pred.top_label_name)}</span>
+                                                                                    <span className="text-slate-700 font-medium">{`${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)}`}</span>
                                                                                     <span className="text-slate-600">{Number(pred.top_confidence).toFixed(1)}%</span>
                                                                                 </div>
                                                                                 <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
