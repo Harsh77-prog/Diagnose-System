@@ -593,12 +593,6 @@ export default function ChatDashboard() {
     const dietItems = panelGuidance.diet.length > 0
         ? panelGuidance.diet
         : (guidance?.diet || []);
-    const imageSignalText = imagePanelPredictions.length > 0
-        ? imagePanelPredictions
-            .slice(0, 3)
-            .map((pred, idx) => `${idx + 1}. ${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)} (${Number(pred.top_confidence).toFixed(1)}%)`)
-            .join("\n")
-        : "No image-model signals available for this response.";
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
@@ -806,32 +800,9 @@ export default function ChatDashboard() {
                                             <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
                                             <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
                                         </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                            <div className="rounded-full border border-sky-200 bg-sky-50 p-4 text-center">
-                                                <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-white border border-sky-200 grid place-items-center">
-                                                    <Circle className="w-4 h-4 text-sky-700" />
-                                                </div>
-                                                <div className="text-[11px] uppercase tracking-wider text-sky-700">Condition</div>
-                                                <div className="text-[13px] font-semibold text-slate-800 mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
-                                            </div>
-                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
-                                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-emerald-200 grid place-items-center">
-                                                    <Square className="w-4 h-4 text-emerald-700" />
-                                                </div>
-                                                <div className="text-[11px] uppercase tracking-wider text-emerald-700">Symptoms</div>
-                                                <div className="text-[12px] text-slate-700 mt-1 line-clamp-3">{panelSymptoms.length > 0 ? panelSymptoms.map(labelize).join(", ") : "Not enough symptom details yet."}</div>
-                                            </div>
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-                                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-amber-200 grid place-items-center" style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}>
-                                                    <Triangle className="w-4 h-4 text-amber-700 mt-1" />
-                                                </div>
-                                                <div className="text-[11px] uppercase tracking-wider text-amber-700 text-center">Image Signals</div>
-                                                <pre className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-sans">{imageSignalText}</pre>
-                                            </div>
-                                        </div>
                                         {latestUploadedImage ? (
-                                            <div className="rounded-2xl border border-sky-200 bg-white p-4">
-                                                <div className="text-xs font-semibold uppercase tracking-wider text-sky-700 mb-2">Uploaded Medical Image</div>
+                                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-2">Uploaded Medical Image</div>
                                                 <img
                                                     src={latestUploadedImage.preview}
                                                     alt={latestUploadedImage.name || "Uploaded medical image"}
@@ -1037,15 +1008,15 @@ export default function ChatDashboard() {
                                                     return (
                                                         <div className="not-prose mt-1 space-y-3 max-w-2xl">
                                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                                <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4">
-                                                                    <div className="flex items-center gap-2 text-sky-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
                                                                         <Circle className="w-3.5 h-3.5" /> Likely Condition
                                                                     </div>
                                                                     <div className="text-[17px] font-semibold text-slate-900 mt-2">{labelize(diagnosisPayload.diagnosis)}</div>
                                                                     <div className="text-[13px] text-slate-600 mt-1">Confidence: {confidence.toFixed(1)}%</div>
                                                                 </div>
-                                                                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
-                                                                    <div className="flex items-center gap-2 text-emerald-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
                                                                         <Square className="w-3.5 h-3.5" /> Symptoms And Context
                                                                     </div>
                                                                     <div className="text-[13px] text-slate-700 mt-2">
@@ -1055,8 +1026,8 @@ export default function ChatDashboard() {
                                                                 </div>
                                                             </div>
 
-                                                            <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4">
-                                                                <div className="flex items-center gap-2 text-amber-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+                                                                <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
                                                                     <Triangle className="w-3.5 h-3.5" /> Image Model Signals
                                                                 </div>
                                                                 {imageSignals.length > 0 ? (
@@ -1067,8 +1038,8 @@ export default function ChatDashboard() {
                                                                                     <span className="text-slate-700 font-medium">{`${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)}`}</span>
                                                                                     <span className="text-slate-600">{Number(pred.top_confidence).toFixed(1)}%</span>
                                                                                 </div>
-                                                                                <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
-                                                                                    <div className="h-full rounded-full bg-gradient-to-r from-amber-600 to-orange-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
+                                                                                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                                                    <div className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
                                                                                 </div>
                                                                                 {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
                                                                                     <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
@@ -1093,14 +1064,14 @@ export default function ChatDashboard() {
                                                             </div>
 
                                                             {precautions.length > 0 ? (
-                                                                <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4">
-                                                                    <div className="flex items-center gap-2 text-violet-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
                                                                         <ShieldCheck className="w-3.5 h-3.5" /> Self-Care Steps
                                                                     </div>
                                                                     <ul className="mt-2 space-y-1.5 text-[13px] text-slate-700">
                                                                         {precautions.slice(0, 6).map((item, idx) => (
                                                                             <li key={`${item}-${idx}`} className="flex items-start gap-2">
-                                                                                <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                                                                <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                                                 <span>{item}</span>
                                                                             </li>
                                                                         ))}
@@ -1372,29 +1343,6 @@ export default function ChatDashboard() {
                                 </div>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 gap-3">
-                            <div className="rounded-full border border-sky-200 bg-sky-50 p-4 text-center med-lift med-fade-up">
-                                <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-white border border-sky-200 grid place-items-center">
-                                    <Circle className="w-4 h-4 text-sky-700" />
-                                </div>
-                                <div className="text-[11px] uppercase tracking-wider text-sky-700">Condition</div>
-                                <div className="text-[13px] font-semibold text-slate-800 mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
-                            </div>
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center med-lift med-fade-up">
-                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-emerald-200 grid place-items-center">
-                                    <Square className="w-4 h-4 text-emerald-700" />
-                                </div>
-                                <div className="text-[11px] uppercase tracking-wider text-emerald-700">Symptoms</div>
-                                <div className="text-[12px] text-slate-700 mt-1">{panelSymptoms.length > 0 ? panelSymptoms.map(labelize).join(", ") : "Not enough symptom details yet."}</div>
-                            </div>
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 med-lift med-fade-up">
-                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-amber-200 grid place-items-center" style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}>
-                                    <Triangle className="w-4 h-4 text-amber-700 mt-1" />
-                                </div>
-                                <div className="text-[11px] uppercase tracking-wider text-amber-700 text-center">Image Signals</div>
-                                <pre className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-sans">{imageSignalText}</pre>
-                            </div>
-                        </div>
                         {latestUploadedImage ? (
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Uploaded Medical Image</div>
@@ -1435,18 +1383,28 @@ export default function ChatDashboard() {
                                             <span className="font-medium text-slate-700">{labelize(pred.dataset)} - {labelize(pred.top_label_name)}</span>
                                             <span className="text-slate-500">{Number(pred.top_confidence).toFixed(1)}%</span>
                                         </div>
-                                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                            <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${Number(pred.top_confidence)}%` }} />
-                                        </div>
                                         {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
-                                            <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
+                                            <div className="space-y-1.5">
                                                 {pred.scores.slice(0, 3).map((score) => (
                                                     <div key={`${pred.dataset}:${score.label_index}`}>
-                                                        {labelize(score.label_name)}: {Number(score.confidence).toFixed(1)}%
+                                                        <div className="flex items-center justify-between text-[11px] mb-0.5">
+                                                            <span className="text-slate-700">{labelize(score.label_name)}</span>
+                                                            <span className="text-slate-500">{Number(score.confidence).toFixed(1)}%</span>
+                                                        </div>
+                                                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                                            <div
+                                                                className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400"
+                                                                style={{ width: `${Number(score.confidence)}%` }}
+                                                            />
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
-                                        ) : null}
+                                        ) : (
+                                            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                                                <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${Number(pred.top_confidence)}%` }} />
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                                 {imagePanelPredictions.length === 0 ? (
@@ -1468,7 +1426,7 @@ export default function ChatDashboard() {
                             {panelSymptoms.length > 0 ? (
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     {panelSymptoms.map((symptom) => (
-                                        <span key={symptom} className="text-[11px] px-2.5 py-1 rounded-full bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-800 border border-sky-100">
+                                        <span key={symptom} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200">
                                             {labelize(symptom)}
                                         </span>
                                     ))}
