@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple, Paperclip, Image as ImageIcon, FileText, X } from "lucide-react";
+import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple, Paperclip, Image as ImageIcon, FileText, X, Circle, Square, Triangle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -584,6 +584,12 @@ export default function ChatDashboard() {
     const dietItems = panelGuidance.diet.length > 0
         ? panelGuidance.diet
         : (guidance?.diet || []);
+    const imageSignalText = imagePanelPredictions.length > 0
+        ? imagePanelPredictions
+            .slice(0, 3)
+            .map((pred, idx) => `${idx + 1}. ${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)} (${Number(pred.top_confidence).toFixed(1)}%)`)
+            .join("\n")
+        : "No image-model signals available for this response.";
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
@@ -790,6 +796,29 @@ export default function ChatDashboard() {
                                             <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
                                             <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
                                             <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="rounded-full border border-sky-200 bg-sky-50 p-4 text-center">
+                                                <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-white border border-sky-200 grid place-items-center">
+                                                    <Circle className="w-4 h-4 text-sky-700" />
+                                                </div>
+                                                <div className="text-[11px] uppercase tracking-wider text-sky-700">Condition</div>
+                                                <div className="text-[13px] font-semibold text-slate-800 mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
+                                            </div>
+                                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-emerald-200 grid place-items-center">
+                                                    <Square className="w-4 h-4 text-emerald-700" />
+                                                </div>
+                                                <div className="text-[11px] uppercase tracking-wider text-emerald-700">Symptoms</div>
+                                                <div className="text-[12px] text-slate-700 mt-1 line-clamp-3">{panelSymptoms.length > 0 ? panelSymptoms.map(labelize).join(", ") : "Not enough symptom details yet."}</div>
+                                            </div>
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-amber-200 grid place-items-center" style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}>
+                                                    <Triangle className="w-4 h-4 text-amber-700 mt-1" />
+                                                </div>
+                                                <div className="text-[11px] uppercase tracking-wider text-amber-700 text-center">Image Signals</div>
+                                                <pre className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-sans">{imageSignalText}</pre>
+                                            </div>
                                         </div>
                                         {latestUploadedImage ? (
                                             <div className="rounded-2xl border border-sky-200 bg-white p-4">
@@ -1231,6 +1260,29 @@ export default function ChatDashboard() {
                                 <div className="text-xs text-slate-300 leading-relaxed">
                                     Model confidence gauge based on your confirmed symptoms and follow-up responses.
                                 </div>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                            <div className="rounded-full border border-sky-200 bg-sky-50 p-4 text-center med-lift med-fade-up">
+                                <div className="mx-auto mb-2 h-8 w-8 rounded-full bg-white border border-sky-200 grid place-items-center">
+                                    <Circle className="w-4 h-4 text-sky-700" />
+                                </div>
+                                <div className="text-[11px] uppercase tracking-wider text-sky-700">Condition</div>
+                                <div className="text-[13px] font-semibold text-slate-800 mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
+                            </div>
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center med-lift med-fade-up">
+                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-emerald-200 grid place-items-center">
+                                    <Square className="w-4 h-4 text-emerald-700" />
+                                </div>
+                                <div className="text-[11px] uppercase tracking-wider text-emerald-700">Symptoms</div>
+                                <div className="text-[12px] text-slate-700 mt-1">{panelSymptoms.length > 0 ? panelSymptoms.map(labelize).join(", ") : "Not enough symptom details yet."}</div>
+                            </div>
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 med-lift med-fade-up">
+                                <div className="mx-auto mb-2 h-8 w-8 rounded-md bg-white border border-amber-200 grid place-items-center" style={{ clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" }}>
+                                    <Triangle className="w-4 h-4 text-amber-700 mt-1" />
+                                </div>
+                                <div className="text-[11px] uppercase tracking-wider text-amber-700 text-center">Image Signals</div>
+                                <pre className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap font-sans">{imageSignalText}</pre>
                             </div>
                         </div>
                         {latestUploadedImage ? (

@@ -938,7 +938,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           kind: "followup_state",
           pending: true,
           turns: p.turns || 0,
-          maxTurns: typeof p.maxTurns === "number" && p.maxTurns > 0 ? p.maxTurns : 0,
+          maxTurns: typeof p.maxTurns === "number" && p.maxTurns > 0 ? Math.max(10, p.maxTurns) : 0,
           confirmedSymptoms: p.confirmedSymptoms || [],
           deniedSymptoms: p.deniedSymptoms || [],
           askedSymptoms: p.askedSymptoms || [],
@@ -1320,7 +1320,7 @@ async function openAIDecideMaxTurns(params: {
     if (!parsed) return null;
     const n = Number(parsed.max_turns);
     if (!Number.isFinite(n)) return null;
-    return Math.max(2, Math.min(15, Math.round(n)));
+    return Math.max(10, Math.min(20, Math.round(n)));
   };
 
   for (const model of models) {
@@ -1338,7 +1338,7 @@ async function openAIDecideMaxTurns(params: {
             {
               role: "system",
               content:
-                "Return strict JSON only: {\"max_turns\": number}. Choose required follow-up question count for accurate and efficient triage. Allowed range is 2..15.",
+                "Return strict JSON only: {\"max_turns\": number}. Choose required follow-up question count for accurate and efficient triage. Allowed range is 10..20.",
             },
             {
               role: "user",
@@ -1562,7 +1562,7 @@ export async function POST(req: NextRequest) {
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let turns = parsedState?.turns || 0;
-    let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? parsedState.maxTurns : 0;
+    let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? Math.max(10, parsedState.maxTurns) : 0;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -1601,7 +1601,7 @@ export async function POST(req: NextRequest) {
           deniedSymptoms: Array.from(denied),
           topCandidates: [],
           slots,
-        })) || 8;
+        })) || 10;
     }
 
     if (hasImagePayload) {
@@ -1974,7 +1974,6 @@ export async function POST(req: NextRequest) {
     const imageSignal = imagePrediction
       ? pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed).primary
       : null;
-    const rawImageTop = imagePrediction ? imagePrediction.per_dataset[0] : null;
     const diagnosis = {
       diagnosis: top.disease,
       confidence: blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence),
@@ -2010,21 +2009,28 @@ export async function POST(req: NextRequest) {
         : "";
 
     const certaintyText = reliability.reliable
-      ? "Model certainty is acceptable from current text and image evidence."
-      : "Model certainty is moderate; this is a provisional dataset-based prediction and may change with more symptoms.";
-    const demographicsText = `Demographics considered: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
+      ? "This prediction is reasonably strong from your current symptom and image details."
+      : "This is a preliminary prediction and can change after more follow-up answers.";
+    const demographicsText = `About you: ${slots.gender || "unknown"}, ${slots.ageGroup || "unknown"}`;
+    const imageProbabilityText = imagePrediction
+      ? imagePrediction.per_dataset
+          .slice(0, 5)
+          .map(
+            (p, idx) =>
+              `${idx + 1}. ${p.dataset} -> ${p.top_label_name} (${Number(p.top_confidence || 0).toFixed(1)}%)`
+          )
+          .join("\n")
+      : "";
     const imageText = imagePrediction
-      ? `\n\nImage analysis source: MedMNIST trained image models\nPrimary context-weighted image signal: ${imageSignal?.dataset} -> ${imageSignal?.top_label_name} (${Number(
+      ? `\n\nImage model results for your uploaded image:\n${imageProbabilityText}\nMain image signal used: ${imageSignal?.dataset} -> ${imageSignal?.top_label_name} (${Number(
           imageSignal?.top_confidence || 0
-        ).toFixed(1)}%)\nRaw highest-confidence image signal: ${rawImageTop?.dataset} -> ${rawImageTop?.top_label_name} (${Number(
-          rawImageTop?.top_confidence || 0
         ).toFixed(1)}%)`
-      : `\n\nImage analysis source: Not used (text-only prediction)`;
-    const reply = `**Likely condition: ${diagnosis.diagnosis}**\nConfidence: ${
+      : `\n\nImage model results: not used in this prediction.`;
+    const reply = `Likely condition for you: ${diagnosis.diagnosis}\nConfidence: ${
       diagnosis.confidence
-    }%\n\nSymptoms considered: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ")}\n${demographicsText}${imageText}\n\n${certaintyText}\n\n${
-      diseaseInfo.description || "No detailed description available in dataset."
-    }${precautionsText}\n\nThis is informational only and not a medical diagnosis.`;
+    }%\n\nWhat you reported: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ") || "No clear symptoms captured yet"}\n${demographicsText}${imageText}\n\n${certaintyText}\n\n${
+      diseaseInfo.description || "Detailed condition description is not available right now."
+    }${precautionsText}\n\nThis result is for guidance only and is not a final medical diagnosis.`;
 
     return NextResponse.json({
       reply,
