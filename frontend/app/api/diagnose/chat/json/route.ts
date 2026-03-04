@@ -5,6 +5,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { prismaUser as prisma } from "@/lib/prisma/client";
 
+export const maxDuration = 300;
+
 type DiseaseRow = { name: string; symptoms: string[] };
 
 type DatasetCache = {
@@ -72,6 +74,12 @@ type ImagePredictionFetchResult = {
   debug: Record<string, unknown> | null;
   error: string | null;
   status: number | null;
+};
+
+type AIGuidance = {
+  home_remedies: string[];
+  lifestyle_changes: string[];
+  diet_adjustments: string[];
 };
 
 function resolveImageTimeoutMs(): number {
@@ -930,7 +938,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           kind: "followup_state",
           pending: true,
           turns: p.turns || 0,
-          maxTurns: p.maxTurns || 5,
+          maxTurns: typeof p.maxTurns === "number" && p.maxTurns > 0 ? p.maxTurns : 0,
           confirmedSymptoms: p.confirmedSymptoms || [],
           deniedSymptoms: p.deniedSymptoms || [],
           askedSymptoms: p.askedSymptoms || [],
@@ -954,6 +962,7 @@ function parseExistingFinalDiagnosis(messages: Array<{ role: string; jsonPayload
   confidence?: number;
   top_predictions?: Array<{ disease: string; probability: number }>;
   disease_info?: { description?: string; precautions?: string[] };
+  guidance?: AIGuidance | null;
   confirmed_symptoms?: string[];
   followups_asked?: number;
   demographics?: { gender?: string | null; age_group?: string | null };
@@ -968,6 +977,7 @@ function parseExistingFinalDiagnosis(messages: Array<{ role: string; jsonPayload
         confidence?: number;
         top_predictions?: Array<{ disease: string; probability: number }>;
         disease_info?: { description?: string; precautions?: string[] };
+        guidance?: AIGuidance | null;
         confirmed_symptoms?: string[];
         followups_asked?: number;
         demographics?: { gender?: string | null; age_group?: string | null };
@@ -979,6 +989,7 @@ function parseExistingFinalDiagnosis(messages: Array<{ role: string; jsonPayload
           confidence: p.confidence,
           top_predictions: p.top_predictions,
           disease_info: p.disease_info,
+          guidance: p.guidance || null,
           confirmed_symptoms: p.confirmed_symptoms,
           followups_asked: p.followups_asked,
           demographics: p.demographics,
@@ -1274,14 +1285,189 @@ async function openAILiveFollowupQuestion(params: {
   }
 }
 
+async function openAIDecideMaxTurns(params: {
+  history: string[];
+  currentMessage: string;
+  confirmedSymptoms: string[];
+  deniedSymptoms: string[];
+  topCandidates: string[];
+  slots: FollowupState["slots"];
+}): Promise<number | null> {
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!apiKey) return null;
+
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "");
+  const models = Array.from(
+    new Set(
+      [configuredModel, "gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"].filter((m): m is string => Boolean(m))
+    )
+  );
+
+  const parseMaxTurns = (raw: string): number | null => {
+    const direct = raw.trim();
+    if (!direct) return null;
+    let parsed: { max_turns?: unknown } | null = null;
+    try {
+      parsed = JSON.parse(direct) as { max_turns?: unknown };
+    } catch {
+      const fenced = direct.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenced?.[1]) {
+        try {
+          parsed = JSON.parse(fenced[1]) as { max_turns?: unknown };
+        } catch {}
+      }
+    }
+    if (!parsed) return null;
+    const n = Number(parsed.max_turns);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(2, Math.min(15, Math.round(n)));
+  };
+
+  for (const model of models) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Return strict JSON only: {\"max_turns\": number}. Choose required follow-up question count for accurate and efficient triage. Allowed range is 2..15.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                current_message: params.currentMessage,
+                recent_history: params.history.slice(-20),
+                confirmed_symptoms: params.confirmedSymptoms,
+                denied_symptoms: params.deniedSymptoms,
+                top_candidates: params.topCandidates,
+                demographics: {
+                  gender: params.slots.gender || null,
+                  age_group: params.slots.ageGroup || null,
+                },
+              }),
+            },
+          ],
+        }),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data.choices?.[0]?.message?.content || "";
+      const value = parseMaxTurns(content);
+      if (value !== null) return value;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function openAIDiagnosisGuidance(params: {
+  diagnosis: string;
+  confidence: number;
+  confirmedSymptoms: string[];
+  demographics: { gender?: string | null; age_group?: string | null };
+  precautions: string[];
+}): Promise<AIGuidance | null> {
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!apiKey) return null;
+
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "");
+  const models = Array.from(
+    new Set(
+      [configuredModel, "gpt-4o-mini", "gpt-4.1-mini", "gpt-4o"].filter((m): m is string => Boolean(m))
+    )
+  );
+
+  const parseGuidance = (raw: string): AIGuidance | null => {
+    const direct = raw.trim();
+    if (!direct) return null;
+    let parsed: Partial<AIGuidance> | null = null;
+    try {
+      parsed = JSON.parse(direct) as Partial<AIGuidance>;
+    } catch {
+      const fenced = direct.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      if (fenced?.[1]) {
+        try {
+          parsed = JSON.parse(fenced[1]) as Partial<AIGuidance>;
+        } catch {}
+      }
+    }
+    if (!parsed) return null;
+    const toList = (v: unknown): string[] =>
+      Array.isArray(v)
+        ? v
+            .map((item) => String(item || "").trim())
+            .filter(Boolean)
+            .slice(0, 6)
+        : [];
+    const out: AIGuidance = {
+      home_remedies: toList(parsed.home_remedies),
+      lifestyle_changes: toList(parsed.lifestyle_changes),
+      diet_adjustments: toList(parsed.diet_adjustments),
+    };
+    if (!out.home_remedies.length && !out.lifestyle_changes.length && !out.diet_adjustments.length) return null;
+    return out;
+  };
+
+  for (const model of models) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Return strict JSON only with keys home_remedies, lifestyle_changes, diet_adjustments. Each value must be an array of 2-5 short safe informational bullets.",
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                diagnosis: params.diagnosis,
+                confidence: params.confidence,
+                confirmed_symptoms: params.confirmedSymptoms,
+                demographics: params.demographics,
+                dataset_precautions: params.precautions,
+                constraints: [
+                  "No prescription dose advice.",
+                  "No definitive cure claims.",
+                  "Simple practical language.",
+                ],
+              }),
+            },
+          ],
+        }),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const content = data.choices?.[0]?.message?.content || "";
+      const parsed = parseGuidance(content);
+      if (parsed) return parsed;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 function explainQuestionPurpose(questionText: string): string {
-  const q = questionText.toLowerCase();
-  if (q.includes("where exactly")) return "Reason: location helps separate joint, muscle, nerve, and vascular causes.";
-  if (q.includes("0 to 10") || q.includes("severe")) return "Reason: severity helps estimate urgency and probable condition range.";
-  if (q.includes("how long")) return "Reason: symptom duration helps distinguish acute vs chronic causes.";
-  if (q.includes("getting better") || q.includes("worse")) return "Reason: trend over time improves diagnostic confidence.";
-  if (q.includes("warning signs")) return "Reason: red-flag screening checks for conditions needing urgent care.";
-  if (q.includes("gender") || q.includes("age group")) return "Reason: demographics can shift disease likelihood in the dataset.";
+  void questionText;
   return "Reason: this answer helps narrow likely causes from your current symptom pattern.";
 }
 
@@ -1376,7 +1562,7 @@ export async function POST(req: NextRequest) {
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let turns = parsedState?.turns || 0;
-    const maxTurns = parsedState?.maxTurns || 5;
+    let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? parsedState.maxTurns : 0;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -1406,6 +1592,17 @@ export async function POST(req: NextRequest) {
     if (gender && parsedState?.currentQuestionId === "gender") slots.gender = gender;
     const ageGroup = extractAgeGroup(userMessage);
     if (ageGroup && parsedState?.currentQuestionId === "age_group") slots.ageGroup = ageGroup;
+    if (maxTurns <= 0) {
+      maxTurns =
+        (await openAIDecideMaxTurns({
+          history: priorText,
+          currentMessage: userMessage,
+          confirmedSymptoms: Array.from(confirmed),
+          deniedSymptoms: Array.from(denied),
+          topCandidates: [],
+          slots,
+        })) || 8;
+    }
 
     if (hasImagePayload) {
       slots.imageAvailable = true;
@@ -1718,6 +1915,17 @@ export async function POST(req: NextRequest) {
 
     if (!top) {
       if (imagePrediction) {
+        const imageOnlyGuidance =
+          (await openAIDiagnosisGuidance({
+            diagnosis: imagePrediction.best_label_name,
+            confidence: Number(imagePrediction.best_confidence.toFixed(1)),
+            confirmedSymptoms: Array.from(confirmed),
+            demographics: {
+              gender: slots.gender || null,
+              age_group: slots.ageGroup || null,
+            },
+            precautions: [],
+          })) || null;
         const reply = `I could not reach a confident text-only disease match, but your uploaded image produced a usable signal.\n\n**Image-led likely finding: ${imagePrediction.best_label_name}**\nSource dataset: ${imagePrediction.best_dataset}\nImage confidence: ${imagePrediction.best_confidence.toFixed(
           1
         )}%\n\nPlease use this as triage guidance and consult a clinician for confirmation.`;
@@ -1747,6 +1955,7 @@ export async function POST(req: NextRequest) {
             considered_prior_history: false,
             image_prediction: imagePrediction,
             used_image: true,
+            guidance: imageOnlyGuidance,
           },
         });
       }
@@ -1786,6 +1995,14 @@ export async function POST(req: NextRequest) {
       image_prediction: imagePrediction,
       used_image: Boolean(imagePrediction),
     };
+    const aiGuidance =
+      (await openAIDiagnosisGuidance({
+        diagnosis: diagnosis.diagnosis,
+        confidence: diagnosis.confidence,
+        confirmedSymptoms: diagnosis.confirmed_symptoms,
+        demographics: diagnosis.demographics,
+        precautions: diseaseInfo.precautions,
+      })) || null;
 
     const precautionsText =
       diseaseInfo.precautions.length > 0
@@ -1814,6 +2031,7 @@ export async function POST(req: NextRequest) {
       follow_up_suggested: false,
       ml_diagnosis: {
         ...diagnosis,
+        guidance: aiGuidance,
         image_analysis: {
           used: Boolean(imagePrediction),
           source: imagePrediction ? "medmnist_models" : "text_only",

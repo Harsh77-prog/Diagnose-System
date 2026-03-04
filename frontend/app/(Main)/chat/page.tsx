@@ -38,6 +38,11 @@ type DiagnosisPayload = {
     diagnosis: string;
     confidence?: number;
     source?: "dataset_current_session" | "image_guided" | string;
+    guidance?: {
+        home_remedies?: string[];
+        lifestyle_changes?: string[];
+        diet_adjustments?: string[];
+    };
     top_predictions?: { disease: string; probability: number }[];
     image_prediction?: {
         best_dataset?: string;
@@ -92,88 +97,6 @@ function extractLatestUploadedImage(messages: Message[]): { preview: string; nam
     return null;
 }
 
-function guidanceForDiagnosis(diagnosis: string) {
-    const normalized = diagnosis.toLowerCase();
-
-    if (/(flu|cold|viral|fever)/.test(normalized)) {
-        return {
-            homeRemedies: [
-                "Warm fluids, soups, and hydration throughout the day.",
-                "Steam inhalation once or twice daily for congestion relief.",
-                "Salt-water gargle for throat irritation.",
-            ],
-            lifestyle: [
-                "Take full rest and avoid intense physical activity.",
-                "Monitor temperature every 6-8 hours.",
-                "Use separate utensils/towels to reduce spread at home.",
-            ],
-            diet: [
-                "Soft warm foods (khichdi, soups, oatmeal).",
-                "Vitamin-C rich foods (citrus, guava, amla).",
-                "Avoid fried, packaged, and very cold food/drinks.",
-            ],
-        };
-    }
-
-    if (/(gastr|stomach|acidity|indigestion|diarrhea)/.test(normalized)) {
-        return {
-            homeRemedies: [
-                "ORS or electrolyte water in small frequent sips.",
-                "Ginger or peppermint tea for mild nausea.",
-                "Use warm compress on abdomen for cramp relief.",
-            ],
-            lifestyle: [
-                "Eat smaller meals and avoid lying down after eating.",
-                "Maintain hand hygiene and safe drinking water.",
-                "Track triggers like spicy/oily foods.",
-            ],
-            diet: [
-                "BRAT-style options: banana, rice, applesauce, toast.",
-                "Curd/yogurt and plain boiled foods.",
-                "Avoid spicy, oily, caffeinated, and sugary drinks.",
-            ],
-        };
-    }
-
-    if (/(headache|migraine)/.test(normalized)) {
-        return {
-            homeRemedies: [
-                "Hydration and quiet dark-room rest.",
-                "Cold or warm compress on forehead/neck.",
-                "Gentle neck and shoulder stretches.",
-            ],
-            lifestyle: [
-                "Keep a regular sleep schedule.",
-                "Reduce screen glare and frequent long screen sessions.",
-                "Manage stress using breathing exercises.",
-            ],
-            diet: [
-                "Regular meals to avoid long fasting gaps.",
-                "Magnesium-rich foods: nuts, seeds, leafy greens.",
-                "Limit high-caffeine and ultra-processed snacks.",
-            ],
-        };
-    }
-
-    return {
-        homeRemedies: [
-            "Hydrate adequately and take sufficient rest.",
-            "Use symptom-relief measures appropriate for discomfort.",
-            "Monitor worsening signs and seek care if needed.",
-        ],
-        lifestyle: [
-            "Maintain sleep, hydration, and gentle daily activity.",
-            "Track symptoms in a daily log.",
-            "Avoid self-medicating beyond basic OTC guidance.",
-        ],
-        diet: [
-            "Prefer home-cooked balanced meals with fruits/vegetables.",
-            "Avoid excessive sugar, fried, and heavily processed foods.",
-            "Continue small frequent meals if appetite is low.",
-        ],
-    };
-}
-
 async function parseResponseJson<T>(res: Response): Promise<T> {
     const raw = await res.text();
 
@@ -215,31 +138,10 @@ function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, per
 
 // Generates ChatGPT style clean topic headings
 function generateChatTitle(prompt: string) {
-    const prefixesToRemove = [
-        "can you evaluate my ", "what are the precautions for ",
-        "give me a healthy list of ", "explain common ",
-        "diagnose: ", "predict: ", "triage: ",
-        "i have a ", "i have an ", "i am experiencing ", "i feel ", "what is a ",
-        "tell me about ", "can you tell me about ", "i have ",
-        "can you help with ", "how do i treat ", "symptoms of "
-    ];
-    let title = prompt.toLowerCase().trim();
-    for (const prefix of prefixesToRemove) {
-        if (title.startsWith(prefix)) {
-            title = title.substring(prefix.length);
-            break;
-        }
-    }
-    // Remove trailing punctuation
-    title = title.replace(/[?.!]+$/, "");
-
-    // Capitalize each word
-    title = title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-
-    if (title.length > 30) {
-        title = title.substring(0, 30) + "...";
-    }
-    return title || "New Diagnosis";
+    const cleaned = prompt.trim().replace(/\s+/g, " ").replace(/[?.!]+$/, "");
+    if (!cleaned) return "New Diagnosis";
+    if (cleaned.length <= 30) return cleaned;
+    return `${cleaned.slice(0, 30)}...`;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -253,6 +155,24 @@ function fileToBase64(file: File): Promise<string> {
 
 const DIAGNOSIS_TRIGGER_HELP =
     "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have jaundice and yellow eyes`.";
+
+const DEFAULT_GUIDANCE = {
+    homeRemedies: [
+        "Hydrate adequately and rest.",
+        "Use basic symptom-relief measures as needed.",
+        "Seek care if symptoms worsen.",
+    ],
+    lifestyle: [
+        "Maintain sleep and hydration.",
+        "Track symptoms daily.",
+        "Avoid unnecessary self-medication.",
+    ],
+    diet: [
+        "Prefer balanced home-cooked meals.",
+        "Reduce fried and heavily processed foods.",
+        "Use small frequent meals if appetite is low.",
+    ],
+};
 
 export default function ChatDashboard() {
     const { data: session, status } = useSession();
@@ -649,7 +569,21 @@ export default function ChatDashboard() {
     const panelPrecautions = latestDiagnosis?.disease_info?.precautions || [];
     const panelDescription = latestDiagnosis?.disease_info?.description || "";
     const panelSymptoms = latestDiagnosis?.confirmed_symptoms || [];
-    const guidance = latestDiagnosis ? guidanceForDiagnosis(latestDiagnosis.diagnosis) : null;
+    const guidance = latestDiagnosis ? DEFAULT_GUIDANCE : null;
+    const panelGuidance = {
+        homeRemedies: latestDiagnosis?.guidance?.home_remedies || [],
+        lifestyle: latestDiagnosis?.guidance?.lifestyle_changes || [],
+        diet: latestDiagnosis?.guidance?.diet_adjustments || [],
+    };
+    const homeRemedyItems = panelGuidance.homeRemedies.length > 0
+        ? panelGuidance.homeRemedies
+        : (panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []);
+    const lifestyleItems = panelGuidance.lifestyle.length > 0
+        ? panelGuidance.lifestyle
+        : (guidance?.lifestyle || []);
+    const dietItems = panelGuidance.diet.length > 0
+        ? panelGuidance.diet
+        : (guidance?.diet || []);
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
@@ -895,7 +829,7 @@ export default function ChatDashboard() {
                                         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Home Remedies</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                                {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
+                                                {homeRemedyItems.map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
@@ -907,7 +841,7 @@ export default function ChatDashboard() {
                                         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Lifestyle Changes</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                                {(guidance?.lifestyle || []).map((item, idx) => (
+                                                {lifestyleItems.map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
@@ -919,7 +853,7 @@ export default function ChatDashboard() {
                                         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 med-lift med-fade-up">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-slate-800 mb-2">Diet Adjustments</div>
                                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                                {(guidance?.diet || []).map((item, idx) => (
+                                                {dietItems.map((item, idx) => (
                                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                         <span>{item}</span>
@@ -1379,7 +1313,7 @@ export default function ChatDashboard() {
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Home Remedies</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                {(panelPrecautions.length > 0 ? panelPrecautions.slice(0, 3) : guidance?.homeRemedies || []).map((item, idx) => (
+                                {homeRemedyItems.map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>
@@ -1396,7 +1330,7 @@ export default function ChatDashboard() {
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Lifestyle Changes</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                {(guidance?.lifestyle || []).map((item, idx) => (
+                                {lifestyleItems.map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>
@@ -1413,7 +1347,7 @@ export default function ChatDashboard() {
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Diet Adjustments</div>
                             </div>
                             <ul className="space-y-2 text-[13px] text-slate-700">
-                                {(guidance?.diet || []).map((item, idx) => (
+                                {dietItems.map((item, idx) => (
                                     <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
                                         <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                         <span>{item}</span>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const maxDuration = 60;
+
 function fallbackTranslation(text: string, targetLang: string, error: string, status = 200) {
   return NextResponse.json(
     {
