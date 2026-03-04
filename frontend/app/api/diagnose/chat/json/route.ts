@@ -2017,8 +2017,20 @@ export async function POST(req: NextRequest) {
       ? imagePrediction.per_dataset
           .slice(0, 5)
           .map(
-            (p, idx) =>
-              `${idx + 1}. ${toLabel(p.dataset)} -> ${toLabel(p.top_label_name)} (${Number(p.top_confidence || 0).toFixed(1)}%)`
+            (p, idx) => {
+              const multiClass = Array.isArray(p.scores) && p.scores.length > 0
+                ? p.scores
+                    .slice(0, 3)
+                    .map(
+                      (s, i) =>
+                        `   ${i + 1}) ${toLabel(s.label_name)} (${Number(s.confidence || 0).toFixed(1)}%)`
+                    )
+                    .join("\n")
+                : "";
+              return `${idx + 1}. ${toLabel(p.dataset)}\n${multiClass || `   Top: ${toLabel(p.top_label_name)} (${Number(
+                p.top_confidence || 0
+              ).toFixed(1)}%)`}`;
+            }
           )
           .join("\n")
       : "";

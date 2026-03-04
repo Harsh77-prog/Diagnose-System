@@ -48,7 +48,12 @@ type DiagnosisPayload = {
         best_dataset?: string;
         best_label_name?: string;
         best_confidence?: number;
-        per_dataset?: { dataset: string; top_label_name: string; top_confidence: number }[];
+        per_dataset?: {
+            dataset: string;
+            top_label_name: string;
+            top_confidence: number;
+            scores?: { label_index: number; label_name: string; confidence: number }[];
+        }[];
     };
     confirmed_symptoms?: string[];
     demographics?: {
@@ -1065,6 +1070,15 @@ export default function ChatDashboard() {
                                                                                 <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
                                                                                     <div className="h-full rounded-full bg-gradient-to-r from-amber-600 to-orange-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
                                                                                 </div>
+                                                                                {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
+                                                                                    <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
+                                                                                        {pred.scores.slice(0, 3).map((score) => (
+                                                                                            <div key={`${pred.dataset}:${score.label_index}`}>
+                                                                                                {labelize(score.label_name)}: {Number(score.confidence).toFixed(1)}%
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </div>
+                                                                                ) : null}
                                                                             </div>
                                                                         ))}
                                                                     </div>
@@ -1424,6 +1438,15 @@ export default function ChatDashboard() {
                                         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                                             <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${Number(pred.top_confidence)}%` }} />
                                         </div>
+                                        {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
+                                            <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
+                                                {pred.scores.slice(0, 3).map((score) => (
+                                                    <div key={`${pred.dataset}:${score.label_index}`}>
+                                                        {labelize(score.label_name)}: {Number(score.confidence).toFixed(1)}%
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ))}
                                 {imagePanelPredictions.length === 0 ? (
