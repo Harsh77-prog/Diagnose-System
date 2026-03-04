@@ -138,13 +138,23 @@ async function parseResponseJson<T>(res: Response): Promise<T> {
     const raw = await res.text();
 
     if (!raw) {
+        if (res.status === 504) {
+            throw new Error("Request timed out (504). The server took too long to respond. Please try again.");
+        }
         throw new Error(`Empty response body (status ${res.status})`);
     }
 
     try {
         return JSON.parse(raw) as T;
     } catch {
-        throw new Error(`Invalid JSON response (status ${res.status})`);
+        const textOnly = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+        if (res.status === 504) {
+            throw new Error("Request timed out (504). Image analysis backend is taking too long. Please retry.");
+        }
+        if (!res.ok) {
+            throw new Error(`Server error (status ${res.status})${textOnly ? `: ${textOnly}` : ""}`);
+        }
+        throw new Error(`Invalid JSON response (status ${res.status})${textOnly ? `: ${textOnly}` : ""}`);
     }
 }
 

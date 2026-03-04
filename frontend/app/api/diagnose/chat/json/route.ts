@@ -86,7 +86,7 @@ function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
-  return 180000;
+  return 60000;
 }
 
 function resolveBackendUrl(): string {
@@ -116,6 +116,13 @@ function describeFetchError(err: unknown): string {
 
 function containsAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((p) => p.test(text));
+}
+
+function resolvePreferredDatasetLimit(): number {
+  const raw = (process.env.DIAGNOSE_IMAGE_MAX_DATASETS || "").trim();
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 5) return Math.round(parsed);
+  return 2;
 }
 
 function inferPreferredImageDatasets(
@@ -150,7 +157,16 @@ function inferPreferredImageDatasets(
   if (containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin)\b/])) push("bloodmnist");
   if (containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide)\b/])) push("pathmnist");
 
-  return preferred;
+  if (preferred.length === 0) {
+    // Fast + safer default: avoid running all datasets when context is weak.
+    if (slots.bodySystem === "respiratory") push("chestmnist");
+    else if (slots.bodySystem === "neurologic") push("retinamnist");
+    else if (slots.bodySystem === "dermatologic") push("dermamnist");
+    else push("dermamnist");
+  }
+
+  const limit = resolvePreferredDatasetLimit();
+  return preferred.slice(0, limit);
 }
 
 function scoreImageDatasetsWithContext(
@@ -1046,6 +1062,8 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
+  const totalBudgetMs = Math.max(30000, Math.min(120000, timeoutMs + 30000));
+  const startedAt = Date.now();
   const runRequest = async (requestTimeoutMs: number): Promise<ImagePredictionFetchResult> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -1098,22 +1116,33 @@ async function fetchImagePrediction(
     return await runRequest(timeoutMs);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
-      const retryTimeoutMs = Math.min(300000, timeoutMs + 120000);
+      const elapsedMs = Date.now() - startedAt;
+      const remainingMs = totalBudgetMs - elapsedMs;
+      if (remainingMs < 20000) {
+        return {
+          prediction: null,
+          debug: null,
+          error: `Image inference timed out after ${elapsedMs}ms. Backend is taking too long; please retry with a smaller/clearer image or continue text-only.`,
+          status: null,
+        };
+      }
+      const retryTimeoutMs = Math.min(remainingMs, timeoutMs + 30000);
       console.warn("[diagnose:image] first attempt timed out; retrying once", {
         timeoutMs,
         retryTimeoutMs,
+        totalBudgetMs,
       });
       try {
         return await runRequest(retryTimeoutMs);
       } catch (retryErr) {
         const timeoutText =
           retryErr instanceof Error && retryErr.name === "AbortError"
-            ? `Image inference timed out after ${retryTimeoutMs}ms.`
+            ? `Image inference timed out after ${Date.now() - startedAt}ms.`
             : describeFetchError(retryErr);
         return {
           prediction: null,
           debug: null,
-          error: `${timeoutText} Backend may be cold-starting or overloaded. Try again in 20-30 seconds.`,
+          error: `${timeoutText} Backend may be overloaded or cold. Try again in 20-30 seconds or continue text-only.`,
           status: null,
         };
       }
