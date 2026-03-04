@@ -51,6 +51,10 @@ type DiagnosisPayload = {
         per_dataset?: { dataset: string; top_label_name: string; top_confidence: number }[];
     };
     confirmed_symptoms?: string[];
+    demographics?: {
+        gender?: string | null;
+        age_group?: string | null;
+    };
     disease_info?: {
         description?: string;
         precautions?: string[];
@@ -999,9 +1003,101 @@ export default function ChatDashboard() {
                                             </div>
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
-                                                {(hindiByMessage[msg.id] ? (translatedByMessage[msg.id] || normalizeBrandName(msg.content)) : normalizeBrandName(msg.content)).split("**").map((text, i) => (
-                                                    i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
-                                                ))}
+                                                {(() => {
+                                                    const renderedText = (hindiByMessage[msg.id] ? (translatedByMessage[msg.id] || normalizeBrandName(msg.content)) : normalizeBrandName(msg.content));
+                                                    let diagnosisPayload: DiagnosisPayload | null = null;
+                                                    try {
+                                                        if (msg.jsonPayload) {
+                                                            const parsed = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
+                                                            if (parsed?.diagnosis) diagnosisPayload = parsed;
+                                                        }
+                                                    } catch (e) {
+                                                        console.error("Failed to parse ML Payload:", e);
+                                                    }
+
+                                                    if (!diagnosisPayload) {
+                                                        return renderedText.split("**").map((text, i) => (
+                                                            i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
+                                                        ));
+                                                    }
+
+                                                    const symptoms = diagnosisPayload.confirmed_symptoms || [];
+                                                    const precautions = diagnosisPayload.disease_info?.precautions || [];
+                                                    const imageSignals = diagnosisPayload.image_prediction?.per_dataset || [];
+                                                    const description = diagnosisPayload.disease_info?.description || renderedText;
+                                                    const gender = diagnosisPayload.demographics?.gender || "unknown";
+                                                    const ageGroup = diagnosisPayload.demographics?.age_group || "unknown";
+                                                    const confidence = Number(diagnosisPayload.confidence || 0);
+
+                                                    return (
+                                                        <div className="not-prose mt-1 space-y-3 max-w-2xl">
+                                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                                <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-sky-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                        <Circle className="w-3.5 h-3.5" /> Likely Condition
+                                                                    </div>
+                                                                    <div className="text-[17px] font-semibold text-slate-900 mt-2">{labelize(diagnosisPayload.diagnosis)}</div>
+                                                                    <div className="text-[13px] text-slate-600 mt-1">Confidence: {confidence.toFixed(1)}%</div>
+                                                                </div>
+                                                                <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-emerald-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                        <Square className="w-3.5 h-3.5" /> Symptoms And Context
+                                                                    </div>
+                                                                    <div className="text-[13px] text-slate-700 mt-2">
+                                                                        <div><span className="font-semibold">Symptoms:</span> {symptoms.length > 0 ? symptoms.map(labelize).join(", ") : "No clear symptoms captured yet."}</div>
+                                                                        <div className="mt-1"><span className="font-semibold">Profile:</span> {labelize(String(gender))}, {labelize(String(ageGroup))}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4">
+                                                                <div className="flex items-center gap-2 text-amber-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                    <Triangle className="w-3.5 h-3.5" /> Image Model Signals
+                                                                </div>
+                                                                {imageSignals.length > 0 ? (
+                                                                    <div className="mt-2 space-y-2">
+                                                                        {imageSignals.slice(0, 5).map((pred, idx) => (
+                                                                            <div key={`${pred.dataset}:${pred.top_label_name}:${idx}`}>
+                                                                                <div className="flex items-center justify-between text-[12px] mb-1">
+                                                                                    <span className="text-slate-700 font-medium">{labelize(pred.dataset)} -> {labelize(pred.top_label_name)}</span>
+                                                                                    <span className="text-slate-600">{Number(pred.top_confidence).toFixed(1)}%</span>
+                                                                                </div>
+                                                                                <div className="h-2 rounded-full bg-amber-100 overflow-hidden">
+                                                                                    <div className="h-full rounded-full bg-gradient-to-r from-amber-600 to-orange-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-[13px] text-slate-600 mt-2">No image model signals used for this prediction.</div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                                                <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold">What This Means</div>
+                                                                <div className="text-[13px] text-slate-700 mt-2 leading-relaxed">{description}</div>
+                                                            </div>
+
+                                                            {precautions.length > 0 ? (
+                                                                <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-4">
+                                                                    <div className="flex items-center gap-2 text-violet-700 text-[11px] uppercase tracking-wider font-semibold">
+                                                                        <ShieldCheck className="w-3.5 h-3.5" /> Self-Care Steps
+                                                                    </div>
+                                                                    <ul className="mt-2 space-y-1.5 text-[13px] text-slate-700">
+                                                                        {precautions.slice(0, 6).map((item, idx) => (
+                                                                            <li key={`${item}-${idx}`} className="flex items-start gap-2">
+                                                                                <span className="mt-1 h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+                                                                                <span>{item}</span>
+                                                                            </li>
+                                                                        ))}
+                                                                    </ul>
+                                                                </div>
+                                                            ) : null}
+
+                                                            <div className="text-[11px] text-slate-500">This is informational only and not a final medical diagnosis.</div>
+                                                        </div>
+                                                    );
+                                                })()}
 
                                                 {/* Render Animated ML Progress Bars if payload exists */}
                                                 {msg.jsonPayload && (() => {
@@ -1018,7 +1114,7 @@ export default function ChatDashboard() {
                                                                             key={pred.disease}
                                                                             label={pred.disease}
                                                                             percentage={pred.probability}
-                                                                            delay={idx * 150} // Stagger animations
+                                                                            delay={idx * 150}
                                                                         />
                                                                     ))}
                                                                 </div>

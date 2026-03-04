@@ -2003,9 +2003,10 @@ export async function POST(req: NextRequest) {
         precautions: diseaseInfo.precautions,
       })) || null;
 
+    const toLabel = (value: string): string => value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     const precautionsText =
       diseaseInfo.precautions.length > 0
-        ? `\n\n**Precautions:**\n${diseaseInfo.precautions.map((p, i) => `${i + 1}. ${p}`).join("\n")}`
+        ? `\n\n**Self-care steps**\n${diseaseInfo.precautions.map((p) => `- ${p}`).join("\n")}`
         : "";
 
     const certaintyText = reliability.reliable
@@ -2017,20 +2018,24 @@ export async function POST(req: NextRequest) {
           .slice(0, 5)
           .map(
             (p, idx) =>
-              `${idx + 1}. ${p.dataset} -> ${p.top_label_name} (${Number(p.top_confidence || 0).toFixed(1)}%)`
+              `${idx + 1}. ${toLabel(p.dataset)} -> ${toLabel(p.top_label_name)} (${Number(p.top_confidence || 0).toFixed(1)}%)`
           )
           .join("\n")
       : "";
     const imageText = imagePrediction
-      ? `\n\nImage model results for your uploaded image:\n${imageProbabilityText}\nMain image signal used: ${imageSignal?.dataset} -> ${imageSignal?.top_label_name} (${Number(
-          imageSignal?.top_confidence || 0
-        ).toFixed(1)}%)`
-      : `\n\nImage model results: not used in this prediction.`;
-    const reply = `Likely condition for you: ${diagnosis.diagnosis}\nConfidence: ${
+      ? `\n\n**Image clues from your upload**\n${imageProbabilityText}\nMain clue used: ${toLabel(
+          imageSignal?.dataset || "unknown"
+        )} -> ${toLabel(imageSignal?.top_label_name || "unknown")} (${Number(imageSignal?.top_confidence || 0).toFixed(
+          1
+        )}%)`
+      : `\n\n**Image clues from your upload**\nNot used for this prediction.`;
+    const reply = `**Your preliminary result**\nLikely condition: ${toLabel(diagnosis.diagnosis)}\nConfidence: ${
       diagnosis.confidence
-    }%\n\nWhat you reported: ${diagnosis.confirmed_symptoms.map(formatSymptom).join(", ") || "No clear symptoms captured yet"}\n${demographicsText}${imageText}\n\n${certaintyText}\n\n${
+    }%\n\n**What I used to estimate this**\nSymptoms: ${
+      diagnosis.confirmed_symptoms.map(formatSymptom).join(", ") || "No clear symptoms captured yet"
+    }\n${demographicsText}${imageText}\n\n**What this means**\n${certaintyText}\n${
       diseaseInfo.description || "Detailed condition description is not available right now."
-    }${precautionsText}\n\nThis result is for guidance only and is not a final medical diagnosis.`;
+    }${precautionsText}\n\nThis guidance is for you and is not a final medical diagnosis.`;
 
     return NextResponse.json({
       reply,
