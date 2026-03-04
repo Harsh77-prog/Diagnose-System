@@ -66,6 +66,34 @@ type DiagnosisPayload = {
     };
 };
 
+function combinedTopPredictions(payload?: DiagnosisPayload | null): { disease: string; probability: number }[] {
+    const base = (payload?.top_predictions || []).slice(0, 5);
+    if (base.length === 0) return [];
+
+    const bestImageConfidence = Number(payload?.image_prediction?.best_confidence || 0);
+    if (!Number.isFinite(bestImageConfidence) || bestImageConfidence <= 0) {
+        return base.map((p) => ({ disease: p.disease, probability: Number(p.probability.toFixed(1)) }));
+    }
+
+    const blended = base.map((p, idx) => {
+        // Blend dataset probability with image signal strength.
+        const rankWeight = Math.max(0.35, 1 - idx * 0.15);
+        const probability = p.probability * 0.75 + bestImageConfidence * 0.25 * rankWeight;
+        return { disease: p.disease, probability };
+    });
+
+    const total = blended.reduce((sum, item) => sum + Math.max(0, item.probability), 0);
+    if (total <= 0) return base.map((p) => ({ disease: p.disease, probability: Number(p.probability.toFixed(1)) }));
+
+    return blended
+        .map((item) => ({
+            disease: item.disease,
+            probability: Number(((item.probability / total) * 100).toFixed(1)),
+        }))
+        .sort((a, b) => b.probability - a.probability)
+        .slice(0, 5);
+}
+
 function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -571,7 +599,7 @@ export default function ChatDashboard() {
     const filteredSessions = sessions.filter(s =>
         (s.title || "Diagnosis Chat").toLowerCase().includes(searchQuery.toLowerCase())
     );
-    const panelPredictions = latestDiagnosis?.top_predictions || [];
+    const panelPredictions = combinedTopPredictions(latestDiagnosis);
     const datasetPanelPredictions = panelPredictions;
     const imagePanelPredictions = latestDiagnosis?.image_prediction?.per_dataset || [];
     const panelConfidence = Math.max(0, Math.min(100, Number(latestDiagnosis?.confidence || panelPredictions[0]?.probability || 0)));
@@ -1088,7 +1116,7 @@ export default function ChatDashboard() {
                                                 {msg.jsonPayload && (() => {
                                                     try {
                                                         const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
-                                                        const predictions: { disease: string, probability: number }[] = payload.top_predictions || [];
+                                                        const predictions: { disease: string, probability: number }[] = combinedTopPredictions(payload);
 
                                                         if (Array.isArray(predictions) && predictions.length > 0) {
                                                             return (
