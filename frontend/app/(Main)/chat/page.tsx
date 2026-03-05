@@ -251,6 +251,8 @@ export default function ChatDashboard() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const reportInputRef = useRef<HTMLInputElement>(null);
+    const inFlightHindiRequestsRef = useRef<Record<string, Promise<boolean>>>({});
+    const failedHindiPrefetchRef = useRef<Record<string, boolean>>({});
 
     // Auth redirection
     useEffect(() => {
@@ -334,6 +336,11 @@ export default function ChatDashboard() {
         setLatestDiagnosis(null);
         setLatestDiagnosisMessageId(null);
         setResultPanelMinimized(false);
+        setHindiByMessage({});
+        setTranslatedByMessage({});
+        setTranslatingByMessage({});
+        inFlightHindiRequestsRef.current = {};
+        failedHindiPrefetchRef.current = {};
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
         }
@@ -347,6 +354,11 @@ export default function ChatDashboard() {
         setLatestDiagnosis(null);
         setLatestDiagnosisMessageId(null);
         setResultPanelMinimized(false);
+        setHindiByMessage({});
+        setTranslatedByMessage({});
+        setTranslatingByMessage({});
+        inFlightHindiRequestsRef.current = {};
+        failedHindiPrefetchRef.current = {};
 
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
@@ -579,28 +591,57 @@ export default function ChatDashboard() {
         }
     }
 
-    async function ensureHindiForMessage(msg: Message): Promise<boolean> {
+    async function fetchHindiForMessage(msg: Message, allowRetry = false): Promise<boolean> {
         if (msg.role !== "assistant") return false;
         if (translatedByMessage[msg.id]) return true;
-        if (translatingByMessage[msg.id]) return false;
-        try {
-            setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
-            const res = await fetch("/api/diagnose/translate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
-            });
-            const data = await parseResponseJson<{ translated_text?: string; error?: string }>(res);
-            if (!res.ok) throw new Error(data.error || "Translation failed");
-            setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
-            return true;
-        } catch (err) {
-            console.error("Hindi translation failed:", err);
-            return false;
-        } finally {
-            setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: false }));
-        }
+        if (!allowRetry && failedHindiPrefetchRef.current[msg.id]) return false;
+
+        const existingRequest = inFlightHindiRequestsRef.current[msg.id];
+        if (existingRequest) return existingRequest;
+
+        const request = (async () => {
+            try {
+                setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
+                const res = await fetch("/api/diagnose/translate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
+                });
+                const data = await parseResponseJson<{ translated_text?: string; error?: string }>(res);
+                if (!res.ok) throw new Error(data.error || "Translation failed");
+                setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
+                delete failedHindiPrefetchRef.current[msg.id];
+                return true;
+            } catch (err) {
+                failedHindiPrefetchRef.current[msg.id] = true;
+                console.error("Hindi translation failed:", err);
+                return false;
+            } finally {
+                setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: false }));
+                delete inFlightHindiRequestsRef.current[msg.id];
+            }
+        })();
+
+        inFlightHindiRequestsRef.current[msg.id] = request;
+        return request;
     }
+
+    async function ensureHindiForMessage(msg: Message): Promise<boolean> {
+        return fetchHindiForMessage(msg, true);
+    }
+
+    useEffect(() => {
+        const recentAssistantMessages = messages
+            .filter((msg) => msg.role === "assistant")
+            .slice(-4);
+
+        recentAssistantMessages.forEach((msg) => {
+            if (translatedByMessage[msg.id]) return;
+            if (inFlightHindiRequestsRef.current[msg.id]) return;
+            if (failedHindiPrefetchRef.current[msg.id]) return;
+            void fetchHindiForMessage(msg);
+        });
+    }, [messages, translatedByMessage]);
 
     if (status === "loading") {
         return <div className="h-screen flex items-center justify-center text-slate-500 bg-white">Loading...</div>;

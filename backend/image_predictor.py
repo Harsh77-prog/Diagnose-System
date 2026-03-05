@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -55,6 +58,11 @@ class ImagePredictor:
         )
         self._models: dict[str, SimpleCNN] = {}
         self._available_model_files: dict[str, Path] = {}
+        self._model_locks: dict[str, threading.Lock] = {name: threading.Lock() for name in DATASETS}
+        self._predict_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._predict_cache_lock = threading.Lock()
+        self._predict_cache_ttl_sec = 20 * 60
+        self._predict_cache_max_items = 256
         LOGGER.info(
             "ImagePredictor init | cwd=%s | model_dir=%s | device=%s",
             os.getcwd(),
@@ -86,18 +94,22 @@ class ImagePredictor:
         model_path = self._available_model_files.get(dataset_name)
         if not model_path:
             return False
-        try:
-            num_classes = len(INFO[dataset_name]["label"])
-            model = SimpleCNN(num_classes=num_classes).to(self.device)
-            state = torch.load(model_path, map_location=self.device)
-            model.load_state_dict(state)
-            model.eval()
-            self._models[dataset_name] = model
-            LOGGER.info("Loaded model on demand | dataset=%s | path=%s", dataset_name, model_path)
-            return True
-        except Exception:  # noqa: BLE001
-            LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
-            return False
+        lock = self._model_locks.setdefault(dataset_name, threading.Lock())
+        with lock:
+            if dataset_name in self._models:
+                return True
+            try:
+                num_classes = len(INFO[dataset_name]["label"])
+                model = SimpleCNN(num_classes=num_classes).to(self.device)
+                state = torch.load(model_path, map_location=self.device)
+                model.load_state_dict(state)
+                model.eval()
+                self._models[dataset_name] = model
+                LOGGER.info("Loaded model on demand | dataset=%s | path=%s", dataset_name, model_path)
+                return True
+            except Exception:  # noqa: BLE001
+                LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
+                return False
 
     def available_datasets(self) -> list[str]:
         return sorted(self._available_model_files.keys())
@@ -137,6 +149,11 @@ class ImagePredictor:
             )
 
         image_bytes = self._decode_base64(image_base64)
+        cache_key = self._cache_key(image_bytes=image_bytes, datasets=ready)
+        cached = self._get_cached_prediction(cache_key)
+        if cached is not None:
+            return cached
+
         image = Image.open(io.BytesIO(image_bytes))
         tensor = self.transform(image).unsqueeze(0).to(self.device)
 
@@ -146,7 +163,7 @@ class ImagePredictor:
             info = INFO[dataset_name]
             labels = info["label"]
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 logits = model(tensor)
                 if dataset_name == "chestmnist":
                     probs = torch.sigmoid(logits).squeeze(0)
@@ -186,13 +203,15 @@ class ImagePredictor:
             )
 
         best = max(predictions, key=lambda p: p["top_confidence"])
-        return {
+        result = {
             "best_dataset": best["dataset"],
             "best_label_index": best["top_label_index"],
             "best_label_name": best["top_label_name"],
             "best_confidence": best["top_confidence"],
             "per_dataset": sorted(predictions, key=lambda p: p["top_confidence"], reverse=True),
         }
+        self._set_cached_prediction(cache_key, result)
+        return result
 
     def predict_all(self, image_base64: str) -> dict[str, Any]:
         return self.predict_selected(image_base64=image_base64, requested_datasets=DATASETS)
@@ -200,6 +219,35 @@ class ImagePredictor:
     def warmup(self, requested_datasets: Iterable[str] | None = None) -> list[str]:
         selected = self._normalize_requested_datasets(requested_datasets)
         return [d for d in selected if self._ensure_model_loaded(d)]
+
+    def _cache_key(self, image_bytes: bytes, datasets: list[str]) -> str:
+        digest = hashlib.sha256(image_bytes).hexdigest()
+        return f"{','.join(sorted(datasets))}:{digest}"
+
+    def _get_cached_prediction(self, key: str) -> dict[str, Any] | None:
+        now = time.time()
+        with self._predict_cache_lock:
+            item = self._predict_cache.get(key)
+            if not item:
+                return None
+            ts, payload = item
+            if now - ts > self._predict_cache_ttl_sec:
+                self._predict_cache.pop(key, None)
+                return None
+            return payload.copy()
+
+    def _set_cached_prediction(self, key: str, payload: dict[str, Any]) -> None:
+        now = time.time()
+        with self._predict_cache_lock:
+            self._predict_cache[key] = (now, payload.copy())
+            if len(self._predict_cache) <= self._predict_cache_max_items:
+                return
+            # Evict oldest entries first to keep memory bounded.
+            oldest_keys = sorted(self._predict_cache.items(), key=lambda item: item[1][0])[
+                : max(1, len(self._predict_cache) - self._predict_cache_max_items)
+            ]
+            for old_key, _ in oldest_keys:
+                self._predict_cache.pop(old_key, None)
 
     @staticmethod
     def _decode_base64(image_base64: str) -> bytes:

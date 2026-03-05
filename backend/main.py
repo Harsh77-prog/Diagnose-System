@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers.diagnose import router as diagnose_router
+from routers.diagnose import router as diagnose_router, warmup_image_models_in_background
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +34,12 @@ app.add_middleware(
 )
 
 app.include_router(diagnose_router)
+
+
+@app.on_event("startup")
+def startup_warm_image_models() -> None:
+    # Non-blocking warmup so first image inference does not pay full model cold-start cost.
+    warmup_image_models_in_background()
 
 
 @app.get("/")

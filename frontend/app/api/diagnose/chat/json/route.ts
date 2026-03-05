@@ -82,6 +82,10 @@ type AIGuidance = {
   diet_adjustments: string[];
 };
 
+const IMAGE_WARMUP_TTL_MS = 10 * 60 * 1000;
+let imageWarmupInFlight: Promise<void> | null = null;
+let imageWarmupLastAt = 0;
+
 function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
@@ -197,12 +201,68 @@ function pickPrimaryImageSignal(
   slots: FollowupState["slots"],
   confirmedSymptoms: Set<string>
 ): {
-  primary: ImagePredictionPerDataset;
+  primary: ImagePredictionPerDataset & { context_weight: number; context_score: number };
   scored: Array<ImagePredictionPerDataset & { context_weight: number; context_score: number }>;
 } {
   const scored = scoreImageDatasetsWithContext(imagePrediction, message, slots, confirmedSymptoms);
-  const primary = [...scored].sort((a, b) => b.context_score - a.context_score)[0] || imagePrediction.per_dataset[0];
+  const fallback = imagePrediction.per_dataset[0];
+  const primary =
+    [...scored].sort((a, b) => b.context_score - a.context_score)[0] ||
+    ({
+      ...fallback,
+      context_weight: 1,
+      context_score: Number(fallback.top_confidence || 0),
+    } as ImagePredictionPerDataset & { context_weight: number; context_score: number });
   return { primary, scored };
+}
+
+function topTwoLabelMargin(prediction: ImagePredictionPerDataset): number {
+  const scores = Array.isArray(prediction.scores) ? prediction.scores : [];
+  if (scores.length < 2) return Number(prediction.top_confidence || 0);
+  return Number((scores[0].confidence - scores[1].confidence).toFixed(2));
+}
+
+function chooseReliableImagePrediction(
+  imagePrediction: ImagePredictionResult,
+  message: string,
+  slots: FollowupState["slots"],
+  confirmedSymptoms: Set<string>
+): {
+  prediction: ImagePredictionResult | null;
+  reason: string | null;
+} {
+  const signal = pickPrimaryImageSignal(imagePrediction, message, slots, confirmedSymptoms);
+  const sorted = [...signal.scored].sort((a, b) => b.context_score - a.context_score);
+  const primary = signal.primary;
+  const secondary = sorted[1] || null;
+  const crossDatasetGap = Number(
+    ((primary.context_score || 0) - (secondary?.context_score || 0)).toFixed(2)
+  );
+  const intraDatasetMargin = topTwoLabelMargin(primary);
+  const minTopConfidence = primary.dataset === "chestmnist" ? 60 : 62;
+  const reliable =
+    Number(primary.top_confidence || 0) >= minTopConfidence &&
+    intraDatasetMargin >= 6 &&
+    crossDatasetGap >= 3 &&
+    Number(primary.context_weight || 0) >= 0.55;
+
+  if (!reliable) {
+    const reason = `Low-confidence/ambiguous image signal (dataset=${primary.dataset}, confidence=${Number(
+      primary.top_confidence || 0
+    ).toFixed(1)}%, margin=${intraDatasetMargin.toFixed(1)}%, gap=${crossDatasetGap.toFixed(1)}).`;
+    return { prediction: null, reason };
+  }
+
+  return {
+    prediction: {
+      ...imagePrediction,
+      best_dataset: primary.dataset,
+      best_label_index: primary.top_label_index,
+      best_label_name: primary.top_label_name,
+      best_confidence: primary.top_confidence,
+    },
+    reason: null,
+  };
 }
 
 function imageSpecificQuestion(prediction: ImagePredictionResult): string {
@@ -1037,6 +1097,10 @@ function cleanBase64Payload(value?: string | null): string {
   return payload;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchImagePrediction(
   imageBase64: string,
   userId: string,
@@ -1062,8 +1126,12 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
-  const totalBudgetMs = Math.max(30000, Math.min(120000, timeoutMs + 30000));
+  const totalBudgetMs = Math.max(60000, Math.min(240000, timeoutMs + 90000));
   const startedAt = Date.now();
+
+  // Kick off warmup in parallel so cold-start loading overlaps network wait.
+  void ensureImageWarmup(userId, preferredDatasets);
+
   const runRequest = async (requestTimeoutMs: number): Promise<ImagePredictionFetchResult> => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
@@ -1116,6 +1184,7 @@ async function fetchImagePrediction(
     return await runRequest(timeoutMs);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
+      await Promise.race([ensureImageWarmup(userId, preferredDatasets, true), sleep(15000)]);
       const elapsedMs = Date.now() - startedAt;
       const remainingMs = totalBudgetMs - elapsedMs;
       if (remainingMs < 20000) {
@@ -1126,7 +1195,7 @@ async function fetchImagePrediction(
           status: null,
         };
       }
-      const retryTimeoutMs = Math.min(remainingMs, timeoutMs + 30000);
+      const retryTimeoutMs = Math.min(remainingMs, timeoutMs + 60000);
       console.warn("[diagnose:image] first attempt timed out; retrying once", {
         timeoutMs,
         retryTimeoutMs,
@@ -1164,13 +1233,35 @@ async function fetchImagePrediction(
   }
 }
 
+async function ensureImageWarmup(
+  userId: string,
+  preferredDatasets: string[] = [],
+  force = false
+): Promise<void> {
+  const now = Date.now();
+  if (!force && now - imageWarmupLastAt < IMAGE_WARMUP_TTL_MS) return;
+  if (imageWarmupInFlight) {
+    await imageWarmupInFlight;
+    return;
+  }
+  imageWarmupInFlight = (async () => {
+    try {
+      await requestImageWarmup(userId, preferredDatasets);
+      imageWarmupLastAt = Date.now();
+    } finally {
+      imageWarmupInFlight = null;
+    }
+  })();
+  await imageWarmupInFlight;
+}
+
 async function requestImageWarmup(userId: string, preferredDatasets: string[] = []): Promise<void> {
   const backendUrl = resolveBackendUrl();
   if (!backendUrl) return;
   if (backendLikelyMisconfigured(backendUrl)) return;
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45000);
+  const timer = setTimeout(() => controller.abort(), 120000);
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (sharedSecret) {
@@ -1616,6 +1707,7 @@ export async function POST(req: NextRequest) {
     const asked = new Set<string>(parsedState?.askedSymptoms || []);
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
+    let imageAnalysisNote: string | null = null;
     let turns = parsedState?.turns || 0;
     let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? Math.max(10, parsedState.maxTurns) : 0;
 
@@ -1665,14 +1757,11 @@ export async function POST(req: NextRequest) {
       const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
       const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
-        const signal = pickPrimaryImageSignal(imageFetch.prediction, userMessage, slots, confirmed);
-        imagePrediction = {
-          ...imageFetch.prediction,
-          best_dataset: signal.primary.dataset,
-          best_label_index: signal.primary.top_label_index,
-          best_label_name: signal.primary.top_label_name,
-          best_confidence: signal.primary.top_confidence,
-        };
+        const reliable = chooseReliableImagePrediction(imageFetch.prediction, userMessage, slots, confirmed);
+        imagePrediction = reliable.prediction;
+        if (!reliable.prediction && reliable.reason) {
+          imageAnalysisNote = `${reliable.reason} Image was ignored to avoid misleading guidance.`;
+        }
       } else {
         const backendReason = imageFetch.error ? ` Backend reason: ${imageFetch.error}` : "";
         console.error("[diagnose:image] image inference unavailable", {
@@ -1680,20 +1769,7 @@ export async function POST(req: NextRequest) {
           reason: imageFetch.error,
           debug: imageFetch.debug,
         });
-        const reply =
-          `I received your image, but I could not run MedMNIST image-model inference right now.${backendReason} Please ensure backend image models are trained and available, then upload again.`;
-        return NextResponse.json({
-          reply,
-          follow_up_suggested: false,
-          image_analysis: {
-            used: false,
-            source: "medmnist_models",
-            status: "unavailable",
-            backend_status: imageFetch.status,
-            backend_reason: imageFetch.error,
-            backend_debug: imageFetch.debug,
-          },
-        });
+        imageAnalysisNote = `Image inference unavailable.${backendReason}`.trim();
       }
     }
 
@@ -1728,7 +1804,7 @@ export async function POST(req: NextRequest) {
         if (answer === "yes") {
           slots.imageAvailable = true;
           const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
-          void requestImageWarmup(userId, preferredDatasets);
+          void ensureImageWarmup(userId, preferredDatasets);
           if (hasImagePayload) {
             slots.imageProvided = true;
           } else {
@@ -2097,7 +2173,9 @@ export async function POST(req: NextRequest) {
         )} -> ${toLabel(imageSignal?.top_label_name || "unknown")} (${Number(imageSignal?.top_confidence || 0).toFixed(
           1
         )}%)`
-      : `\n\n**Image clues from your upload**\nNot used for this prediction.`;
+      : `\n\n**Image clues from your upload**\nNot used for this prediction.${
+          imageAnalysisNote ? `\nReason: ${imageAnalysisNote}` : ""
+        }`;
     const reply = `**Your preliminary result**\nLikely condition: ${toLabel(diagnosis.diagnosis)}\nConfidence: ${
       diagnosis.confidence
     }%\n\n**What I used to estimate this**\nSymptoms: ${
@@ -2115,6 +2193,8 @@ export async function POST(req: NextRequest) {
         image_analysis: {
           used: Boolean(imagePrediction),
           source: imagePrediction ? "medmnist_models" : "text_only",
+          status: imagePrediction ? "ok" : hasImagePayload ? "skipped_unreliable_or_unavailable" : "not_requested",
+          note: imageAnalysisNote,
         },
       },
     });

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -19,6 +20,9 @@ from report_parser import parse_report_content
 
 router = APIRouter(prefix="/api/diagnose", tags=["diagnose"])
 _image_predictor = None
+_image_predictor_lock = threading.Lock()
+_image_warmup_started = False
+_image_warmup_lock = threading.Lock()
 LOGGER = logging.getLogger("medcore.router.diagnose")
 
 
@@ -39,23 +43,57 @@ def _get_image_predictor():
     if _image_predictor is not None:
         return _image_predictor
 
-    from image_predictor import ImagePredictor
+    with _image_predictor_lock:
+        if _image_predictor is not None:
+            return _image_predictor
 
-    backend_root = Path(__file__).resolve().parents[1]
-    candidates = [
-        backend_root / "medical_ML" / "models",
-        Path.cwd() / "medical_ML" / "models",
-        Path.cwd() / "backend" / "medical_ML" / "models",
-    ]
-    chosen = next((p for p in candidates if p.exists()), candidates[0])
-    LOGGER.info(
-        "Initializing ImagePredictor | cwd=%s | chosen=%s | candidates=%s",
-        os.getcwd(),
-        chosen,
-        [str(c) for c in candidates],
-    )
-    _image_predictor = ImagePredictor(model_dir=str(chosen))
+        from image_predictor import ImagePredictor
+
+        backend_root = Path(__file__).resolve().parents[1]
+        candidates = [
+            backend_root / "medical_ML" / "models",
+            Path.cwd() / "medical_ML" / "models",
+            Path.cwd() / "backend" / "medical_ML" / "models",
+        ]
+        chosen = next((p for p in candidates if p.exists()), candidates[0])
+        LOGGER.info(
+            "Initializing ImagePredictor | cwd=%s | chosen=%s | candidates=%s",
+            os.getcwd(),
+            chosen,
+            [str(c) for c in candidates],
+        )
+        _image_predictor = ImagePredictor(model_dir=str(chosen))
     return _image_predictor
+
+
+def warmup_image_models_in_background(requested_datasets: Optional[list[str]] = None) -> None:
+    """Warm image models in a daemon thread so first user inference avoids cold-start delays."""
+    global _image_warmup_started
+    with _image_warmup_lock:
+        if _image_warmup_started:
+            return
+        _image_warmup_started = True
+
+    def _runner() -> None:
+        global _image_warmup_started
+        try:
+            predictor = _get_image_predictor()
+            started = time.perf_counter()
+            warmed = predictor.warmup(requested_datasets)
+            duration_ms = round((time.perf_counter() - started) * 1000, 2)
+            LOGGER.info(
+                "Image model warmup completed | warmed=%s | duration_ms=%s | diagnostics=%s",
+                warmed,
+                duration_ms,
+                predictor.diagnostics(),
+            )
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Image model warmup failed")
+        finally:
+            with _image_warmup_lock:
+                _image_warmup_started = False
+
+    threading.Thread(target=_runner, name="image-model-warmup", daemon=True).start()
 
 
 @router.post("/chat")
