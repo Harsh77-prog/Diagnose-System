@@ -14,7 +14,9 @@ BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
 # Performance & Timeout Configuration
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "30"))
 ML_INFERENCE_TIMEOUT_SECONDS = int(os.getenv("ML_INFERENCE_TIMEOUT_SECONDS", "60"))
-IMAGE_INFERENCE_TIMEOUT_SECONDS = int(os.getenv("IMAGE_INFERENCE_TIMEOUT_SECONDS", "120"))
+# ✅ INCREASED: Image models can take 30-60s to load on first run, plus inference
+# Total time budget: 3-5 minutes for comprehensive multimodal analysis
+IMAGE_INFERENCE_TIMEOUT_SECONDS = int(os.getenv("IMAGE_INFERENCE_TIMEOUT_SECONDS", "180"))  # Was 120, now 180s
 
 # ML Engine Optimization Settings
 PREDICTION_CACHE_SIZE = int(os.getenv("PREDICTION_CACHE_SIZE", "500"))

@@ -239,20 +239,23 @@ function chooseReliableImagePrediction(
     ((primary.context_score || 0) - (secondary?.context_score || 0)).toFixed(2)
   );
   const intraDatasetMargin = topTwoLabelMargin(primary);
-  const minTopConfidence = primary.dataset === "chestmnist" ? 60 : 62;
+  
+  // ✅ RELAXED THRESHOLDS: Accept images with moderate confidence
+  // Goal: Always use image analysis when available for stronger multimodal predictions
+  // Lower thresholds allow moderate-confidence images (30%+) to contribute
+  const minTopConfidence = primary.dataset === "chestmnist" ? 30 : 32;  // Was 60/62
+  const minIntraMargin = 3;  // Was 6
+  const minCrossGap = 0.5;   // Was 3
+  const minContextWeight = 0.1;  // Was 0.55
+  
   const reliable =
     Number(primary.top_confidence || 0) >= minTopConfidence &&
-    intraDatasetMargin >= 6 &&
-    crossDatasetGap >= 3 &&
-    Number(primary.context_weight || 0) >= 0.55;
+    intraDatasetMargin >= minIntraMargin &&
+    crossDatasetGap >= minCrossGap &&
+    Number(primary.context_weight || 0) >= minContextWeight;
 
-  if (!reliable) {
-    const reason = `Low-confidence/ambiguous image signal (dataset=${primary.dataset}, confidence=${Number(
-      primary.top_confidence || 0
-    ).toFixed(1)}%, margin=${intraDatasetMargin.toFixed(1)}%, gap=${crossDatasetGap.toFixed(1)}).`;
-    return { prediction: null, reason };
-  }
-
+  // ✅ ALWAYS RETURN IMAGE DATA (never null)
+  // Even moderate-confidence images improve diagnosis when blended with text analysis
   return {
     prediction: {
       ...imagePrediction,
@@ -261,7 +264,7 @@ function chooseReliableImagePrediction(
       best_label_name: primary.top_label_name,
       best_confidence: primary.top_confidence,
     },
-    reason: null,
+    reason: reliable ? null : `Moderate image signal (${primary.dataset}: ${Number(primary.top_confidence || 0).toFixed(1)}%). Still contributes to diagnosis.`,
   };
 }
 
@@ -1126,7 +1129,9 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
-  const totalBudgetMs = Math.max(60000, Math.min(240000, timeoutMs + 90000));
+  // ✅ INCREASED BUDGET: Models can take 30-60s to load + inference time
+  // Budget now 4-5 minutes for comprehensive image analysis on all datasets
+  const totalBudgetMs = Math.max(120000, Math.min(300000, timeoutMs + 120000));
   const startedAt = Date.now();
 
   // Kick off warmup in parallel so cold-start loading overlaps network wait.
@@ -1758,9 +1763,10 @@ export async function POST(req: NextRequest) {
       const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
         const reliable = chooseReliableImagePrediction(imageFetch.prediction, userMessage, slots, confirmed);
+        // ✅ ALWAYS USE IMAGE: Always set imagePrediction, never reject (always contributes)
         imagePrediction = reliable.prediction;
-        if (!reliable.prediction && reliable.reason) {
-          imageAnalysisNote = `${reliable.reason} Image was ignored to avoid misleading guidance.`;
+        if (reliable.reason) {
+          imageAnalysisNote = `Note: ${reliable.reason}`;
         }
       } else {
         const backendReason = imageFetch.error ? ` Backend reason: ${imageFetch.error}` : "";

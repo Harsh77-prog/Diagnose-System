@@ -272,9 +272,15 @@ async def translate_endpoint(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
 
     try:
-        from translator.service import translate_text
-
-        translated = translate_text(text=text, target_lang=target_lang)
+        # Check if this is a structured diagnosis message with question numbering
+        import re
+        if re.search(r"\*?\*?Question\s+\d+\s*:\*?\*?", text):
+            from translator.service import translate_diagnosis_message
+            result = translate_diagnosis_message(text=text, target_lang=target_lang)
+            translated = result["translated_text"]
+        else:
+            from translator.service import translate_text
+            translated = translate_text(text=text, target_lang=target_lang)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
