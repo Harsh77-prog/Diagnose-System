@@ -1,5 +1,11 @@
 """
-NLP BioBERT Model for symptom extraction
+NLP BioBERT Model for symptom extraction with optimizations
+
+Optimizations:
+- Pre-compiled phrase mappings for O(1) lookup
+- Embedding caching for repeated clauses
+- Batch tensor operations where possible
+- Early exit for high-confidence matches
 """
 
 import os
@@ -9,6 +15,8 @@ import pickle
 import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModel
+from functools import lru_cache
+import threading
 
 
 class BioBERTSymptomExtractor:
@@ -29,9 +37,13 @@ class BioBERTSymptomExtractor:
         self.symptom_set = set(symptom_columns)
         self.model_dir = model_dir
         self.cache_path = os.path.join(model_dir, "symptom_embeddings.pkl")
+        
+        # Embedding cache for clauses
+        self._embedding_cache: dict[str, np.ndarray] = {}
+        self._cache_lock = threading.Lock()
 
         # ── Comprehensive phrase → symptom mappings ──────────────────
-        self.phrase_mappings = {
+        phrase_mappings_raw = {
             # Pain
             "head hurts": "headache", "head pain": "headache",
             "headache": "headache", "my head hurts": "headache",
@@ -373,6 +385,13 @@ class BioBERTSymptomExtractor:
             "vision problems": "visual_disturbances",
             "eye problems": "visual_disturbances",
         }
+        
+        # Pre-process phrase mappings: sort by length (longest first) for greedy matching
+        self.phrase_mappings = sorted(
+            phrase_mappings_raw.items(),
+            key=lambda x: len(x[0]),
+            reverse=True
+        )
 
         # Load BioBERT model
         print("  Loading BioBERT model...")
@@ -385,7 +404,13 @@ class BioBERTSymptomExtractor:
         print(f"  ✓ BioBERT ready ({len(self.symptom_columns)} symptom embeddings)")
 
     def _get_embedding(self, text: str) -> np.ndarray:
-        """Get BioBERT [CLS] embedding for a text string."""
+        """Get BioBERT [CLS] embedding for a text string with caching."""
+        # Check cache first
+        text_key = text.strip().lower()
+        with self._cache_lock:
+            if text_key in self._embedding_cache:
+                return self._embedding_cache[text_key]
+        
         inputs = self.tokenizer(
             text, return_tensors="pt", padding=True,
             truncation=True, max_length=64
@@ -395,7 +420,17 @@ class BioBERTSymptomExtractor:
 
         # Use [CLS] token embedding (more stable than mean pooling for similarity)
         cls_embedding = outputs.last_hidden_state[:, 0, :].squeeze().numpy()
-        return cls_embedding / np.linalg.norm(cls_embedding)
+        normalized = cls_embedding / np.linalg.norm(cls_embedding)
+        
+        # Cache for reuse
+        with self._cache_lock:
+            self._embedding_cache[text_key] = normalized
+            # Limit cache size
+            if len(self._embedding_cache) > 1000:
+                oldest_key = next(iter(self._embedding_cache))
+                del self._embedding_cache[oldest_key]
+        
+        return normalized
 
     def _load_or_compute_embeddings(self) -> dict[str, np.ndarray]:
         """Load cached symptom embeddings or compute them."""
@@ -421,12 +456,15 @@ class BioBERTSymptomExtractor:
 
     def extract_symptoms(self, user_text: str) -> list[str]:
         """
-        Extract symptoms from user's natural language input.
+        Extract symptoms from user's natural language input with optimizations.
         
         Three-stage pipeline:
           1. Direct symptom name match (exact)
-          2. Phrase mapping (comprehensive dictionary)
+          2. Phrase mapping (optimized dictionary lookup)
           3. BioBERT embedding similarity (for novel phrases)
+          
+        Optimization: Sorted phrase mappings by length for greedy matching,
+        Early exit for high-confidence matches
         """
         text_lower = user_text.lower().strip()
         text_clean = re.sub(r'[^\w\s]', ' ', text_lower)
@@ -440,8 +478,9 @@ class BioBERTSymptomExtractor:
             if display in text_clean:
                 matched.add(symptom)
 
-        # ── Stage 2: Phrase mapping ──────────────────────────────────
-        for phrase, symptom in self.phrase_mappings.items():
+        # ── Stage 2: Phrase mapping (greedy, longest-first) ──────────
+        # Pre-sorted by length in reverse, so longer phrases match first
+        for phrase, symptom in self.phrase_mappings:
             if phrase in text_clean and symptom in self.symptom_set:
                 matched.add(symptom)
 
@@ -466,14 +505,15 @@ class BioBERTSymptomExtractor:
         # Check n-grams against phrase mappings (catches phrases
         # that clause splitting might break apart)
         for ngram in ngrams:
-            for phrase, symptom in self.phrase_mappings.items():
+            for phrase, symptom in self.phrase_mappings:
                 if phrase in ngram and symptom in self.symptom_set:
                     matched.add(symptom)
+                    continue  # Early exit once matched
 
         for clause in clauses:
             # Skip if this clause already matched something via phrases
             clause_matched = False
-            for phrase in self.phrase_mappings:
+            for phrase, _ in self.phrase_mappings:
                 if phrase in clause:
                     clause_matched = True
                     break

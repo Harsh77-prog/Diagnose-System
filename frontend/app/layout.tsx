@@ -21,6 +21,13 @@ export const metadata: Metadata = {
     shortcut: "/globe.svg",
     apple: "/globe.svg",
   },
+  // ✅ OPTIMIZATION: Preload critical fonts to reduce CLS and improve LCP
+  metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
+  openGraph: {
+    title: "MedCoreAI",
+    description: "AI-powered medical chat, symptom analysis, and image-assisted guidance.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

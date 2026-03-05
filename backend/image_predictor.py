@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Iterable
+from collections import OrderedDict
 
 import medmnist
 import torch
@@ -59,7 +60,8 @@ class ImagePredictor:
         self._models: dict[str, SimpleCNN] = {}
         self._available_model_files: dict[str, Path] = {}
         self._model_locks: dict[str, threading.Lock] = {name: threading.Lock() for name in DATASETS}
-        self._predict_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+        # Use OrderedDict for efficient LRU eviction
+        self._predict_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
         self._predict_cache_lock = threading.Lock()
         self._predict_cache_ttl_sec = 20 * 60
         self._predict_cache_max_items = 256
@@ -225,6 +227,7 @@ class ImagePredictor:
         return f"{','.join(sorted(datasets))}:{digest}"
 
     def _get_cached_prediction(self, key: str) -> dict[str, Any] | None:
+        """Get cached prediction with TTL check."""
         now = time.time()
         with self._predict_cache_lock:
             item = self._predict_cache.get(key)
@@ -234,20 +237,22 @@ class ImagePredictor:
             if now - ts > self._predict_cache_ttl_sec:
                 self._predict_cache.pop(key, None)
                 return None
+            # Move to end to mark as recently used (LRU)
+            self._predict_cache.move_to_end(key)
             return payload.copy()
 
     def _set_cached_prediction(self, key: str, payload: dict[str, Any]) -> None:
+        """Set cached prediction with LRU eviction."""
         now = time.time()
         with self._predict_cache_lock:
-            self._predict_cache[key] = (now, payload.copy())
-            if len(self._predict_cache) <= self._predict_cache_max_items:
-                return
-            # Evict oldest entries first to keep memory bounded.
-            oldest_keys = sorted(self._predict_cache.items(), key=lambda item: item[1][0])[
-                : max(1, len(self._predict_cache) - self._predict_cache_max_items)
-            ]
-            for old_key, _ in oldest_keys:
-                self._predict_cache.pop(old_key, None)
+            # Move to end if exists, otherwise add
+            if key in self._predict_cache:
+                self._predict_cache.move_to_end(key)
+            else:
+                # Evict oldest entry if cache is full
+                if len(self._predict_cache) >= self._predict_cache_max_items:
+                    self._predict_cache.popitem(last=False)  # Remove first (oldest) item
+                self._predict_cache[key] = (now, payload.copy())
 
     @staticmethod
     def _decode_base64(image_base64: str) -> bytes:

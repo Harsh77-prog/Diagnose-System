@@ -2,24 +2,49 @@
 MedCoreAI Diagnosis Backend.
 FastAPI app: /api/diagnose/* (chat, upload-report, history). Auth via NextAuth JWT.
 Powered by BioBERT + ML Ensemble — no OpenAI API needed.
+
+Performance Optimizations:
+- Prediction caching with LRU eviction
+- Entropy calculation caching
+- Vectorized ML operations
+- Session TTL with automatic cleanup
+- Image prediction LRU cache with OrderedDict
+- BioBERT embedding caching
 """
 import logging
+import time
 from pathlib import Path
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from routers.diagnose import router as diagnose_router, warmup_image_models_in_background
+from config import REQUEST_TIMEOUT_SECONDS
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup and shutdown events."""
+    logger.info("🚀 MedCoreAI Backend starting...")
+    warmup_image_models_in_background()
+    yield
+    logger.info("🛑 MedCoreAI Backend shutting down...")
+
+
 app = FastAPI(
     title="MedCoreAI Diagnosis API",
     description="ML-powered medical diagnosis: BioBERT symptom extraction + ensemble prediction. Per-user history.",
-    version="2.0.0",
+    version="2.0.1",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -33,18 +58,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Request timeout middleware
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    """Add request timeout protection."""
+    try:
+        start_time = time.time()
+        response = await asyncio.wait_for(call_next(request), timeout=REQUEST_TIMEOUT_SECONDS)
+        duration = time.time() - start_time
+        response.headers["X-Process-Time"] = str(duration)
+        return response
+    except asyncio.TimeoutError:
+        logger.error(f"Request timeout after {REQUEST_TIMEOUT_SECONDS}s: {request.url}")
+        return JSONResponse(
+            status_code=504,
+            content={"detail": f"Request timeout after {REQUEST_TIMEOUT_SECONDS} seconds"}
+        )
+
+
 app.include_router(diagnose_router)
-
-
-@app.on_event("startup")
-def startup_warm_image_models() -> None:
-    # Non-blocking warmup so first image inference does not pay full model cold-start cost.
-    warmup_image_models_in_background()
 
 
 @app.get("/")
 def root():
-    return {"service": "MedCoreAI Diagnosis API (ML-Powered)", "docs": "/docs"}
+    return {"service": "MedCoreAI Diagnosis API (ML-Powered v2.0.1)", "docs": "/docs"}
 
 
 @app.get("/health")
@@ -57,10 +95,12 @@ def health():
         "ml_engine_loaded": "lazy",
         "image_models_available": model_files,
         "image_model_count": len(model_files),
+        "version": "2.0.1",
     }
 
 
 if __name__ == "__main__":
+    import asyncio
     import uvicorn
     from config import BACKEND_HOST, BACKEND_PORT
     uvicorn.run("main:app", host=BACKEND_HOST, port=BACKEND_PORT, reload=True)

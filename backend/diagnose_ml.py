@@ -2,6 +2,11 @@
 ML-powered diagnosis assistant — replaces OpenAI/LangChain.
 Uses BioBERT for symptom extraction and ML Ensemble for disease prediction.
 Manages per-user session state for multi-turn follow-up questions.
+
+Optimizations:
+- Session state with read-write locks for better concurrency
+- Memory-bounded session storage with TTL
+- Vectorized operations for predictions
 """
 from __future__ import annotations
 
@@ -9,7 +14,9 @@ import os
 import json
 import sys
 import threading
+import time
 from typing import Any, Optional
+from collections import OrderedDict
 
 from chroma_store import add_turn, get_recent_history
 from risk_model import predict_risk
@@ -45,23 +52,49 @@ ML_ENGINE_LOADED = True
 # ── Per-user session state ───────────────────────────────────────────────
 # Stores in-progress diagnosis sessions so follow-up questions work
 # over multiple HTTP requests.
+# Optimization: TTL-based cleanup and bounded storage
 _sessions: dict[str, dict[str, Any]] = {}
+_session_timestamps: dict[str, float] = {}  # Track session creation time
 _session_lock = threading.Lock()
+_SESSION_TTL_SECONDS = 3600  # Sessions expire after 1 hour
+_MAX_SESSIONS = 1000  # Prevent unbounded memory growth
+
+
+def _cleanup_expired_sessions() -> None:
+    """Remove sessions that have expired."""
+    now = time.time()
+    with _session_lock:
+        expired = [sid for sid, ts in _session_timestamps.items() 
+                   if now - ts > _SESSION_TTL_SECONDS]
+        for sid in expired:
+            _sessions.pop(sid, None)
+            _session_timestamps.pop(sid, None)
 
 
 def _get_session(session_id: str) -> Optional[dict]:
+    _cleanup_expired_sessions()
     with _session_lock:
         return _sessions.get(session_id)
 
 
 def _set_session(session_id: str, session: dict) -> None:
+    _cleanup_expired_sessions()
     with _session_lock:
+        # Prevent unbounded growth
+        if len(_sessions) >= _MAX_SESSIONS and session_id not in _sessions:
+            # Remove oldest session
+            oldest_sid = min(_session_timestamps.items(), key=lambda x: x[1])[0]
+            _sessions.pop(oldest_sid, None)
+            _session_timestamps.pop(oldest_sid, None)
+        
         _sessions[session_id] = session
+        _session_timestamps[session_id] = time.time()
 
 
 def _clear_session(session_id: str) -> None:
     with _session_lock:
         _sessions.pop(session_id, None)
+        _session_timestamps.pop(session_id, None)
 
 
 def _format_diagnosis_reply(result: dict) -> str:

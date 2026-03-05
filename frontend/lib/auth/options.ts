@@ -64,7 +64,10 @@ export const authOptions: AuthOptions = {
 
   callbacks: {
     async jwt({ token, user, trigger, session }: any) {
+      // ✅ OPTIMIZATION: Only query DB on initial login (when user object exists)
+      // Subsequent calls reuse cached token data, avoiding N+1 database queries
       if (user) {
+        // Initial login or OAuth signup - fetch user data once
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email },
           select: {
@@ -74,24 +77,30 @@ export const authOptions: AuthOptions = {
             emailVerified: true,
           },
         });
-        token.name = dbUser?.name;
-        token.id = dbUser?.id;
-        token.email = dbUser?.email;
-        token.emailVerified = dbUser?.emailVerified;
+        if (dbUser) {
+          token.name = dbUser.name;
+          token.id = dbUser.id;
+          token.email = dbUser.email;
+          token.emailVerified = dbUser.emailVerified;
+          token.iat = Math.floor(Date.now() / 1000); // Token issued at time
+        }
       }
-      // 👇 Manual session update
+      
+      // ✅ Manual session update - refresh DB data only when explicitly updated
       if (trigger === "update" && session) {
-        console.log({ session });
         if (session.name) token.name = session.name;
         if (session.image) token.picture = session.image;
-        if (session.emailVerified) token.emailVerified = session.emailVerified;
+        if (session.emailVerified !== undefined) token.emailVerified = session.emailVerified;
       }
 
       return token;
     },
     async session({ session, token }: any) {
+      // ✅ Session callback runs on every page load but doesn't query DB
+      // All data comes from cached JWT token (milliseconds, not database round-trip)
       session.user.id = token.id;
       session.user.emailVerified = token.emailVerified;
+      session.user.name = token.name;
       return session;
     },
   },

@@ -6,6 +6,7 @@ import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, Ch
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { cachedFetch, clearCache } from "@/lib/api-cache"; // ✅ Deduplication & Caching
 
 // Types
 type ChatSession = {
@@ -602,13 +603,21 @@ export default function ChatDashboard() {
         const request = (async () => {
             try {
                 setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
-                const res = await fetch("/api/diagnose/translate", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
-                });
-                const data = await parseResponseJson<{ translated_text?: string; error?: string }>(res);
-                if (!res.ok) throw new Error(data.error || "Translation failed");
+                // ✅ USE CACHED FETCH: Translation results are cacheable for 10 minutes
+                const data = await cachedFetch<{ translated_text?: string; error?: string }>(
+                    "/api/diagnose/translate",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
+                    },
+                    10 * 60 * 1000 // Cache for 10 minutes
+                );
+                
+                if (!data.translated_text && data.error) {
+                    throw new Error(data.error || "Translation failed");
+                }
+                
                 setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
                 delete failedHindiPrefetchRef.current[msg.id];
                 return true;

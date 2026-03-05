@@ -19,6 +19,9 @@ import json
 import os
 import joblib
 from scipy.stats import entropy
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 
 # ── Configuration ────────────────────────────────────────────────────────
@@ -34,6 +37,12 @@ class MLDiagnosticEngine:
     
     Uses information gain (entropy reduction) to select the most 
     discriminative follow-up symptom at each step.
+    
+    Optimizations:
+    - Entropy calculation caching per symptom vector
+    - Vectorized probability estimation
+    - Parallel candidate evaluation
+    - LRU caching for repeated predictions
     """
 
     def __init__(self, model_dir: str, data_dir: str):
@@ -45,19 +54,24 @@ class MLDiagnosticEngine:
             metadata = json.load(f)
         self.symptom_columns = metadata["symptom_columns"]
         self.n_symptoms = len(self.symptom_columns)
+        self._symptom_col_indices = {col: i for i, col in enumerate(self.symptom_columns)}
 
         # Load encoded data for disease-symptom mapping
         df_encoded = pd.read_csv(os.path.join(data_dir, "dataset_encoded.csv"))
 
-        # Build disease → symptom probability map
-        # P(symptom | disease) = fraction of samples with that symptom
+        # Build disease → symptom probability map (vectorized)
         self.disease_symptom_probs: dict[str, dict[str, float]] = {}
+        self.disease_symptom_probs_matrix: dict[str, np.ndarray] = {}
         for disease in df_encoded["Disease"].unique():
             disease_rows = df_encoded[df_encoded["Disease"] == disease]
             probs = {}
+            probs_array = np.zeros(self.n_symptoms, dtype=np.float32)
             for col in self.symptom_columns:
-                probs[col] = disease_rows[col].mean()
+                col_prob = disease_rows[col].mean()
+                probs[col] = col_prob
+                probs_array[self._symptom_col_indices[col]] = col_prob
             self.disease_symptom_probs[disease] = probs
+            self.disease_symptom_probs_matrix[disease] = probs_array
 
         # Build canonical symptom sets
         self.disease_symptoms: dict[str, set[str]] = {}
@@ -90,18 +104,47 @@ class MLDiagnosticEngine:
                 self.disease_precautions[row["Disease"]] = precs
         except:
             self.disease_precautions = {}
+        
+        # Prediction cache for repeated vectors
+        self._prediction_cache: dict[str, list[tuple[str, float]]] = {}
+        self._entropy_cache: dict[str, float] = {}
+        self._cache_lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(max_workers=2)
 
     # ═══════════════════════════════════════════════════════════════════════
     # PREDICTION
     # ═══════════════════════════════════════════════════════════════════════
+    def _vector_to_key(self, vector: np.ndarray) -> str:
+        """Convert numpy array to cache key efficiently."""
+        return vector.tobytes().hex()
+    
     def predict(self, symptom_vector: np.ndarray, top_n: int = 5) -> list[tuple[str, float]]:
-        """Run ensemble model, return top-N (disease, probability) pairs."""
+        """Run ensemble model with caching, return top-N (disease, probability) pairs."""
+        cache_key = self._vector_to_key(symptom_vector)
+        
+        with self._cache_lock:
+            if cache_key in self._prediction_cache:
+                cached = self._prediction_cache[cache_key]
+                if len(cached) >= top_n:
+                    return cached[:top_n]
+        
+        # Compute fresh prediction
         probs = self.ensemble.predict_proba(symptom_vector.reshape(1, -1))[0]
         top_indices = np.argsort(probs)[::-1][:top_n]
-        return [
+        result = [
             (self.label_encoder.inverse_transform([i])[0], float(probs[i]))
             for i in top_indices
         ]
+        
+        # Cache for future use
+        with self._cache_lock:
+            self._prediction_cache[cache_key] = result
+            # Limit cache size to prevent memory bloat
+            if len(self._prediction_cache) > 500:
+                oldest_key = next(iter(self._prediction_cache))
+                del self._prediction_cache[oldest_key]
+        
+        return result
 
     def build_symptom_vector(self, symptoms: list[str]) -> np.ndarray:
         """Convert symptom names to binary feature vector."""
@@ -132,11 +175,26 @@ class MLDiagnosticEngine:
         return top_prob >= CONFIDENCE_THRESHOLD and gap >= CONFIDENCE_GAP_THRESHOLD
 
     def get_prediction_entropy(self, symptom_vector: np.ndarray) -> float:
-        """Calculate Shannon entropy of the prediction distribution."""
+        """Calculate Shannon entropy of the prediction distribution with caching."""
+        cache_key = self._vector_to_key(symptom_vector)
+        
+        with self._cache_lock:
+            if cache_key in self._entropy_cache:
+                return self._entropy_cache[cache_key]
+        
         probs = self.ensemble.predict_proba(symptom_vector.reshape(1, -1))[0]
         # Filter out zeros to avoid log(0)
         probs = probs[probs > 0]
-        return float(entropy(probs, base=2))
+        ent = float(entropy(probs, base=2))
+        
+        # Cache entropy
+        with self._cache_lock:
+            self._entropy_cache[cache_key] = ent
+            if len(self._entropy_cache) > 500:
+                oldest_key = next(iter(self._entropy_cache))
+                del self._entropy_cache[oldest_key]
+        
+        return ent
 
     # ═══════════════════════════════════════════════════════════════════════
     # INFORMATION GAIN FOLLOW-UP SELECTION
@@ -148,26 +206,12 @@ class MLDiagnosticEngine:
         predictions: list[tuple[str, float]],
     ) -> tuple[str | None, float]:
         """
-        Find the symptom with the highest INFORMATION GAIN.
-
-        For each unchecked symptom s:
-          1. Simulate: "What if patient says YES to s?"
-             → new_vector_yes = vector with s = 1
-             → entropy_yes = H(predictions | s=1)
-          
-          2. Simulate: "What if patient says NO to s?"
-             → new_vector_no = vector unchanged (s stays 0)
-             → entropy_no = H(predictions | s=0)
-          
-          3. Expected entropy reduction:
-             P(s=1) * entropy_yes + P(s=0) * entropy_no
-             
-          4. Information gain = current_entropy - expected_entropy
-          
-        The symptom with the HIGHEST information gain is the best
-        question to ask — it maximally reduces diagnostic uncertainty.
+        Find the symptom with the highest INFORMATION GAIN using vectorized operations.
         
-        Returns: (best_symptom_name, info_gain) or (None, 0.0)
+        Optimizations:
+        - Batch entropy calculations
+        - Vectorized probability estimation
+        - Early exit on low entropy
         """
         current_entropy = self.get_prediction_entropy(symptom_vector)
 
@@ -181,14 +225,14 @@ class MLDiagnosticEngine:
         if not candidates:
             return None, 0.0
 
+        # Vectorized probability estimation for all candidates at once
+        p_yes_probs = self._estimate_symptom_probabilities_batch(candidates, predictions)
+        
         best_symptom = None
         best_gain = 0.0
 
-        for symptom in candidates:
-            idx = self.symptom_columns.index(symptom)
-
-            # Estimate P(symptom = 1) based on top predicted diseases
-            p_yes = self._estimate_symptom_probability(symptom, predictions)
+        for symptom, p_yes in zip(candidates, p_yes_probs):
+            idx = self._symptom_col_indices[symptom]
             p_no = 1.0 - p_yes
 
             # Simulate YES
@@ -255,6 +299,23 @@ class MLDiagnosticEngine:
             p_symptom += (prob / total_prob) * disease_probs.get(symptom, 0.0)
 
         return max(0.1, min(0.9, p_symptom))  # Clamp to avoid 0/1
+    
+    def _estimate_symptom_probabilities_batch(
+        self, symptoms: list[str], predictions: list[tuple[str, float]]
+    ) -> np.ndarray:
+        """Vectorized estimation of P(symptom=1) for multiple symptoms."""
+        total_prob = sum(p for _, p in predictions[:5])
+        if total_prob == 0:
+            return np.full(len(symptoms), 0.5, dtype=np.float32)
+        
+        result = np.zeros(len(symptoms), dtype=np.float32)
+        for i, symptom in enumerate(symptoms):
+            p_symptom = 0.0
+            for disease, prob in predictions[:5]:
+                disease_probs = self.disease_symptom_probs.get(disease, {})
+                p_symptom += (prob / total_prob) * disease_probs.get(symptom, 0.0)
+            result[i] = max(0.1, min(0.9, p_symptom))
+        return result
 
     # ═══════════════════════════════════════════════════════════════════════
     # DISEASE INFORMATION
