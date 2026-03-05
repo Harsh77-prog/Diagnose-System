@@ -11,6 +11,7 @@ Performance Optimizations:
 - Image prediction LRU cache with OrderedDict
 - BioBERT embedding caching
 """
+import asyncio
 import logging
 import time
 from pathlib import Path
