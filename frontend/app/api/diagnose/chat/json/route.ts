@@ -1988,6 +1988,7 @@ export async function POST(req: NextRequest) {
         question = {
           id: "image_upload",
           text: "Please upload one medical image now and send a short message (for example: 'uploaded image').",
+          choices: ["upload"],  // ✅ Single "upload" option instead of yes/no
         };
       } else {
         const askedTracker = new Set<string>(asked);

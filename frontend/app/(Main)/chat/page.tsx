@@ -1240,12 +1240,19 @@ export default function ChatDashboard() {
                                                 <Button
                                                     key={choice}
                                                     size="sm"
-                                                    variant="outline"
-                                                    className="h-8 text-xs rounded-full bg-white border-[#e5e5e5] capitalize"
-                                                    onClick={() => sendMessage(choice, "custom")}
+                                                    variant={choice === "upload" ? "default" : "outline"}
+                                                    className={choice === "upload" ? "h-8 text-xs rounded-full bg-blue-600 hover:bg-blue-700 text-white" : "h-8 text-xs rounded-full bg-white border-[#e5e5e5] capitalize"}
+                                                    onClick={() => {
+                                                        // ✅ Special handling for "upload" choice - trigger file picker
+                                                        if (choice === "upload") {
+                                                            imageInputRef.current?.click();
+                                                        } else {
+                                                            sendMessage(choice, "custom");
+                                                        }
+                                                    }}
                                                     disabled={loading}
                                                 >
-                                                    {choice.replace(/_/g, " ")}
+                                                    {choice.replace(/_/g, " ").charAt(0).toUpperCase() + choice.replace(/_/g, " ").slice(1)}
                                                 </Button>
                                             ))
                                         ) : (
