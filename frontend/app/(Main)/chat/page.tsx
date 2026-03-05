@@ -637,7 +637,7 @@ export default function ChatDashboard() {
 
         recentAssistantMessages.forEach((msg) => {
             if (translatedByMessage[msg.id]) return;
-            if (inFlightHindiRequestsRef.current[msg.id]) return;
+            if (msg.id in inFlightHindiRequestsRef.current) return;
             if (failedHindiPrefetchRef.current[msg.id]) return;
             void fetchHindiForMessage(msg);
         });
