@@ -1,10 +1,3 @@
-/**
- * ✅ API Request Deduplication & Caching Utility
- * 
- * Prevents duplicate requests and caches responses to improve performance
- * Particularly useful for translation, symptom analysis, and session loading
- */
-
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -13,10 +6,6 @@ interface CacheEntry<T> {
 
 const apiCache = new Map<string, CacheEntry<unknown>>();
 const inFlightRequests = new Map<string, Promise<unknown>>();
-
-/**
- * Generate a cache key from URL and request options
- */
 function generateCacheKey(
   endpoint: string,
   options?: { method?: string; body?: string } | RequestInit
@@ -26,43 +15,25 @@ function generateCacheKey(
   
   let bodyHash = "";
   if (body) {
-    // FIX: Generate a simple but robust hash of the full body to prevent collisions
-    // The previous 16-char base64 prefix was causing collisions for similar JSON payloads
+    // IMPROVED: Generate a more robust hash and include length to prevent collisions
     let hash = 0;
     for (let i = 0; i < body.length; i++) {
       const char = body.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32bit integer
     }
-    bodyHash = Math.abs(hash).toString(36);
+    // Append length and hash for uniqueness
+    bodyHash = `${body.length}_${Math.abs(hash).toString(36)}`;
   }
 
   return `${method}:${endpoint}${bodyHash ? `:${bodyHash}` : ""}`;
 }
-
-/**
- * Check if cached entry is still valid
- */
 function isCacheValid<T>(entry: CacheEntry<T>): boolean {
   const now = Date.now();
   return now - entry.timestamp < entry.ttl;
 }
 
-/**
- * Make a fetch request with deduplication and caching
- * 
- * @param endpoint API endpoint
- * @param options Fetch options (method, headers, body, etc.)
- * @param cacheTTL Cache TTL in milliseconds (default: 5 minutes for GET, 0 for other methods)
- * @returns Response data
- * 
- * @example
- * // Cache translation for 10 minutes
- * const result = await cachedFetch("/api/diagnose/translate", 
- *   { method: "POST", body: JSON.stringify({...}) },
- *   10 * 60 * 1000
- * );
- */
+
 export async function cachedFetch<T = unknown>(
   endpoint: string,
   options?: RequestInit,

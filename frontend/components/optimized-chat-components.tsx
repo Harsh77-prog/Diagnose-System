@@ -150,11 +150,11 @@ export const ImageModelSignals = memo(function ImageModelSignals({
     dataset: string;
     top_label_name: string;
     top_confidence: number;
-    scores?: Array<{ label_name: string; label_index: number; confidence: number }>;
+    scores?: Array<{ label_name: string; confidence: number }>;
   }>;
   labelize: (text: string) => string;
 }) {
-  // Memoize signal processing to avoid recalculation
+
   const processedSignals = useMemo(() => imageSignals.slice(0, 5), [imageSignals]);
 
   if (processedSignals.length === 0) {
@@ -175,32 +175,51 @@ export const ImageModelSignals = memo(function ImageModelSignals({
       <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
         <Triangle className="w-3.5 h-3.5" /> Image Model Signals
       </div>
-      <div className="mt-2 space-y-2">
-        {processedSignals.map((pred, idx) => (
-          <div key={`${pred.dataset}:${pred.top_label_name}:${idx}`}>
-            <div className="flex items-center justify-between text-[12px] mb-1">
-              <span className="text-slate-700 font-medium">
-                {`${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)}`}
+
+      <div className="mt-3 space-y-3">
+
+        {processedSignals.map((ds, idx) => (
+          <div key={`${ds.dataset}-${idx}`} className="border-b pb-2 last:border-b-0">
+
+            {/* ✅ DATASET + TOP LABEL */}
+            <div className="flex justify-between text-[13px] font-semibold text-slate-800">
+              <span>
+                {labelize(ds.dataset)} → {labelize(ds.top_label_name)}
               </span>
-              <span className="text-slate-600">{Number(pred.top_confidence).toFixed(1)}%</span>
+              <span className="text-slate-600">
+                {Number(ds.top_confidence).toFixed(1)}%
+              </span>
             </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+
+            {/* ✅ PROGRESS BAR */}
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden mt-1">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500"
-                style={{ width: `${Number(pred.top_confidence)}%` }}
+                className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500 transition-all duration-700"
+                style={{ width: `${Number(ds.top_confidence)}%` }}
               />
             </div>
-            {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
-              <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
-                {pred.scores.slice(0, 3).map((score) => (
-                  <div key={`${pred.dataset}:${score.label_index}`}>
-                    {labelize(score.label_name)}: {Number(score.confidence).toFixed(1)}%
+
+            {/* ✅ SCORES LIST */}
+            {Array.isArray(ds.scores) && ds.scores.length > 0 && (
+              <div className="mt-2 space-y-1 text-[12px] text-slate-600">
+
+                {ds.scores.slice(0, 3).map((score, sIdx) => (
+                  <div
+                    key={`${ds.dataset}-${sIdx}`}
+                    className="flex justify-between"
+                  >
+                    {/* FIXED: label_name instead of label_index */}
+                    <span>{labelize(score.label_name)}</span>
+                    <span>{Number(score.confidence).toFixed(1)}%</span>
                   </div>
                 ))}
+
               </div>
-            ) : null}
+            )}
+
           </div>
         ))}
+
       </div>
     </div>
   );

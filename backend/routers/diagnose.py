@@ -1,10 +1,3 @@
-"""
-Diagnose API: chat, upload report, history.
-All routes require valid JWT (NextAuth).
-ML-powered — no OpenAI dependency.
-"""
-from __future__ import annotations
-
 import logging
 import os
 import threading
@@ -26,7 +19,14 @@ _image_warmup_lock = threading.Lock()
 LOGGER = logging.getLogger("medcore.router.diagnose")
 
 
-def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, session_action: Optional[str] = None):
+def _run_ml_diagnose(
+    *,
+    user_id: str,
+    session_id: str,
+    user_message: str,
+    session_action: Optional[str] = None,
+    image_prediction: Optional[dict[str, Any]] = None,
+):
     # Lazy import so app can boot and bind port before heavy ML initialization.
     from diagnose_ml import run_ml_diagnose
 
@@ -35,6 +35,7 @@ def _run_ml_diagnose(*, user_id: str, session_id: str, user_message: str, sessio
         session_id=session_id,
         user_message=user_message,
         session_action=session_action,
+        image_prediction=image_prediction,
     )
 
 
@@ -104,7 +105,7 @@ async def diagnose_chat(
 ) -> dict[str, Any]:
     """Send a message and get ML-powered diagnosis or follow-up question."""
     user_id = require_user_id(request)
-    session_id = request.headers.get("X-Session-Id") or user_id 
+    session_id = request.headers.get("X-Session-Id") or user_id
     if not message.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
@@ -147,24 +148,28 @@ async def get_history(request: Request) -> dict[str, Any]:
 
 @router.post("/chat/json")
 async def diagnose_chat_json(request: Request) -> dict[str, Any]:
-    """JSON body: { message, session_action? }. ML-powered diagnosis."""
+    """JSON body: { message, session_action?, image_prediction? }. ML-powered diagnosis."""
     user_id = require_user_id(request)
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON")
+
     message = (body.get("message") or "").strip()
     if not message:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
     session_action = body.get("session_action")
+    image_prediction = body.get("image_prediction")  # New: Accept image results
     session_id = request.headers.get("X-Session-Id") or user_id
 
+    # Update call to pass image_prediction
     result = _run_ml_diagnose(
         user_id=user_id,
         session_id=session_id,
         user_message=message,
         session_action=session_action,
+        image_prediction=image_prediction,
     )
     return result
 
@@ -216,7 +221,7 @@ async def image_predict(request: Request) -> dict[str, Any]:
     except RuntimeError as exc:
         debug = {}
         try:
-            debug = predictor.diagnostics()  # type: ignore[name-defined]
+            debug = predictor.diagnostics()
         except Exception:  # noqa: BLE001
             pass
         LOGGER.exception("Image prediction runtime error | diagnostics=%s", debug)
@@ -272,14 +277,16 @@ async def translate_endpoint(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
 
     try:
-        # Check if this is a structured diagnosis message with question numbering
         import re
+
         if re.search(r"\*?\*?Question\s+\d+\s*:\*?\*?", text):
             from translator.service import translate_diagnosis_message
+
             result = translate_diagnosis_message(text=text, target_lang=target_lang)
             translated = result["translated_text"]
         else:
             from translator.service import translate_text
+
             translated = translate_text(text=text, target_lang=target_lang)
     except Exception as exc:
         raise HTTPException(
