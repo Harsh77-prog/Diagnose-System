@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import re
-from functools import lru_cache
 from typing import Optional
 
 from deep_translator import GoogleTranslator
 
 
-@lru_cache(maxsize=2048)
 def _translate_chunk(text: str, target_lang: str) -> str:
     return GoogleTranslator(source="auto", target=target_lang).translate(text)
 
@@ -121,7 +119,7 @@ def translate_diagnosis_message(text: str, target_lang: str = "hi") -> dict[str,
     else:
         result_parts.append(reconstructed_header)
     
-    reconstructed = "\n\n".join(result_parts) if len(result_parts) > 1 else result_parts[0] if result_parts else ""
+    reconstructed = "\n".join(result_parts) if len(result_parts) > 1 else result_parts[0] if result_parts else ""
     
     return {
         "translated_text": reconstructed.strip(),

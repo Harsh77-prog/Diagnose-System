@@ -232,30 +232,13 @@ function chooseReliableImagePrediction(
   reason: string | null;
 } {
   const signal = pickPrimaryImageSignal(imagePrediction, message, slots, confirmedSymptoms);
-  const sorted = [...signal.scored].sort((a, b) => b.context_score - a.context_score);
   const primary = signal.primary;
-  const secondary = sorted[1] || null;
-  const crossDatasetGap = Number(
-    ((primary.context_score || 0) - (secondary?.context_score || 0)).toFixed(2)
-  );
-  const intraDatasetMargin = topTwoLabelMargin(primary);
-  
-  // ✅ RELAXED THRESHOLDS: Accept images with moderate confidence
-  // Goal: Always use image analysis when available for stronger multimodal predictions
-  // Lower thresholds allow moderate-confidence images (30%+) to contribute
-  const minTopConfidence = primary.dataset === "chestmnist" ? 30 : 32;  // Was 60/62
-  const minIntraMargin = 3;  // Was 6
-  const minCrossGap = 0.5;   // Was 3
-  const minContextWeight = 0.1;  // Was 0.55
-  
-  const reliable =
-    Number(primary.top_confidence || 0) >= minTopConfidence &&
-    intraDatasetMargin >= minIntraMargin &&
-    crossDatasetGap >= minCrossGap &&
-    Number(primary.context_weight || 0) >= minContextWeight;
 
-  // ✅ ALWAYS RETURN IMAGE DATA (never null)
-  // Even moderate-confidence images improve diagnosis when blended with text analysis
+  // ✅ NO CONFIDENCE FILTERING: Accept ALL image predictions
+  // Always use image analysis when available - no rejection based on confidence thresholds
+  // User requested: "i want image model working not any restriction of confidence or percentage based rejection"
+  
+  // Always return the image prediction as-is, without any filtering or rejection
   return {
     prediction: {
       ...imagePrediction,
@@ -264,7 +247,7 @@ function chooseReliableImagePrediction(
       best_label_name: primary.top_label_name,
       best_confidence: primary.top_confidence,
     },
-    reason: reliable ? null : `Moderate image signal (${primary.dataset}: ${Number(primary.top_confidence || 0).toFixed(1)}%). Still contributes to diagnosis.`,
+    reason: null,  // No filtering, so no reason needed
   };
 }
 
@@ -2200,7 +2183,7 @@ export async function POST(req: NextRequest) {
         image_analysis: {
           used: Boolean(imagePrediction),
           source: imagePrediction ? "medmnist_models" : "text_only",
-          status: imagePrediction ? "ok" : hasImagePayload ? "skipped_unreliable_or_unavailable" : "not_requested",
+          status: imagePrediction ? "ok" : hasImagePayload ? "unavailable" : "not_requested",
           note: imageAnalysisNote,
         },
       },
