@@ -1000,7 +1000,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           kind: "followup_state",
           pending: true,
           turns: p.turns || 0,
-          maxTurns: typeof p.maxTurns === "number" && p.maxTurns > 0 ? Math.max(10, p.maxTurns) : 0,
+          maxTurns: typeof p.maxTurns === "number" && p.maxTurns > 0 ? Math.max(7, p.maxTurns) : 0,
           confirmedSymptoms: p.confirmedSymptoms || [],
           deniedSymptoms: p.deniedSymptoms || [],
           askedSymptoms: p.askedSymptoms || [],
@@ -1454,7 +1454,7 @@ async function openAIDecideMaxTurns(params: {
     if (!parsed) return null;
     const n = Number(parsed.max_turns);
     if (!Number.isFinite(n)) return null;
-    return Math.max(10, Math.min(20, Math.round(n)));
+    return Math.max(7, Math.min(12, Math.round(n)));
   };
 
   for (const model of models) {
@@ -1472,7 +1472,7 @@ async function openAIDecideMaxTurns(params: {
             {
               role: "system",
               content:
-                "Return strict JSON only: {\"max_turns\": number}. Choose required follow-up question count for accurate and efficient triage. Allowed range is 10..20.",
+                "Return strict JSON only: {\"max_turns\": number}. Choose required follow-up question count for accurate and efficient triage. Allowed range is 7..12.",
             },
             {
               role: "user",
@@ -1697,7 +1697,7 @@ export async function POST(req: NextRequest) {
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
     let imageAnalysisNote: string | null = null;
     let turns = parsedState?.turns || 0;
-    let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? Math.max(10, parsedState.maxTurns) : 0;
+    let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? Math.max(7, parsedState.maxTurns) : 0;
 
     const extracted = extractSymptoms(userMessage, datasets);
     for (const s of extracted) confirmed.add(s);
@@ -1944,7 +1944,7 @@ export async function POST(req: NextRequest) {
     const topCandidates = predictions.slice(0, 5).map((p) => p.disease);
 
     const reliability = evaluatePredictionReliability(predictions, confirmed.size, turns, imagePrediction);
-    const minTurnsForFinal = 10;
+    const minTurnsForFinal = 7;
     const needsMoreFollowups = turns < minTurnsForFinal || !reliability.reliable;
     let question: { id: string; text: string; choices?: string[] } | null = null;
 

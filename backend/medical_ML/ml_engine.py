@@ -27,7 +27,7 @@ import threading
 # ── Configuration ────────────────────────────────────────────────────────
 CONFIDENCE_THRESHOLD = 0.55       # Min probability for confident diagnosis
 CONFIDENCE_GAP_THRESHOLD = 0.15   # Min gap between top-1 and top-2
-MAX_FOLLOWUPS = 5                 # Max follow-up questions
+MAX_FOLLOWUPS = 10                 # Max follow-up questions
 MIN_ENTROPY_REDUCTION = 0.01     # Min entropy reduction to justify a question
 
 
