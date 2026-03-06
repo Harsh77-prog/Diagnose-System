@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import re
 from typing import Optional
+import time
 
 from deep_translator import GoogleTranslator
 
 
 def _translate_chunk(text: str, target_lang: str) -> str:
-    return GoogleTranslator(source="auto", target=target_lang).translate(text)
+    """Translate a chunk of text with fresh translator instance."""
+    # Create a new translator instance for each chunk to avoid caching
+    translator = GoogleTranslator(source="auto", target=target_lang)
+    result = translator.translate(text)
+    # Add small delay to avoid rate limiting and cache issues
+    time.sleep(0.05)
+    return result
 
 
 def translate_text(text: str, target_lang: str = "hi") -> str:
@@ -55,8 +62,8 @@ def translate_diagnosis_message(text: str, target_lang: str = "hi") -> dict[str,
     """
     Translate a diagnosis message while preserving question numbering structure.
     
-    Extracts Question X: header and translates components separately to ensure
-    consistent question numbering across languages.
+    Translates each component (symptoms, question, reason) independently to ensure
+    correct translations without cache interference between questions.
     
     Returns dict with keys: translated_text, question_number (if found), metadata
     """
@@ -87,19 +94,34 @@ def translate_diagnosis_message(text: str, target_lang: str = "hi") -> dict[str,
     
     # Split into: prefix (before "Question X:") and suffix (after)
     # Prefix typically contains "Symptoms identified so far:"
-    prefix = cleaned[:start_idx]
+    prefix = cleaned[:start_idx].strip()
     # The matched question header part (e.g., "**Question 1:**")
     question_header = cleaned[start_idx:end_idx]
     # Everything after the header
-    suffix = cleaned[end_idx:]
+    suffix = cleaned[end_idx:].strip()
     
-    # Translate each component separately
-    translated_prefix = translate_text(prefix, target_lang) if prefix.strip() else ""
-    translated_suffix = translate_text(suffix, target_lang) if suffix.strip() else ""
+    # Parse the suffix to separate question text from reason
+    # Pattern: question text followed by Reason: reason text
+    reason_pattern = r"^(.*?)(?:\nReason:\s*(.*))?$"
+    suffix_match = re.search(reason_pattern, suffix, re.DOTALL)
+    
+    question_text = ""
+    reason_text = ""
+    if suffix_match:
+        question_text = suffix_match.group(1).strip() if suffix_match.group(1) else ""
+        reason_text = suffix_match.group(2).strip() if suffix_match.group(2) else ""
+    else:
+        question_text = suffix
+    
+    # Translate each component INDEPENDENTLY and COMPLETELY
+    # This ensures no cache interference between different questions
+    translated_prefix = translate_text(prefix, target_lang) if prefix else ""
+    translated_question = translate_text(question_text, target_lang) if question_text else ""
+    translated_reason = translate_text(reason_text, target_lang) if reason_text else ""
     
     # Create target language question header
-    # Translate "Question" as a template to get the right word in target language
-    question_word = translate_text("Question", target_lang)
+    # Translate "Question" to get the right word in target language
+    question_word = translate_text("Question", target_lang).strip()
     
     # Preserve the markdown style from original (check if it has **)
     if "**" in question_header:
@@ -107,19 +129,23 @@ def translate_diagnosis_message(text: str, target_lang: str = "hi") -> dict[str,
     else:
         reconstructed_header = f"{question_word} {question_number}:"
     
-    # Combine parts
+    # Rebuild the complete message with all three parts
     result_parts = []
     
-    if translated_prefix.strip():
-        result_parts.append(translated_prefix.rstrip())
+    if translated_prefix:
+        result_parts.append(translated_prefix)
     
-    if translated_suffix.strip():
-        # The suffix should start after the colon, format it properly
-        result_parts.append(reconstructed_header + " " + translated_suffix.lstrip())
+    if translated_question:
+        result_parts.append(reconstructed_header + " " + translated_question)
     else:
         result_parts.append(reconstructed_header)
     
-    reconstructed = "\n".join(result_parts) if len(result_parts) > 1 else result_parts[0] if result_parts else ""
+    if translated_reason:
+        # Add reason as separate line, translating "Reason:" prefix
+        reason_prefix = translate_text("Reason:", target_lang).strip()
+        result_parts.append(f"{reason_prefix} {translated_reason}")
+    
+    reconstructed = "\n".join(result_parts)
     
     return {
         "translated_text": reconstructed.strip(),
