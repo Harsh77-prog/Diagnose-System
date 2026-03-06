@@ -22,7 +22,21 @@ function generateCacheKey(
   options?: { method?: string; body?: string } | RequestInit
 ): string {
   const method = (options as { method?: string })?.method || "GET";
-  const bodyHash = (options as { body?: string })?.body ? btoa((options as { body?: string }).body!).substring(0, 16) : "";
+  const body = (options as { body?: string })?.body || "";
+  
+  let bodyHash = "";
+  if (body) {
+    // FIX: Generate a simple but robust hash of the full body to prevent collisions
+    // The previous 16-char base64 prefix was causing collisions for similar JSON payloads
+    let hash = 0;
+    for (let i = 0; i < body.length; i++) {
+      const char = body.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    bodyHash = Math.abs(hash).toString(36);
+  }
+
   return `${method}:${endpoint}${bodyHash ? `:${bodyHash}` : ""}`;
 }
 
@@ -55,21 +69,21 @@ export async function cachedFetch<T = unknown>(
   cacheTTL: number = 0
 ): Promise<T> {
   const cacheKey = generateCacheKey(endpoint, options);
-  
+
   // ✅ Check if result is already cached
   const cached = apiCache.get(cacheKey) as CacheEntry<T> | undefined;
   if (cached && isCacheValid(cached)) {
     console.debug(`[API Cache] Hit: ${cacheKey}`);
     return cached.data;
   }
-  
+
   // ✅ Check if request is already in flight (deduplication)
   const inFlight = inFlightRequests.get(cacheKey) as Promise<T> | undefined;
   if (inFlight) {
     console.debug(`[API Dedup] Waiting for: ${cacheKey}`);
     return inFlight;
   }
-  
+
   // ✅ Make new request and store the promise
   const requestPromise = (async () => {
     try {
@@ -77,7 +91,7 @@ export async function cachedFetch<T = unknown>(
       // Parse different response types
       let data: T;
       const contentType = response.headers.get("content-type");
-      
+
       if (contentType?.includes("application/json")) {
         data = await response.json();
       } else if (contentType?.includes("text")) {
@@ -85,7 +99,7 @@ export async function cachedFetch<T = unknown>(
       } else {
         data = await response.blob() as T;
       }
-      
+
       // ✅ Cache successful responses
       if (response.ok && cacheTTL > 0) {
         apiCache.set(cacheKey, {
@@ -95,18 +109,18 @@ export async function cachedFetch<T = unknown>(
         });
         console.debug(`[API Cache] Stored: ${cacheKey} (TTL: ${cacheTTL}ms)`);
       }
-      
+
       if (!response.ok) {
         throw new Error(`API error: ${response.status} ${response.statusText}`);
       }
-      
+
       return data;
     } finally {
       // ✅ Remove from in-flight map when done
       inFlightRequests.delete(cacheKey);
     }
   })();
-  
+
   inFlightRequests.set(cacheKey, requestPromise);
   return requestPromise;
 }
