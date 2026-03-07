@@ -132,7 +132,14 @@ export async function POST(req: NextRequest) {
       return fallbackTranslation(text, targetLang, `Translation backend error: ${backendError}`, res.status || 503);
     }
 
-    return NextResponse.json(payload);
+    // ✅ Extract translated_text to ensure consistent response format
+    const translatedText = (payload?.translated_text || text).trim();
+    return NextResponse.json({
+      source_text: text,
+      target_lang: targetLang,
+      translated_text: translatedText,
+      provider: "backend",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal Server Error";
     return fallbackTranslation("", "hi", message, 500);
