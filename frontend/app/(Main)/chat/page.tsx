@@ -743,7 +743,18 @@ export default function ChatDashboard() {
                     throw new Error(data.error || "Translation failed");
                 }
                 
-                setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: data.translated_text || msg.content }));
+                // 🔧 Safeguard: Extract text if translation is in JSON format
+                let finalTranslation = data.translated_text || msg.content;
+                if (finalTranslation.startsWith("{") && finalTranslation.includes("text")) {
+                    try {
+                        const jsonParsed = JSON.parse(finalTranslation) as { text?: string; translated_text?: string };
+                        finalTranslation = (jsonParsed.text || jsonParsed.translated_text || finalTranslation).trim();
+                    } catch {
+                        // If not valid JSON, use as-is
+                    }
+                }
+                
+                setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: finalTranslation }));
                 delete failedHindiPrefetchRef.current[msg.id];
                 return true;
             } catch (err) {

@@ -41,14 +41,13 @@ async function translateWithOpenAI(text: string, targetLang: string): Promise<st
           {
             role: "system",
             content:
-              "Translate the user text to the requested target language. Return only translated text. Preserve original formatting and markdown.",
+              "You are a professional medical translator. Translate the provided medical text to " + 
+              targetLang + 
+              ". IMPORTANT: Return ONLY the translated text itself, nothing else. Do not return JSON or any wrapper format. Do not include any explanation or metadata. Only the translated text.",
           },
           {
             role: "user",
-            content: JSON.stringify({
-              target_language: targetLang,
-              text,
-            }),
+            content: "Translate this text to " + targetLang + ":\n\n" + text,
           },
         ],
       }),
@@ -57,7 +56,18 @@ async function translateWithOpenAI(text: string, targetLang: string): Promise<st
     const data = (await res.json().catch(() => ({}))) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    const translated = (data.choices?.[0]?.message?.content || "").trim();
+    let translated = (data.choices?.[0]?.message?.content || "").trim();
+    
+    // 🔧 Fix: Handle case where OpenAI returns JSON instead of plain text
+    if (translated.startsWith("{") && translated.includes("text")) {
+      try {
+        const jsonParsed = JSON.parse(translated) as { text?: string; translated_text?: string };
+        translated = (jsonParsed.text || jsonParsed.translated_text || translated).trim();
+      } catch {
+        // If it's not valid JSON, use as-is
+      }
+    }
+    
     return translated || null;
   } catch {
     return null;
