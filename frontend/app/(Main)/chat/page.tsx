@@ -184,6 +184,88 @@ function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, per
     );
 }
 
+// ✨ Beautiful Image Analysis Progress Bar Component
+function ImageAnalysisProgressBar({ 
+    progress, 
+    phase, 
+    isVisible 
+}: { 
+    progress: number; 
+    phase: "detecting" | "analyzing" | "inferring" | "results"; 
+    isVisible: boolean;
+}) {
+    const phaseNames = {
+        detecting: { label: "🔍 Detecting Image Type", time: "2-3s" },
+        analyzing: { label: "🧬 Analyzing Medical Features", time: "5-8s" },
+        inferring: { label: "🤖 Running AI Models", time: "8-12s" },
+        results: { label: "✅ Processing Results", time: "1-2s" }
+    };
+
+    const phaseInfo = phaseNames[phase];
+    const totalEstimate = phase === "detecting" ? "2-3s" : phase === "analyzing" ? "7-11s" : phase === "inferring" ? "15-27s" : "16-29s";
+
+    if (!isVisible) return null;
+
+    return (
+        <div className="max-w-3xl mx-auto w-full px-2 md:px-0">
+            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-white p-6 shadow-md animate-in fade-in duration-300">
+                {/* Header with Phase Info */}
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                        <div>
+                            <div className="text-sm font-semibold text-slate-900">{phaseInfo.label}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">Estimated: ~{phaseInfo.time}</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-blue-600">{Math.round(progress)}%</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Total: ~{totalEstimate}</div>
+                    </div>
+                </div>
+
+                {/* Main Progress Bar */}
+                <div className="w-full h-3 bg-gradient-to-r from-slate-100 to-slate-200 rounded-full overflow-hidden shadow-inner mb-4">
+                    <div
+                        className="h-full bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 rounded-full shadow-lg transition-all duration-300 ease-out relative overflow-hidden"
+                        style={{ width: `${progress}%` }}
+                    >
+                        <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                    </div>
+                </div>
+
+                {/* Phase Indicators */}
+                <div className="flex justify-between text-xs font-medium">
+                    <div className={`flex items-center gap-1 ${phase === "detecting" || progress > 0 ? "text-slate-900" : "text-slate-400"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "detecting" ? "bg-blue-600 scale-150" : progress > 0 ? "bg-green-500" : "bg-slate-300"}`} />
+                        Detect
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "analyzing" || progress > 25 ? "text-slate-900" : "text-slate-400"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "analyzing" ? "bg-blue-600 scale-150" : progress > 25 ? "bg-green-500" : "bg-slate-300"}`} />
+                        Analyze
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "inferring" || progress > 50 ? "text-slate-900" : "text-slate-400"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "inferring" ? "bg-blue-600 scale-150" : progress > 50 ? "bg-green-500" : "bg-slate-300"}`} />
+                        Infer
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "results" || progress > 75 ? "text-slate-900" : "text-slate-400"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "results" ? "bg-blue-600 scale-150" : progress > 75 ? "bg-green-500" : "bg-slate-300"}`} />
+                        Results
+                    </div>
+                </div>
+
+                {/* Info Text */}
+                <div className="mt-4 text-xs text-slate-600 text-center">
+                    {phase === "detecting" && "Analyzing image characteristics and medical content..."}
+                    {phase === "analyzing" && "Extracting features and running medical filters..."}
+                    {phase === "inferring" && "Running inference on 5 deep learning models..."}
+                    {phase === "results" && "Generating diagnosis and compiling results..."}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Generates ChatGPT style clean topic headings
 function generateChatTitle(prompt: string) {
     const cleaned = prompt.trim().replace(/\s+/g, " ").replace(/[?.!]+$/, "");
@@ -247,6 +329,10 @@ export default function ChatDashboard() {
     const [hindiByMessage, setHindiByMessage] = useState<Record<string, boolean>>({});
     const [translatedByMessage, setTranslatedByMessage] = useState<Record<string, string>>({});
     const [translatingByMessage, setTranslatingByMessage] = useState<Record<string, boolean>>({});
+    const [imageAnalysisProgress, setImageAnalysisProgress] = useState(0);
+    const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+    const [analysisPhase, setAnalysisPhase] = useState<"detecting" | "analyzing" | "inferring" | "results">
+("detecting");
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -490,6 +576,32 @@ export default function ChatDashboard() {
                     })
                 });
 
+                // 🚀 Start progress tracking if image is being analyzed
+                let progressInterval: NodeJS.Timeout | null = null;
+                if (imageDataUrl) {
+                    setIsAnalyzingImage(true);
+                    setImageAnalysisProgress(0);
+                    setAnalysisPhase("detecting");
+
+                    progressInterval = setInterval(() => {
+                        setImageAnalysisProgress(prev => {
+                            if (prev < 20) {
+                                setAnalysisPhase("detecting");
+                                return prev + Math.random() * 3;
+                            } else if (prev < 50) {
+                                setAnalysisPhase("analyzing");
+                                return prev + Math.random() * 2.5;
+                            } else if (prev < 85) {
+                                setAnalysisPhase("inferring");
+                                return prev + Math.random() * 1.5;
+                            } else {
+                                setAnalysisPhase("results");
+                                return Math.min(prev + Math.random() * 1, 99);
+                            }
+                        });
+                    }, 300);
+                }
+
                 // Ask ML Engine
                 const res = await fetch("/api/diagnose/chat/json", {
                     method: "POST",
@@ -515,6 +627,16 @@ export default function ChatDashboard() {
                     follow_up_question?: string;
                     follow_up_choices?: string[] | null;
                 }>(res);
+                
+                // 🎯 Complete progress bar if image was analyzed
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    setImageAnalysisProgress(100);
+                    setAnalysisPhase("results");
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    setIsAnalyzingImage(false);
+                }
+                
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
 
                 // Save Assistant Message to DB
@@ -547,6 +669,9 @@ export default function ChatDashboard() {
             }
         } catch (err: any) {
             console.error("Chat Error:", err);
+            // 🛑 Clean up progress bar on error
+            setIsAnalyzingImage(false);
+            setImageAnalysisProgress(0);
             const fallbackMessage = `Error: ${err?.message || "Unexpected chat error"}`;
 
             if (activeSessionId) {
@@ -971,6 +1096,15 @@ export default function ChatDashboard() {
                             {DIAGNOSIS_TRIGGER_HELP}
                         </div>
                     </div>
+
+                    {/* ✨ Dynamic Image Analysis Progress Bar */}
+                    {isAnalyzingImage && (
+                        <ImageAnalysisProgressBar
+                            progress={imageAnalysisProgress}
+                            phase={analysisPhase}
+                            isVisible={isAnalyzingImage}
+                        />
+                    )}
 
                     {messages.length === 0 && !loading ? (
                         <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto text-center px-4 animate-in fade-in duration-500">
