@@ -142,28 +142,33 @@ function inferPreferredImageDatasets(
 
   const hasSkinKeywords =
     slots.bodySystem === "dermatologic" ||
-    containsAny(t, [/\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness)\b/]) ||
-    confirmedSymptoms.has("skin rash") ||
-    confirmedSymptoms.has("itching");
+    containsAny(t, [/\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness|mole|melanoma|eczema|acne|psoriasis|hive|hives|wart|ulcer|dermatology|dermatologist)\b/]) ||
+    Array.from(confirmedSymptoms).some(s => s.includes("skin") || s.includes("itch") || s.includes("rash"));
   if (hasSkinKeywords) push("dermamnist");
 
   const hasEyeKeywords =
-    containsAny(t, [/\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual)\b/]) ||
-    confirmedSymptoms.has("blurred and distorted vision") ||
-    confirmedSymptoms.has("visual disturbances");
+    containsAny(t, [/\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual|blindness|cataract|glaucoma|macular|optics|cornea|pupil|sclera|conjunctivitis)\b/]) ||
+    Array.from(confirmedSymptoms).some(s => s.includes("vision") || s.includes("eye") || s.includes("visual"));
   if (hasEyeKeywords) push("retinamnist");
 
   const hasChestKeywords =
     slots.bodySystem === "respiratory" ||
-    containsAny(t, [/\b(cough|chest|breath|breathing|phlegm|wheeze)\b/]);
+    slots.bodySystem === "cardiovascular" ||
+    containsAny(t, [/\b(cough|chest|breath|breathing|phlegm|wheeze|respiratory|pneumonia|thorax|rib|ribs|heart|cardiac|cardiovascular|x-ray|xray|x ray|lung|lungs|tuberculosis)\b/]) ||
+    Array.from(confirmedSymptoms).some(s => s.includes("chest") || s.includes("cough") || s.includes("breath"));
   if (hasChestKeywords) push("chestmnist");
 
-  if (containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin)\b/])) push("bloodmnist");
-  if (containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide)\b/])) push("pathmnist");
+  const hasBloodKeywords =
+    containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin|anemia|leukemia|plasma|smear|white blood|red blood)\b/]);
+  if (hasBloodKeywords) push("bloodmnist");
+
+  const hasPathologyKeywords =
+    containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide|cell|microscopy|tumor|cancer|carcinoma|histology|oncology)\b/]);
+  if (hasPathologyKeywords) push("pathmnist");
 
   if (preferred.length === 0) {
     // Fast + safer default: avoid running all datasets when context is weak.
-    if (slots.bodySystem === "respiratory") push("chestmnist");
+    if (slots.bodySystem === "respiratory" || slots.bodySystem === "cardiovascular") push("chestmnist");
     else if (slots.bodySystem === "neurologic") push("retinamnist");
     else if (slots.bodySystem === "dermatologic") push("dermamnist");
     else push("dermamnist");
@@ -2092,22 +2097,37 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const diseaseInfo = {
-      description: datasets.descriptions[top.disease] || "",
-      precautions: datasets.precautions[top.disease] || [],
-    };
-
     const imageSignal = imagePrediction
       ? pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed).primary
       : null;
+
+    let finalDiagnosis = top.disease;
+    let finalConfidence = blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence);
+    let finalTopPredictions = predictions.slice(0, 5).map((p) => ({
+      disease: p.disease,
+      probability: Number(p.probability.toFixed(1)),
+    }));
+
+    if (imageSignal && imageSignal.top_confidence > top.probability) {
+      finalDiagnosis = imageSignal.top_label_name;
+      finalConfidence = imageSignal.top_confidence;
+      finalTopPredictions = [
+        { disease: imageSignal.top_label_name, probability: finalConfidence },
+        ...finalTopPredictions.filter(p => p.disease !== imageSignal.top_label_name)
+      ].sort((a, b) => b.probability - a.probability).slice(0, 5);
+    }
+    
+    // Fetch description and precautions for whichever diagnosis won
+    const diseaseInfo = {
+      description: datasets.descriptions[finalDiagnosis] || "Detailed disease description is not available for this image-based condition right now.",
+      precautions: datasets.precautions[finalDiagnosis] || [],
+    };
+
     const diagnosis = {
-      diagnosis: top.disease,
-      confidence: blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence),
+      diagnosis: finalDiagnosis,
+      confidence: finalConfidence,
       diagnosis_type: reliability.reliable ? "confident_dataset_multimodal" : "provisional_dataset_multimodal",
-      top_predictions: predictions.slice(0, 5).map((p) => ({
-        disease: p.disease,
-        probability: Number(p.probability.toFixed(1)),
-      })),
+      top_predictions: finalTopPredictions,
       confirmed_symptoms: Array.from(confirmed),
       followups_asked: turns,
       demographics: {

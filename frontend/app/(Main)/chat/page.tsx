@@ -185,13 +185,13 @@ function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, per
 }
 
 // ✨ Beautiful Image Analysis Progress Bar Component
-function ImageAnalysisProgressBar({ 
-    progress, 
-    phase, 
-    isVisible 
-}: { 
-    progress: number; 
-    phase: "detecting" | "analyzing" | "inferring" | "results"; 
+function ImageAnalysisProgressBar({
+    progress,
+    phase,
+    isVisible
+}: {
+    progress: number;
+    phase: "detecting" | "analyzing" | "inferring" | "results";
     isVisible: boolean;
 }) {
     const phaseNames = {
@@ -332,7 +332,7 @@ export default function ChatDashboard() {
     const [imageAnalysisProgress, setImageAnalysisProgress] = useState(0);
     const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
     const [analysisPhase, setAnalysisPhase] = useState<"detecting" | "analyzing" | "inferring" | "results">
-("detecting");
+        ("detecting");
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -627,7 +627,7 @@ export default function ChatDashboard() {
                     follow_up_question?: string;
                     follow_up_choices?: string[] | null;
                 }>(res);
-                
+
                 // 🎯 Complete progress bar if image was analyzed
                 if (progressInterval) {
                     clearInterval(progressInterval);
@@ -636,7 +636,7 @@ export default function ChatDashboard() {
                     await new Promise(resolve => setTimeout(resolve, 800));
                     setIsAnalyzingImage(false);
                 }
-                
+
                 if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
 
                 // Save Assistant Message to DB
@@ -738,11 +738,11 @@ export default function ChatDashboard() {
                     },
                     10 * 60 * 1000 // Cache for 10 minutes
                 );
-                
+
                 if (!data.translated_text && data.error) {
                     throw new Error(data.error || "Translation failed");
                 }
-                
+
                 // 🔧 Safeguard: Extract text if translation is in JSON format
                 let finalTranslation = data.translated_text || msg.content;
                 if (finalTranslation.startsWith("{") && finalTranslation.includes("text")) {
@@ -753,7 +753,7 @@ export default function ChatDashboard() {
                         // If not valid JSON, use as-is
                     }
                 }
-                
+
                 setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: finalTranslation }));
                 delete failedHindiPrefetchRef.current[msg.id];
                 return true;
@@ -1266,10 +1266,19 @@ export default function ChatDashboard() {
                                                                                     <div className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
                                                                                 </div>
                                                                                 {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
-                                                                                    <div className="mt-1 text-[11px] text-slate-600 space-y-0.5">
+                                                                                    <div className="mt-2 text-[11px] text-slate-600 space-y-1.5">
                                                                                         {pred.scores.slice(0, 3).map((score) => (
                                                                                             <div key={`${pred.dataset}:${score.label_index}`}>
-                                                                                                {labelize(score.label_name)}: {Number(score.confidence).toFixed(1)}%
+                                                                                                <div className="flex items-center justify-between text-[11px] mb-0.5">
+                                                                                                    <span className="text-slate-700">{labelize(score.label_name)}</span>
+                                                                                                    <span className="text-slate-500">{Number(score.confidence).toFixed(1)}%</span>
+                                                                                                </div>
+                                                                                                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                                                                                                    <div
+                                                                                                        className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400"
+                                                                                                        style={{ width: `${Number(score.confidence)}%` }}
+                                                                                                    />
+                                                                                                </div>
                                                                                             </div>
                                                                                         ))}
                                                                                     </div>
@@ -1317,7 +1326,7 @@ export default function ChatDashboard() {
                                                         if (Array.isArray(predictions) && predictions.length > 0) {
                                                             return (
                                                                 <div className="mt-5 p-4 rounded-xl border border-[#e5e5e5] bg-[#f9f9f9]">
-                                                                    <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4">Diagnosis Probabilities</div>
+                                                                    <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4"> <Triangle className="w-3.5 h-3.5" />Text Model Signals</div>
                                                                     {predictions.map((pred, idx) => (
                                                                         <AnimatedProgress
                                                                             key={pred.disease}
@@ -1411,7 +1420,7 @@ export default function ChatDashboard() {
                                                 <Button size="sm" variant="outline" className="w-16 h-8 text-xs rounded-full bg-white border-[#e5e5e5]" onClick={() => sendMessage("", "no")} disabled={loading}>No</Button>
                                             </>
                                         )}
-                                        
+
                                     </div>
                                 </div>
                             ) : null}
