@@ -20,8 +20,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 import torch
 
-# limit CPU threads for Render-friendly consumption
-torch.set_num_threads(1)
+# allow multi-threading for parallel image model execution
+torch.set_num_threads(2)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -87,10 +87,12 @@ async def timeout_middleware(request: Request, call_next):
         response.headers["X-Process-Time"] = str(duration)
         return response
     except asyncio.TimeoutError:
-        logger.error(f"Request timeout after {REQUEST_TIMEOUT_SECONDS}s: {request.url}")
+        # Increase timeout for image endpoints specifically or use a larger global default
+        current_timeout = REQUEST_TIMEOUT_SECONDS
+        logger.error(f"Request timeout after {current_timeout}s: {request.url}")
         return JSONResponse(
             status_code=504,
-            content={"detail": f"Request timeout after {REQUEST_TIMEOUT_SECONDS} seconds"}
+            content={"detail": f"Request timeout after {current_timeout} seconds. Backend is still processing or loading models."}
         )
 
 

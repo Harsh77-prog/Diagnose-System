@@ -321,7 +321,7 @@ class ImagePredictor:
                     "top_label_index": top_idx,
                     "top_label_name": labels[str(top_idx)],
                     "top_confidence": float(f"{top_conf:.2f}"),
-                    "scores": sorted(all_scores, key=lambda x: cast(float, x["confidence"]), reverse=True)[:5]
+                    "scores": sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)[:5]
                 }
 
         futures = [self._executor.submit(run_one, d) for d in dataset_names]
