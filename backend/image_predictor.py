@@ -17,11 +17,18 @@ import torch
 import torch.nn as nn
 from medmnist import INFO
 from PIL import Image
-from torchvision import transforms
+from torchvision import transforms, models
 
-# force single-threaded CPU operation; reduces contention on Render
 # allow moderate multi-threading for parallel model execution
 torch.set_num_threads(2)
+
+# Input sizes for each model architecture
+SIMPLECNN_IMAGE_SIZE = 28
+RESNET_IMAGE_SIZE = 64
+
+# ImageNet normalization (for ResNet models)
+IMAGENET_MEAN = [0.485, 0.456, 0.406]
+IMAGENET_STD  = [0.229, 0.224, 0.225]
 
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
@@ -51,20 +58,24 @@ class SimpleCNN(nn.Module):
         return self.classifier(x)
 
 
+def _is_resnet_state(state_dict: dict) -> bool:
+    """Return True if state dict looks like a ResNet (has 'layer1.0.conv1.weight')."""
+    return any(k.startswith("layer1.") for k in state_dict.keys())
+
+
+def _build_resnet18(num_classes: int, device: torch.device) -> nn.Module:
+    """Build ResNet-18 with correct final layer; no pretrained weights at inference."""
+    model = models.resnet18(weights=None)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    return model.to(device)
+
+
 class ImagePredictor:
     def __init__(self, model_dir: str) -> None:
         self.model_dir = Path(model_dir).resolve()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # resize to 28 for MedMNIST models, but we also cap incoming
-        # images to 1024px in the router so this transform is always fast.
-        self.transform = transforms.Compose(
-            [
-                transforms.Resize((28, 28)),
-                transforms.Lambda(lambda img: img.convert("RGB")),
-                transforms.ToTensor(),
-            ]
-        )
-        self._models: dict[str, SimpleCNN] = {}
+        self._models: dict[str, nn.Module] = {}
+        self._model_uses_resnet: dict[str, bool] = {}  # tracks architecture per dataset
         self._available_model_files: dict[str, Path] = {}
         self._model_locks: dict[str, threading.Lock] = {name: threading.Lock() for name in DATASETS}
         # Use OrderedDict for efficient LRU eviction
@@ -115,17 +126,29 @@ class ImagePredictor:
             if dataset_name in self._models:
                 return True
             try:
-                # support TorchScript/pt files for faster loading & inference
+                # TorchScript (.pt) — architecture-agnostic, load directly
                 if model_path.suffix == ".pt":
                     model = torch.jit.load(str(model_path), map_location=self.device)
+                    # Detect input size from file name vs TorchScript — default to 64 for new models
+                    self._model_uses_resnet[dataset_name] = True
                 else:
+                    # State dict (.pth) — detect architecture from keys
                     num_classes = len(INFO[dataset_name]["label"])
-                    model = SimpleCNN(num_classes=num_classes).to(self.device)
-                    state = torch.load(model_path, map_location=self.device)
+                    state = torch.load(model_path, map_location=self.device, weights_only=True)
+                    if _is_resnet_state(state):
+                        model = _build_resnet18(num_classes, self.device)
+                        self._model_uses_resnet[dataset_name] = True
+                        LOGGER.info("Auto-detected ResNet-18 weights | dataset=%s", dataset_name)
+                    else:
+                        model = SimpleCNN(num_classes=num_classes).to(self.device)
+                        self._model_uses_resnet[dataset_name] = False
+                        LOGGER.info("Auto-detected SimpleCNN weights | dataset=%s", dataset_name)
                     model.load_state_dict(state)
+
                 model.eval()
                 self._models[dataset_name] = model
-                LOGGER.info("Loaded model on demand | dataset=%s | path=%s", dataset_name, model_path)
+                LOGGER.info("Loaded model | dataset=%s | resnet=%s | path=%s",
+                            dataset_name, self._model_uses_resnet.get(dataset_name), model_path)
                 return True
             except Exception:  # noqa: BLE001
                 LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
@@ -277,13 +300,27 @@ class ImagePredictor:
     def _parallel_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
         """
         Run multiple dataset inferences in parallel using ThreadPoolExecutor.
+        Each dataset may use a different model architecture (ResNet-18 or SimpleCNN)
+        and corresponding input transform.
         """
-        transform = transforms.Compose([
-            transforms.Resize((28, 28)),
-            transforms.Lambda(lambda img: img.convert("RGB")),
-            transforms.ToTensor(),
-        ])
-        tensor = transform(image).unsqueeze(0).to(self.device).detach()
+        def _build_tensor(dataset_name: str) -> torch.Tensor:
+            """Build correctly sized and normalized tensor for this dataset's model."""
+            if self._model_uses_resnet.get(dataset_name, False):
+                # ResNet-18: 64x64 with ImageNet normalization
+                tf = transforms.Compose([
+                    transforms.Resize((RESNET_IMAGE_SIZE, RESNET_IMAGE_SIZE)),
+                    transforms.Lambda(lambda img: img.convert("RGB")),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+                ])
+            else:
+                # SimpleCNN: 28x28, no normalization
+                tf = transforms.Compose([
+                    transforms.Resize((SIMPLECNN_IMAGE_SIZE, SIMPLECNN_IMAGE_SIZE)),
+                    transforms.Lambda(lambda img: img.convert("RGB")),
+                    transforms.ToTensor(),
+                ])
+            return tf(image).unsqueeze(0).to(self.device).detach()
 
         def _predict_single(dataset_name: str) -> dict[str, Any] | None:
             if dataset_name not in self._models:
@@ -294,7 +331,9 @@ class ImagePredictor:
                 info = INFO[dataset_name]
                 labels = cast(dict[str, str], info["label"])
 
+                tensor = _build_tensor(dataset_name)
                 start_time = time.perf_counter()
+
                 with torch.inference_mode():
                     logits = model.forward(tensor)
                     if dataset_name == "chestmnist":
@@ -316,7 +355,8 @@ class ImagePredictor:
 
                     scores_sorted = sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)
                     duration = (time.perf_counter() - start_time) * 1000
-                    LOGGER.info("Inference dataset=%s | duration=%.2fms", dataset_name, duration)
+                    arch = "resnet18" if self._model_uses_resnet.get(dataset_name) else "simplecnn"
+                    LOGGER.info("Inference dataset=%s | arch=%s | duration=%.2fms", dataset_name, arch, duration)
 
                     return {
                         "dataset": dataset_name,
@@ -337,3 +377,4 @@ class ImagePredictor:
                 results.append(res)
 
         return results
+
