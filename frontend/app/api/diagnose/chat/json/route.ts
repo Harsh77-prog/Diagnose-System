@@ -1730,7 +1730,7 @@ async function openAIDiagnosisGuidance(params: {
             {
               role: "system",
               content:
-                "Return strict JSON only with keys home_remedies, lifestyle_changes, diet_adjustments. Each value MUST be an array of exactly 5 short safe informational bullets. Use active, descriptive language suitable for image keyword searching.",
+                "You are a medical information assistant. Return strict JSON ONLY with keys: home_remedies, lifestyle_changes, diet_adjustments. Each MUST be an array of exactly 5 short, practical, safe informational bullets. VERY IMPORTANT: The recommendations MUST be specific to the EXACT medical condition provided in the 'diagnosis' field. Do NOT substitute a different disease. Do NOT use generic advice that does not apply to the specific condition.",
             },
             {
               role: "user",
@@ -1741,6 +1741,7 @@ async function openAIDiagnosisGuidance(params: {
                 demographics: params.demographics,
                 dataset_precautions: params.precautions,
                 constraints: [
+                  "Tie ALL bullets specifically to the provided diagnosis.",
                   "No prescription dose advice.",
                   "No definitive cure claims.",
                   "Simple practical language.",
