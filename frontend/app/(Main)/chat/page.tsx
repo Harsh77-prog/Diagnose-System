@@ -319,7 +319,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 const DIAGNOSIS_TRIGGER_HELP =
-    "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have jaundice and yellow eyes`.";
+    "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have fever`.";
 
 const DEFAULT_GUIDANCE = {
     homeRemedies: [
