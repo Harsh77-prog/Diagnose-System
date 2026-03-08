@@ -1565,31 +1565,6 @@ export default function ChatDashboard() {
                                 ) : null}
                             </div>
                         </div>
-
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
-                            <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Image Model Signals</div>
-                            <div className="space-y-2.5">
-                                {(imagePanelPredictions.slice(0, 5)).map((pred) => (
-                                    <div key={`${pred.dataset}:${pred.top_label_name}`}>
-                                        <div className="flex items-center justify-between text-[12px] mb-1">
-                                            <span className="font-medium text-slate-700">{labelize(pred.dataset)} - {labelize(pred.top_label_name)}</span>
-                                            <span className="text-slate-500">{Number(pred.top_confidence).toFixed(1)}%</span>
-                                        </div>
-                                        {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
-                                            <div className="space-y-1.5">
-                                                {pred.scores.slice(0, 3).map((score) => (
-                                                    <div key={`${pred.dataset}:${score.label_index}`}>
-                                                        <div className="flex items-center justify-between text-[11px] mb-0.5">
-                                                            <span className="text-slate-700">{labelize(score.label_name)}</span>
-                                                            <span className="text-slate-500">{Number(score.confidence).toFixed(1)}%</span>
-                                                        </div>
-                                                        <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                            <div
-                                                                className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400"
-                                                                style={{ width: `${Number(score.confidence)}%` }}
-                                                            />
-                                                        </div>
-                                                    </div>
                                                 ))}
                                             </div>
                                         ) : (

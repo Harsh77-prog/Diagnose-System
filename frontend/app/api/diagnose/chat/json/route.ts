@@ -1348,12 +1348,17 @@ function resolveDiseaseMetadata(
     "cancer-associated stroma": "Gastroenteritis",
   };
 
-  const mappedDisease = mapping[norm];
-  if (mappedDisease && datasets.descriptions[mappedDisease]) {
-    return {
-      description: datasets.descriptions[mappedDisease],
-      precautions: datasets.precautions[mappedDisease] || [],
-    };
+  const mappedDisease = mapping[norm] || mapping[disease.trim()];
+  if (mappedDisease) {
+    const targetKey = Object.keys(datasets.descriptions).find(
+      (k) => k.toLowerCase() === mappedDisease.toLowerCase().trim()
+    );
+    if (targetKey) {
+      return {
+        description: datasets.descriptions[targetKey],
+        precautions: datasets.precautions[targetKey] || [],
+      };
+    }
   }
 
   // 3. Final Fallback
