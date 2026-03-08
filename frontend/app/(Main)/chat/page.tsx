@@ -139,6 +139,45 @@ async function parseResponseJson<T>(res: Response): Promise<T> {
     }
 }
 
+function ImageTip({ text }: { text: string }) {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function fetchImage() {
+            try {
+                const res = await fetch(`/api/images/search?query=${encodeURIComponent(text)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted) setImageUrl(data.imageUrl);
+                }
+            } catch (err) {
+                console.error("Failed to fetch tip image:", err);
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        }
+        fetchImage();
+        return () => { isMounted = false; };
+    }, [text]);
+
+    return (
+        <li className="flex items-start gap-3 group">
+            {imageUrl ? (
+                <div className="shrink-0 w-12 h-12 rounded-lg overflow-hidden border border-slate-200 mt-0.5 shadow-sm group-hover:shadow-md transition-shadow">
+                    <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                </div>
+            ) : loading ? (
+                <div className="shrink-0 w-12 h-12 rounded-lg bg-slate-100 animate-pulse mt-0.5 border border-slate-200" />
+            ) : (
+                <span className="mt-2 h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0" />
+            )}
+            <span className="leading-relaxed">{text}</span>
+        </li>
+    );
+}
+
 // Component for rendering animated ML Disease Probability Bars
 function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, percentage: number, delay?: number }) {
     const [width, setWidth] = useState(0);
@@ -1565,20 +1604,6 @@ export default function ChatDashboard() {
                                 ) : null}
                             </div>
                         </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                                <div className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400" style={{ width: `${Number(pred.top_confidence)}%` }} />
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                                {imagePanelPredictions.length === 0 ? (
-                                    <div className="text-[12px] text-slate-500">Image model chart unavailable for this response.</div>
-                                ) : null}
-                            </div>
-                        </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
                             <div className="flex items-center gap-2 mb-2">
@@ -1608,12 +1633,9 @@ export default function ChatDashboard() {
                                 </div>
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Home Remedies</div>
                             </div>
-                            <ul className="space-y-2 text-[13px] text-slate-700">
+                            <ul className="space-y-3 text-[13px] text-slate-700">
                                 {homeRemedyItems.map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
-                                        <span>{item}</span>
-                                    </li>
+                                    <ImageTip key={`${item}-${idx}`} text={item} />
                                 ))}
                             </ul>
                         </div>
@@ -1625,12 +1647,9 @@ export default function ChatDashboard() {
                                 </div>
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Lifestyle Changes</div>
                             </div>
-                            <ul className="space-y-2 text-[13px] text-slate-700">
+                            <ul className="space-y-3 text-[13px] text-slate-700">
                                 {lifestyleItems.map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
-                                        <span>{item}</span>
-                                    </li>
+                                    <ImageTip key={`${item}-${idx}`} text={item} />
                                 ))}
                             </ul>
                         </div>
@@ -1642,12 +1661,9 @@ export default function ChatDashboard() {
                                 </div>
                                 <div className="text-xs font-semibold uppercase tracking-wider text-slate-800">Diet Adjustments</div>
                             </div>
-                            <ul className="space-y-2 text-[13px] text-slate-700">
+                            <ul className="space-y-3 text-[13px] text-slate-700">
                                 {dietItems.map((item, idx) => (
-                                    <li key={`${item}-${idx}`} className="leading-relaxed flex items-start gap-2">
-                                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
-                                        <span>{item}</span>
-                                    </li>
+                                    <ImageTip key={`${item}-${idx}`} text={item} />
                                 ))}
                             </ul>
                         </div>

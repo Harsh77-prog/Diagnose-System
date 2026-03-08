@@ -1657,7 +1657,7 @@ async function openAIDiagnosisGuidance(params: {
             {
               role: "system",
               content:
-                "Return strict JSON only with keys home_remedies, lifestyle_changes, diet_adjustments. Each value must be an array of 2-5 short safe informational bullets.",
+                "Return strict JSON only with keys home_remedies, lifestyle_changes, diet_adjustments. Each value MUST be an array of exactly 5 short safe informational bullets. Use active, descriptive language suitable for image keyword searching.",
             },
             {
               role: "user",
