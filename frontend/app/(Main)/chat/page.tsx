@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Send, Activity, Info, Menu, PlusSquare, Search, Trash2, ChevronLeft, ChevronRight, ShieldCheck, Sparkles, HeartPulse, Apple, Paperclip, Image as ImageIcon, FileText, X, Circle, Square, Triangle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1075,7 +1075,7 @@ export default function ChatDashboard() {
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50"
-                                                    onClick={(e) => {
+                                                    onClick={(e: React.MouseEvent) => {
                                                         e.preventDefault();
                                                         e.stopPropagation();
                                                         deleteSession(s.id);
@@ -1124,7 +1124,7 @@ export default function ChatDashboard() {
                                         <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
                                             <div className="text-xs font-semibold uppercase tracking-wider text-slate-700 mb-3">Top Predictions</div>
                                             <div className="space-y-2.5">
-                                                {(panelPredictions.slice(0, 5)).map((pred) => (
+                                                {(panelPredictions.slice(0, 5)).map((pred: { disease: string; probability: number }) => (
                                                     <div key={pred.disease}>
                                                         <div className="flex items-center justify-between text-[12px] mb-1">
                                                             <span className="font-medium text-slate-700">{labelize(pred.disease)}</span>
@@ -1308,7 +1308,7 @@ export default function ChatDashboard() {
                                                     }
 
                                                     if (!diagnosisPayload) {
-                                                        return renderedText.split("**").map((text, i) => (
+                                                        return renderedText.split("**").map((text: string, i: number) => (
                                                             i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
                                                         ));
                                                     }
@@ -1335,7 +1335,7 @@ export default function ChatDashboard() {
                                                                         <Square className="w-3.5 h-3.5" /> {isHindi ? "लक्षण और संदर्भ" : "Symptoms And Context"}
                                                                     </div>
                                                                     <div className="text-[13px] text-slate-700 mt-2">
-                                                                        <div><span className="font-semibold">{isHindi ? "लक्षण:" : "Symptoms:"}</span> {symptoms.length > 0 ? symptoms.map((s) => isHindi ? s : labelize(s)).join(", ") : (isHindi ? "अभी तक कोई स्पष्ट लक्षण नहीं मिले हैं।" : "No clear symptoms captured yet.")}</div>
+                                                                        <div><span className="font-semibold">{isHindi ? "लक्षण:" : "Symptoms:"}</span> {symptoms.length > 0 ? symptoms.map((s: string) => isHindi ? s : labelize(s)).join(", ") : (isHindi ? "अभी तक कोई स्पष्ट लक्षण नहीं मिले हैं।" : "No clear symptoms captured yet.")}</div>
                                                                         <div className="mt-1"><span className="font-semibold">{isHindi ? "प्रोफ़ाइल:" : "Profile:"}</span> {isHindi ? gender : labelize(String(gender))}, {isHindi ? ageGroup : labelize(String(ageGroup))}</div>
                                                                     </div>
                                                                 </div>
@@ -1352,7 +1352,7 @@ export default function ChatDashboard() {
                                                                         <ShieldCheck className="w-3.5 h-3.5" /> Self-Care Steps
                                                                     </div>
                                                                     <ul className="mt-2 space-y-1.5 text-[13px] text-slate-700">
-                                                                        {precautions.slice(0, 6).map((item, idx) => (
+                                                                        {precautions.slice(0, 6).map((item: string, idx: number) => (
                                                                             <li key={`${item}-${idx}`} className="flex items-start gap-2">
                                                                                 <span className="mt-1 h-1.5 w-1.5 rounded-full bg-slate-600 shrink-0" />
                                                                                 <span>{item}</span>

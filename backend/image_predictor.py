@@ -13,14 +13,11 @@ from collections import OrderedDict
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
-from scipy import ndimage
-import medmnist  # only INFO is used during inference
 import torch
 import torch.nn as nn
 from medmnist import INFO
 from PIL import Image
 from torchvision import transforms
-import cv2
 
 # force single-threaded CPU operation; reduces contention on Render
 # allow moderate multi-threading for parallel model execution
@@ -185,10 +182,10 @@ class ImagePredictor:
 
         image = Image.open(io.BytesIO(image_bytes))
         
-        # Parallel inference logic
+        # Sequential inference logic to prevent resource-heavy hangs
         inference_start = time.perf_counter()
-        predictions = self._parallel_predict(image, ready)
-        inference_duration = round((time.perf_counter() - inference_start) * 1000, 2)
+        predictions = self._sequential_predict(image, ready)
+        inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
         
         LOGGER.info("Parallel inference completed | datasets=%d | duration_ms=%s", len(ready), inference_duration)
         
@@ -276,11 +273,10 @@ class ImagePredictor:
         except Exception as exc:  # noqa: BLE001
             raise ValueError("Invalid image_base64 payload") from exc
 
-        return predictions
 
-    def _parallel_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
+    def _sequential_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
         """
-        Run multiple dataset inferences in parallel across the global pool.
+        Run multiple dataset inferences sequentially to minimize resource contention.
         """
         transform = transforms.Compose([
             transforms.Resize((28, 28)),
@@ -289,45 +285,48 @@ class ImagePredictor:
         ])
         tensor = transform(image).unsqueeze(0).to(self.device).detach()
         
-        def run_one(dataset_name: str) -> dict[str, Any] | None:
-            if dataset_name not in self._models:
-                return None
-            
-            model = self._models[dataset_name]
-            info = INFO[dataset_name]
-            labels = cast(dict[str, str], info["label"])
-            
-            with torch.inference_mode():
-                logits = model.forward(tensor)
-                if dataset_name == "chestmnist":
-                    probs = torch.sigmoid(logits).squeeze(0)
-                else:
-                    probs = torch.softmax(logits, dim=1).squeeze(0)
-                
-                probs_np = probs.cpu().numpy()
-                top_idx = int(np.argmax(probs_np))
-                top_conf = float(probs_np[top_idx] * 100.0)
-                
-                all_scores: list[dict[str, Any]] = []
-                for idx in range(len(probs_np)):
-                    all_scores.append({
-                        "label_index": idx,
-                        "label_name": labels[str(idx)],
-                        "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
-                    })
-                
-                return {
-                    "dataset": dataset_name,
-                    "top_label_index": top_idx,
-                    "top_label_name": labels[str(top_idx)],
-                    "top_confidence": float(f"{top_conf:.2f}"),
-                    "scores": sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)[:5]
-                }
-
-        futures = [self._executor.submit(run_one, d) for d in dataset_names]
         results = []
-        for future in as_completed(futures):
-            res = future.result()
-            if res:
-                results.append(res)
+        for dataset_name in dataset_names:
+            if dataset_name not in self._models:
+                continue
+            
+            try:
+                model = self._models[dataset_name]
+                info = INFO[dataset_name]
+                labels = cast(dict[str, str], info["label"])
+                
+                start_time = time.perf_counter()
+                with torch.inference_mode():
+                    logits = model.forward(tensor)
+                    if dataset_name == "chestmnist":
+                        probs = torch.sigmoid(logits).squeeze(0)
+                    else:
+                        probs = torch.softmax(logits, dim=1).squeeze(0)
+                    
+                    probs_np = probs.cpu().numpy()
+                    top_idx = int(np.argmax(probs_np))
+                    top_conf = float(probs_np[top_idx] * 100.0)
+                    
+                    all_scores: list[dict[str, Any]] = []
+                    for idx in range(len(probs_np)):
+                        all_scores.append({
+                            "label_index": idx,
+                            "label_name": labels[str(idx)],
+                            "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
+                        })
+                    
+                    scores_sorted = sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)
+                    res = {
+                        "dataset": dataset_name,
+                        "top_label_index": top_idx,
+                        "top_label_name": labels[str(top_idx)],
+                        "top_confidence": float(f"{top_conf:.2f}"),
+                        "scores": scores_sorted[:5]
+                    }
+                    results.append(res)
+                    duration = (time.perf_counter() - start_time) * 1000
+                    LOGGER.info("Inference dataset=%s | duration=%.2fms", dataset_name, duration)
+            except Exception:
+                LOGGER.exception("Inference failed for dataset=%s", dataset_name)
+                
         return results

@@ -1184,9 +1184,8 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
-  // ✅ INCREASED BUDGET: Models can take 30-60s to load + inference time
-  // Budget now 4-5 minutes for comprehensive image analysis on all datasets
-  const totalBudgetMs = Math.max(120000, Math.min(300000, timeoutMs + 120000));
+  // Tuning budget to 90s to prevent "infinite" feeling hangs
+  const totalBudgetMs = 90000;
   const startedAt = Date.now();
 
   // Kick off warmup in parallel so cold-start loading overlaps network wait.
@@ -1918,9 +1917,12 @@ export async function POST(req: NextRequest) {
       if (imageFetch.prediction) {
         const sanitized = sanitizeImagePrediction(imageFetch.prediction);
         const reliable = chooseReliableImagePrediction(sanitized, userMessage, slots, confirmed);
-        // ✅ ALWAYS USE IMAGE: Always set imagePrediction, never reject (always contributes)
         imagePrediction = reliable.prediction;
-        if (reliable.reason) {
+        
+        // Handle low-confidence dataset matches (e.g., uploading "yellow eyes" to specialized models)
+        if (imagePrediction && Number(imagePrediction.best_confidence) < 15) {
+          imageAnalysisNote = "Note: I don't have a specialized image dataset for this specific condition yet. Showing closest matches from my current laboratory datasets.";
+        } else if (reliable.reason) {
           imageAnalysisNote = `Note: ${reliable.reason}`;
         }
       } else {
