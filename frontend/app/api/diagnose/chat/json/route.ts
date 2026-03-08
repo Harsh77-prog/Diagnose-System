@@ -143,28 +143,38 @@ function inferPreferredImageDatasets(
 
   const hasSkinKeywords =
     slots.bodySystem === "dermatologic" ||
-    containsAny(t, [/\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness|mole|melanoma|eczema|acne|psoriasis|hive|hives|wart|ulcer|dermatology|dermatologist)\b/]) ||
+    containsAny(t, [
+      /\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness|mole|melanoma|eczema|acne|psoriasis|hive|hives|wart|ulcer|dermatology|dermatologist|bump|waxy|pearly|scaly|scale|scalp|darkening|discolor|discolour|spot|freckle|birthmark|keratosis|carcinoma|fibroma|cherry|angioma|vascular|bleed|bleeds|bleeding|nevi|nevus|dermis|dermal|epidermal|epidermis)\b/
+    ]) ||
     Array.from(confirmedSymptoms).some(s => s.includes("skin") || s.includes("itch") || s.includes("rash"));
   if (hasSkinKeywords) push("dermamnist");
 
   const hasEyeKeywords =
-    containsAny(t, [/\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual|blindness|cataract|glaucoma|macular|optics|cornea|pupil|sclera|conjunctivitis)\b/]) ||
+    containsAny(t, [
+      /\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual|blindness|cataract|glaucoma|macular|optics|cornea|pupil|sclera|conjunctivitis|checkup eye|retinal|fundus|optic disc|peripheral vision|distorted|wavy|ophthalmologist)\b/
+    ]) ||
     Array.from(confirmedSymptoms).some(s => s.includes("vision") || s.includes("eye") || s.includes("visual"));
   if (hasEyeKeywords) push("retinamnist");
 
   const hasChestKeywords =
     slots.bodySystem === "respiratory" ||
     slots.bodySystem === "cardiovascular" ||
-    containsAny(t, [/\b(cough|chest|breath|breathing|phlegm|wheeze|respiratory|pneumonia|thorax|rib|ribs|heart|cardiac|cardiovascular|x-ray|xray|x ray|lung|lungs|tuberculosis)\b/]) ||
+    containsAny(t, [
+      /\b(cough|chest|breath|breathing|phlegm|wheeze|respiratory|pneumonia|thorax|rib|ribs|heart|cardiac|cardiovascular|x-ray|xray|x ray|lung|lungs|tuberculosis|shadow|spot lung|shortness of breath|sob|wet cough|stabbing pain|chest pain|mucus|sputum|fever chills|racing heart)\b/
+    ]) ||
     Array.from(confirmedSymptoms).some(s => s.includes("chest") || s.includes("cough") || s.includes("breath"));
   if (hasChestKeywords) push("chestmnist");
 
   const hasBloodKeywords =
-    containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin|anemia|leukemia|plasma|smear|white blood|red blood)\b/]);
+    containsAny(t, [
+      /\b(blood|cbc|wbc|rbc|platelet|hemoglobin|anemia|leukemia|plasma|smear|white blood|red blood|lymphocyte|eosinophil|basophil|neutrophil|monocyte|granulocyte|erythroblast|clot|clotting|bruising|infection|lymphoma|cell count|blood count|bone marrow|parasit)\b/
+    ]);
   if (hasBloodKeywords) push("bloodmnist");
 
   const hasPathologyKeywords =
-    containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide|cell|microscopy|tumor|cancer|carcinoma|histology|oncology)\b/]);
+    containsAny(t, [
+      /\b(pathology|histopathology|biopsy|tissue|slide|cell|microscopy|tumor|cancer|carcinoma|histology|oncology|adenocarcinoma|mucosa|stroma|debris|epithelium|lining cell|fatty tissue|adipose|colon|colorectal|smooth muscle|framework)\b/
+    ]);
   if (hasPathologyKeywords) push("pathmnist");
 
   if (preferred.length === 0) {
@@ -177,6 +187,85 @@ function inferPreferredImageDatasets(
 
   const limit = resolvePreferredDatasetLimit();
   return preferred.slice(0, limit);
+}
+
+// Maps an image model finding to a list of clinical diseases it suggests.
+// This allows the image signal to boost specific symptom-matched predictions.
+function imageSignalBoostTargets(dataset: string, label: string): string[] {
+  const l = label.toLowerCase().trim();
+
+  // DermaMNIST skin findings → clinical diagnosis boost targets
+  const dermBoosts: Record<string, string[]> = {
+    "melanocytic nevi":    ["Fungal infection", "Psoriasis", "Acne"],
+    "melanoma":            ["Fungal infection", "Psoriasis", "Drug Reaction"],
+    "basal cell carcinoma": ["Impetigo", "Fungal infection", "Psoriasis"],
+    "actinic keratoses":   ["Psoriasis", "Fungal infection"],
+    "benign keratosis":    ["Psoriasis", "Fungal infection"],
+    "dermatofibroma":      ["Fungal infection", "Allergy"],
+    "vascular lesions":    ["Drug Reaction", "Allergy"],
+  };
+
+  // ChestMNIST findings → clinical disease boost targets
+  const chestBoosts: Record<string, string[]> = {
+    "atelectasis":   ["Bronchial Asthma", "Pneumonia"],
+    "cardiomegaly":  ["Heart attack", "Hypertension"],
+    "effusion":      ["Pneumonia", "Tuberculosis"],
+    "infiltration":  ["Pneumonia", "Tuberculosis"],
+    "mass":          ["Tuberculosis", "Pneumonia"],
+    "nodule":        ["Tuberculosis", "Pneumonia"],
+    "pneumonia":     ["Pneumonia", "Bronchial Asthma"],
+    "pneumothorax":  ["Pneumonia"],
+    "consolidation": ["Pneumonia", "Bronchial Asthma"],
+    "edema":         ["Pneumonia", "Heart attack"],
+    "emphysema":     ["Bronchial Asthma", "Pneumonia"],
+    "fibrosis":      ["Tuberculosis"],
+    "pleural thickening": ["Tuberculosis", "Pneumonia"],
+    "hernia":        ["GERD"],
+  };
+
+  // RetinaMNIST findings → clinical disease boost targets
+  const retinaBoosts: Record<string, string[]> = {
+    "no diabetic retinopathy": [],
+    "mild diabetic retinopathy":          ["Diabetes", "Hypertension"],
+    "moderate diabetic retinopathy":      ["Diabetes"],
+    "severe diabetic retinopathy":        ["Diabetes"],
+    "proliferative diabetic retinopathy": ["Diabetes"],
+    "diabetic retinopathy":               ["Diabetes"],
+  };
+
+  // BloodMNIST findings → clinical disease boost targets
+  const bloodBoosts: Record<string, string[]> = {
+    "basophilia":           ["Allergy", "Dengue"],
+    "eosinophilia":         ["Allergy", "Malaria"],
+    "erythroblastosis":     ["Malaria"],
+    "myelocyte presence":   ["Dengue"],
+    "lymphocytosis":        ["Dengue", "Malaria"],
+    "monocytosis":          ["Dengue", "Malaria"],
+    "neutrophilia":         ["Typhoid", "Dengue"],
+    "thrombocytes":         ["Dengue"],
+  };
+
+  // PathMNIST findings → clinical disease boost targets
+  const pathBoosts: Record<string, string[]> = {
+    "colorectal adenocarcinoma": ["Gastroenteritis"],
+    "cancerous stroma":          ["Gastroenteritis"],
+    "normal colon tissue":       ["Gastroenteritis"],
+    "adipose tissue":            ["Gastroenteritis"],
+    "mucus presence":            ["Gastroenteritis"],
+    "lymphocyte presence":       ["Allergy", "Dengue"],
+    "smooth muscle tissue":      ["Gastroenteritis"],
+    "tissue debris":             ["Gastroenteritis"],
+    "clear sample":              ["Gastroenteritis"],
+  };
+
+  const map =
+    dataset === "dermamnist" ? dermBoosts :
+    dataset === "chestmnist" ? chestBoosts :
+    dataset === "retinamnist" ? retinaBoosts :
+    dataset === "bloodmnist" ? bloodBoosts :
+    dataset === "pathmnist" ? pathBoosts : {};
+
+  return map[l] ?? [];
 }
 
 function scoreImageDatasetsWithContext(
@@ -2266,32 +2355,37 @@ export async function POST(req: NextRequest) {
       ? pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed).primary
       : null;
 
-    const imageCandidates = imagePrediction
-      ? imagePrediction.per_dataset.map((p) => ({
-          disease: p.top_label_name,
-          probability: Number(p.top_confidence.toFixed(1)),
-        }))
-      : [];
+    // Image signal boosts the top symptom-matched prediction rather than competing as a separate candidate.
+    // Raw MedMNIST labels (e.g. "melanocytic nevi") are NOT used as disease names in the final prediction list.
+    let finalTopPredictions = predictions.map((p) => ({
+      disease: p.disease,
+      probability: Number(p.probability.toFixed(1)),
+    }));
 
-let finalTopPredictions = [
-  ...predictions.map((p) => ({
-    disease: p.disease,
-    probability: Number(p.probability.toFixed(1)),
-  })),
-  ...imageCandidates,
-];
+    // Use image signal to boost clinically relevant symptom-matched diseases
+    if (imageSignal && finalTopPredictions.length > 0) {
+      const imageConf = Number(imageSignal.top_confidence) / 100.0;
+      const boostTargets = imageSignalBoostTargets(imageSignal.dataset, imageSignal.top_label_name);
+      const boostFactor = Math.min(imageConf * 0.4, 0.25); // up to +25% boost
 
-// Deduplicate by taking max probability if a disease appears in both (e.g. Pneumonia in text and ChestMNIST)
-const mergedMap = new Map<string, number>();
-for (const p of finalTopPredictions) {
-  const existing = mergedMap.get(p.disease) || 0;
-  if (p.probability > existing) mergedMap.set(p.disease, p.probability);
-}
+      finalTopPredictions = finalTopPredictions.map((p) => {
+        const normDisease = p.disease.toLowerCase().trim();
+        const isTarget = boostTargets.some(t => normDisease.includes(t.toLowerCase()) || t.toLowerCase().includes(normDisease));
+        if (isTarget) {
+          return {
+            ...p,
+            probability: Math.min(99.9, p.probability * (1 + boostFactor)),
+          };
+        }
+        return p;
+      });
+    }
 
-finalTopPredictions = Array.from(mergedMap.entries())
-  .map(([disease, probability]) => ({ disease: toLabel(disease), probability }))
-  .sort((a, b) => b.probability - a.probability)
-  .slice(0, 5);
+    // Sort by probability descending and take top 5
+    finalTopPredictions = finalTopPredictions
+      .sort((a, b) => b.probability - a.probability)
+      .slice(0, 5)
+      .map((p) => ({ disease: toLabel(p.disease), probability: Number(p.probability.toFixed(1)) }));
 
 let finalDiagnosis = finalTopPredictions[0]?.disease || top.disease;
 let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probability.toFixed(1));
