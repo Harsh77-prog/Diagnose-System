@@ -1349,10 +1349,10 @@ async function requestImageWarmup(userId: string, preferredDatasets: string[] = 
 
 // Blending removed - picking highest probability instead as requested
 
-function resolveDiseaseMetadata(
+function resolveLocalDiseaseMetadata(
   disease: string,
   datasets: DatasetCache
-): { description: string; precautions: string[] } {
+): { description: string; precautions: string[] } | null {
   const norm = disease.toLowerCase().trim();
   
   // 1. Direct match (case-insensitive)
@@ -1366,81 +1366,78 @@ function resolveDiseaseMetadata(
     };
   }
 
-  // 2. Image Model Label Mapping
-  // This maps MedMNIST labels to available diseases in our text dataset (symptom_description_cleaned.csv)
-  const mapping: Record<string, string> = {
-    // ChestMNIST
-    "atelectasis": "Bronchial Asthma",
-    "cardiomegaly": "Hypertension",
-    "effusion": "Pneumonia",
-    "infiltration": "Pneumonia",
-    "mass": "Tuberculosis",
-    "nodule": "Tuberculosis",
-    "pneumonia": "Pneumonia",
-    "pneumothorax": "Pneumonia",
-    "consolidation": "Pneumonia",
-    "edema": "Pneumonia",
-    "emphysema": "Bronchial Asthma",
-    "fibrosis": "Tuberculosis",
-    "pleural thickening": "Tuberculosis",
-    "hernia": "GERD",
+  return null;
+}
 
-    // DermaMNIST
-    "actinic keratoses": "Psoriasis",
-    "basal cell carcinoma": "Psoriasis",
-    "benign keratosis": "Psoriasis",
-    "dermatofibroma": "Psoriasis",
-    "melanoma": "Psoriasis",
-    "melanocytic nevi": "Psoriasis",
-    "vascular lesions": "Psoriasis",
+async function fetchOpenAIDiseaseExplanation(disease: string): Promise<{ description: string; precautions: string[] } | null> {
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!apiKey) return null;
 
-    // RetinaMNIST
-    "no diabetic retinopathy": "Diabetes",
-    "mild diabetic retinopathy": "Diabetes",
-    "moderate diabetic retinopathy": "Diabetes",
-    "severe diabetic retinopathy": "Diabetes",
-    "proliferative diabetic retinopathy": "Diabetes",
-    "diabetic retinopathy": "Diabetes",
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "");
+  const model = configuredModel || "gpt-4o-mini";
 
-    // BloodMNIST
-    "basophilia": "Dengue",
-    "eosinophilia": "Allergy",
-    "erythroblastosis": "Malaria",
-    "myelocyte presence": "Dengue",
-    "lymphocytosis": "Dengue",
-    "monocytosis": "Dengue",
-    "neutrophilia": "Dengue",
-    "thrombocytes": "Dengue",
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content: "You are a professional medical assistant. Provide a concise description (2-3 sentences) and 3-4 key precautions for the given medical condition. Return strict JSON with keys: description (string) and precautions (array of strings). Do not include treatments or medication advice.",
+          },
+          {
+            role: "user",
+            content: `Condition: ${disease}`,
+          },
+        ],
+      }),
+    });
 
-    // PathMNIST
-    "adipose tissue": "Gastroenteritis",
-    "clear sample": "Gastroenteritis",
-    "tissue debris": "Gastroenteritis",
-    "lymphocyte presence": "Gastroenteritis",
-    "mucus presence": "Gastroenteritis",
-    "smooth muscle tissue": "Gastroenteritis",
-    "normal colon tissue": "Gastroenteritis",
-    "cancerous stroma": "Gastroenteritis",
-    "colorectal adenocarcinoma": "Gastroenteritis",
-  };
-
-  const mappedDisease = mapping[norm] || mapping[disease.trim()];
-  if (mappedDisease) {
-    const targetKey = Object.keys(datasets.descriptions).find(
-      (k) => k.toLowerCase() === mappedDisease.toLowerCase().trim()
-    );
-    if (targetKey) {
-      return {
-        description: datasets.descriptions[targetKey],
-        precautions: datasets.precautions[targetKey] || [],
-      };
-    }
+    if (!res.ok) return null;
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content || "";
+    
+    // Simple JSON extractor
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      const parsed = JSON.parse(match[0]) as { description?: string; precautions?: string[] };
+      if (parsed.description) {
+        return {
+          description: parsed.description,
+          precautions: Array.isArray(parsed.precautions) ? parsed.precautions : [],
+        };
+      }
+    } catch {}
+    return null;
+  } catch (err) {
+    console.error(`[openai:explanation] failed for ${disease}:`, err);
+    return null;
   }
+}
+
+async function resolveDiseaseMetadata(
+  disease: string,
+  datasets: DatasetCache
+): Promise<{ description: string; precautions: string[] }> {
+  // 1. Try local exact match first
+  const local = resolveLocalDiseaseMetadata(disease, datasets);
+  if (local) return local;
+
+  // 2. Try OpenAI for dynamic explanation
+  const aiResult = await fetchOpenAIDiseaseExplanation(disease);
+  if (aiResult) return aiResult;
 
   // 3. Final Fallback
   return {
-    description: "Detailed disease description is not available for this condition right now. Please consult the clinical findings list for more details.",
-    precautions: [],
+    description: "Detailed description for this specific finding is currently unavailable in our primary database. Please consult a healthcare professional for clinical verification of this identifying marker.",
+    precautions: ["Store this result for discussion with your doctor", "Monitor for any changes or worsening symptoms"],
   };
 }
 
@@ -2299,7 +2296,7 @@ let finalDiagnosis = finalTopPredictions[0]?.disease || top.disease;
 let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probability.toFixed(1));
     
     // Fetch description and precautions for whichever diagnosis won, including image signal mapping
-    const diseaseInfo = resolveDiseaseMetadata(finalDiagnosis, datasets);
+    const diseaseInfo = await resolveDiseaseMetadata(finalDiagnosis, datasets);
 
     const diagnosis = {
       diagnosis: finalDiagnosis,
