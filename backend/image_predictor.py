@@ -182,11 +182,11 @@ class ImagePredictor:
 
         image = Image.open(io.BytesIO(image_bytes))
         
-        # Sequential inference logic to prevent resource-heavy hangs
+        # Parallel inference logic to improve speed
         inference_start = time.perf_counter()
-        predictions = self._sequential_predict(image, ready)
+        predictions = self._parallel_predict(image, ready)
         inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
-        
+
         LOGGER.info("Parallel inference completed | datasets=%d | duration_ms=%s", len(ready), inference_duration)
         
         if not predictions:
@@ -274,9 +274,9 @@ class ImagePredictor:
             raise ValueError("Invalid image_base64 payload") from exc
 
 
-    def _sequential_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
+    def _parallel_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
         """
-        Run multiple dataset inferences sequentially to minimize resource contention.
+        Run multiple dataset inferences in parallel using ThreadPoolExecutor.
         """
         transform = transforms.Compose([
             transforms.Resize((28, 28)),
@@ -284,17 +284,16 @@ class ImagePredictor:
             transforms.ToTensor(),
         ])
         tensor = transform(image).unsqueeze(0).to(self.device).detach()
-        
-        results = []
-        for dataset_name in dataset_names:
+
+        def _predict_single(dataset_name: str) -> dict[str, Any] | None:
             if dataset_name not in self._models:
-                continue
-            
+                return None
+
             try:
                 model = self._models[dataset_name]
                 info = INFO[dataset_name]
                 labels = cast(dict[str, str], info["label"])
-                
+
                 start_time = time.perf_counter()
                 with torch.inference_mode():
                     logits = model.forward(tensor)
@@ -302,11 +301,11 @@ class ImagePredictor:
                         probs = torch.sigmoid(logits).squeeze(0)
                     else:
                         probs = torch.softmax(logits, dim=1).squeeze(0)
-                    
+
                     probs_np = probs.cpu().numpy()
                     top_idx = int(np.argmax(probs_np))
                     top_conf = float(probs_np[top_idx] * 100.0)
-                    
+
                     all_scores: list[dict[str, Any]] = []
                     for idx in range(len(probs_np)):
                         all_scores.append({
@@ -314,19 +313,27 @@ class ImagePredictor:
                             "label_name": labels[str(idx)],
                             "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
                         })
-                    
+
                     scores_sorted = sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)
-                    res = {
+                    duration = (time.perf_counter() - start_time) * 1000
+                    LOGGER.info("Inference dataset=%s | duration=%.2fms", dataset_name, duration)
+
+                    return {
                         "dataset": dataset_name,
                         "top_label_index": top_idx,
                         "top_label_name": labels[str(top_idx)],
                         "top_confidence": float(f"{top_conf:.2f}"),
                         "scores": scores_sorted[:5]
                     }
-                    results.append(res)
-                    duration = (time.perf_counter() - start_time) * 1000
-                    LOGGER.info("Inference dataset=%s | duration=%.2fms", dataset_name, duration)
             except Exception:
                 LOGGER.exception("Inference failed for dataset=%s", dataset_name)
-                
+                return None
+
+        results = []
+        futures = {self._executor.submit(_predict_single, d): d for d in dataset_names}
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                results.append(res)
+
         return results

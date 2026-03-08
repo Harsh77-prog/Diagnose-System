@@ -90,7 +90,8 @@ function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
-  return 150000; // Increased to 150s (2.5 mins) to allow for parallel loading & inference without premature frontend timeout
+  // Default to 180s (3 minutes) to match the backend's IMAGE_INFERENCE_TIMEOUT_SECONDS
+  return 180000;
 }
 
 function resolveBackendUrl(): string {
@@ -1184,8 +1185,8 @@ async function fetchImagePrediction(
   }
   const sharedSecret = (process.env.SHARED_SECRET || "").trim();
   const timeoutMs = resolveImageTimeoutMs();
-  // Tuning budget to 90s to prevent "infinite" feeling hangs
-  const totalBudgetMs = 90000;
+  // Total budget for entire operation (including one full retry)
+  const totalBudgetMs = 300000; // 5 minutes
   const startedAt = Date.now();
 
   // Kick off warmup in parallel so cold-start loading overlaps network wait.

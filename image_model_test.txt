@@ -1,0 +1,180 @@
+MEDCOREAI MEDICAL IMAGE TEST CASES (50 TOTAL)
+==============================================
+
+This file contains 10 high-quality test cases for each of the 5 specialized medical datasets.
+
+To test correctly:
+1. Provide the "Routing Keyword/Symptoms" to the chat.
+2. Search for the "Target Image" using the link provided.
+3. Upload a sample image found from the search.
+4. Verify the "Likely Condition" matches the target.
+
+--------------------------------------------------
+1. CHESTMNIST (CHEST X-RAYS)
+--------------------------------------------------
+
+Case 01 | Target: Pneumonia         | Symptoms: "I have a high fever, chills, and difficulty breathing with chest pain."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+pneumonia+clinical
+
+Case 02 | Target: Cardiomegaly      | Symptoms: "I feel like my heart is racing and I get tired easily when walking."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+cardiomegaly
+
+Case 03 | Target: Effusion         | Symptoms: "I have a sharp pain in my side when I take deep breaths."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+pleural+effusion
+
+Case 04 | Target: Mass             | Symptoms: "The doctor found a shadow on my lung during a physical exam."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+lung+mass
+
+Case 05 | Target: Nodule           | Symptoms: "Routine screening showed a small spot in my chest area."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+pulmonary+nodule
+
+Case 06 | Target: Atelectasis      | Symptoms: "I've had sudden shortness of breath after my recent surgery."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+atelectasis
+
+Case 07 | Target: Infiltration     | Symptoms: "I have a persistent wet cough that won't go away for weeks."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+lung+infiltration
+
+Case 08 | Target: Emphysema        | Symptoms: "I struggle to catch my breath even when I am just sitting down."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+emphysema
+
+Case 09 | Target: Pneumothorax     | Symptoms: "I felt a sudden, sharp stabbing pain in my chest that got worse."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+pneumothorax
+
+Case 10 | Target: Consolidation    | Symptoms: "My breathing feels heavy and I'm coughing up thick mucus."
+        | Search: https://www.google.com/search?tbm=isch&q=chest+xray+lung+consolidation
+
+--------------------------------------------------
+2. DERMAMNIST (SKIN LESIONS)
+--------------------------------------------------
+
+Case 11 | Target: Melanocytic Nevi | Symptoms: "I have a common mole that I want to check for safety."
+        | Search: https://www.google.com/search?tbm=isch&q=melanocytic+nevi+skin+lesion
+
+Case 12 | Target: Melanoma         | Symptoms: "I have a dark, irregular mole that has changed shape recently."
+        | Search: https://www.google.com/search?tbm=isch&q=melanoma+skin+lesion+clinical
+
+Case 13 | Target: Basal Cell Carc. | Symptoms: "I have a pearly, waxy bump on my face that sometimes bleeds."
+        | Search: https://www.google.com/search?tbm=isch&q=basal+cell+carcinoma+skin
+
+Case 14 | Target: Actinic Keratos. | Symptoms: "I have a rough, scaly patch on my scalp from sun exposure."
+        | Search: https://www.google.com/search?tbm=isch&q=actinic+keratosis+skin
+
+Case 15 | Target: Benign Keratosis | Symptoms: "I have a brown, warty-looking growth on my back."
+        | Search: https://www.google.com/search?tbm=isch&q=seborrheic+keratosis+skin
+
+Case 16 | Target: Dermatofibroma   | Symptoms: "I have a small, hard bump on my leg that appeared after a bug bite."
+        | Search: https://www.google.com/search?tbm=isch&q=dermatofibroma+skin
+
+Case 17 | Target: Vascular Lesion  | Symptoms: "I have a cherry-red spot on my chest that looks like a blood vessel."
+        | Search: https://www.google.com/search?tbm=isch&q=vascular+lesion+skin+cherry+angioma
+
+Case 18 | Target: Psoriasis        | Symptoms: "I have thick, red patches with silvery scales on my elbows."
+        | Search: https://www.google.com/search?tbm=isch&q=psoriasis+skin+plaques
+
+Case 19 | Target: Eczema           | Symptoms: "I have very itchy, inflamed skin on the inside of my knees."
+        | Search: https://www.google.com/search?tbm=isch&q=atopic+dermatitis+eczema+skin
+
+Case 20 | Target: Fungal Infection | Symptoms: "I have a red, circular rash that is itchy and clearing in the center."
+        | Search: https://www.google.com/search?tbm=isch&q=tinea+corporis+fungal+rash
+
+--------------------------------------------------
+3. RETINAMNIST (RETINAL SCANS)
+--------------------------------------------------
+
+Case 21 | Target: Normal (No DR)   | Symptoms: "I want a routine checkup of my eye retina health."
+        | Search: https://www.google.com/search?tbm=isch&q=normal+retinal+fundus+photograph
+
+Case 22 | Target: Mild DR          | Symptoms: "I have early signs of eye changes due to my diabetes."
+        | Search: https://www.google.com/search?tbm=isch&q=mild+diabetic+retinopathy+fundus
+
+Case 23 | Target: Moderate DR      | Symptoms: "My vision is occasionally blurry and I have type 2 diabetes."
+        | Search: https://www.google.com/search?tbm=isch&q=moderate+diabetic+retinopathy+fundus
+
+Case 24 | Target: Severe DR        | Symptoms: "I am seeing dark spots and floating strings in my field of vision."
+        | Search: https://www.google.com/search?tbm=isch&q=severe+diabetic+retinopathy+fundus
+
+Case 25 | Target: Proliferative DR | Symptoms: "I have significant vision loss and frequent eye discomfort."
+        | Search: https://www.google.com/search?tbm=isch&q=proliferative+diabetic+retinopathy+fundus
+
+Case 26 | Target: Retinal Hemorrh. | Symptoms: "I see red clouds or shadows blocking parts of my vision."
+        | Search: https://www.google.com/search?tbm=isch&q=retinal+hemorrhage+fundus
+
+Case 27 | Target: Exudates         | Symptoms: "The ophthalmologist mentioned yellow spots during my exam."
+        | Search: https://www.google.com/search?tbm=isch&q=hard+exudates+retina+fundus
+
+Case 28 | Target: Microaneurysms   | Symptoms: "I noticed tiny red dots in my recent retinal photograph."
+        | Search: https://www.google.com/search?tbm=isch&q=retinal+microaneurysms+fundus
+
+Case 29 | Target: Macular Edema    | Symptoms: "Central objects look wavy or distorted when I look at them."
+        | Search: https://www.google.com/search?tbm=isch&q=diabetic+macular+edema+oct+fundus
+
+Case 30 | Target: Optic Disc Chng  | Symptoms: "I have pressure in my eyes and changes in my peripheral vision."
+        | Search: https://www.google.com/search?tbm=isch&q=optic+disc+cupping+glaucoma+fundus
+
+--------------------------------------------------
+4. BLOODMNIST (BLOOD CELLS)
+--------------------------------------------------
+
+Case 31 | Target: Lymphocyte       | Symptoms: "My blood report shows a high lymphocyte count."
+        | Search: https://www.google.com/search?tbm=isch&q=lymphocyte+blood+smear+microscopy
+
+Case 32 | Target: Monocyte         | Symptoms: "I am recovering from an infection and my monocytes are elevated."
+        | Search: https://www.google.com/search?tbm=isch&q=monocyte+blood+smear+microscopy
+
+Case 33 | Target: Neutrophil       | Symptoms: "I have a bacterial infection and need to check my blood cells."
+        | Search: https://www.google.com/search?tbm=isch&q=neutrophil+blood+smear+microscopy
+
+Case 34 | Target: Basophil         | Symptoms: "I have chronic inflammation and want to see my basophil levels."
+        | Search: https://www.google.com/search?tbm=isch&q=basophil+blood+smear+microscopy
+
+Case 35 | Target: Eosinophil       | Symptoms: "I have a parasitic infection or allergy and need a blood check."
+        | Search: https://www.google.com/search?tbm=isch&q=eosinophil+blood+smear+microscopy
+
+Case 36 | Target: Imm. Granulocyte | Symptoms: "The lab found early-stage white blood cells in my sample."
+        | Search: https://www.google.com/search?tbm=isch&q=immature+granulocyte+blood+smear
+
+Case 37 | Target: Erythroblast     | Symptoms: "I have a type of anemia where early red cells are present."
+        | Search: https://www.google.com/search?tbm=isch&q=erythroblast+blood+smear
+
+Case 38 | Target: Platelet         | Symptoms: "I need to check my platelet count for clotting health."
+        | Search: https://www.google.com/search?tbm=isch&q=platelet+blood+smear+microscopy
+
+Case 39 | Target: Leukemia Sign    | Symptoms: "I have persistent fatigue and bruising with abnormal cell counts."
+        | Search: https://www.google.com/search?tbm=isch&q=leukemia+cells+blood+smear
+
+Case 40 | Target: Viral Response   | Symptoms: "My body is fighting a virus; check my immune cell profile."
+        | Search: https://www.google.com/search?tbm=isch&q=reactive+lymphocytes+atypical
+
+--------------------------------------------------
+5. PATHMNIST (PATHOLOGY SLIDES)
+--------------------------------------------------
+
+Case 41 | Target: Adipose Tissue   | Symptoms: "I have a biopsy of fatty tissue for analysis."
+        | Search: https://www.google.com/search?tbm=isch&q=adipose+tissue+histology+slide
+
+Case 42 | Target: Mucosa (Normal)  | Symptoms: "Check the health of my colon tissue biopsy."
+        | Search: https://www.google.com/search?tbm=isch&q=normal+colon+mucosa+histology
+
+Case 43 | Target: Adenocarcinoma   | Symptoms: "I need a tissue check for potential cancerous growth."
+        | Search: https://www.google.com/search?tbm=isch&q=colon+adenocarcinoma+histology+slide
+
+Case 44 | Target: Lymphocytes      | Symptoms: "Check the immune cell infiltration in this tissue sample."
+        | Search: https://www.google.com/search?tbm=isch&q=lymphocytic+infiltration+histology+slide
+
+Case 45 | Target: Smooth Muscle    | Symptoms: "Analyze the muscle tissue structure from this biopsy."
+        | Search: https://www.google.com/search?tbm=isch&q=smooth+muscle+histology+slide
+
+Case 46 | Target: Debris           | Symptoms: "Identify the cellular debris in this slide."
+        | Search: https://www.google.com/search?tbm=isch&q=cellular+debris+histology+pathology
+
+Case 47 | Target: Stroma           | Symptoms: "Examine the supporting tissue framework in this sample."
+        | Search: https://www.google.com/search?tbm=isch&q=stroma+tissue+histology+pathology
+
+Case 48 | Target: Epithelium       | Symptoms: "Check the lining cells for any structural irregularities."
+        | Search: https://www.google.com/search?tbm=isch&q=epithelium+histology+microscopy
+
+Case 49 | Target: Complex Tissue   | Symptoms: "This biopsy contains multiple tissue types for review."
+        | Search: https://www.google.com/search?tbm=isch&q=complex+tissue+histology+slide
+
+Case 50 | Target: Biopsy Review    | Symptoms: "General pathology review of this organ tissue slide."
+        | Search: https://www.google.com/search?tbm=isch&q=pathology+biopsy+slide+clinical
