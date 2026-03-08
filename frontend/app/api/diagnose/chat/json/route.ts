@@ -227,6 +227,78 @@ function topTwoLabelMargin(prediction: ImagePredictionPerDataset): number {
   return Number((scores[0].confidence - scores[1].confidence).toFixed(2));
 }
 
+function sanitizeImagePrediction(prediction: ImagePredictionResult): ImagePredictionResult {
+  const retinaMap: Record<string, string> = {
+    "0": "No Diabetic Retinopathy",
+    "1": "Mild Diabetic Retinopathy",
+    "2": "Moderate Diabetic Retinopathy",
+    "3": "Severe Diabetic Retinopathy",
+    "4": "Proliferative Diabetic Retinopathy",
+  };
+
+  const dermaMap: Record<string, string> = {
+    "akiec": "Actinic Keratoses",
+    "bcc": "Basal Cell Carcinoma",
+    "bkl": "Benign Keratosis",
+    "df": "Dermatofibroma",
+    "mel": "Melanoma",
+    "nv": "Melanocytic Nevi",
+    "vasc": "Vascular Lesions",
+  };
+
+  const bloodMap: Record<string, string> = {
+    "basophil": "Basophilia",
+    "eosinophil": "Eosinophilia",
+    "erythroblast": "Erythroblastosis",
+    "immature granulocytes": "Myelocyte Presence",
+    "lymphocyte": "Lymphocytosis",
+    "monocyte": "Monocytosis",
+    "neutrophil": "Neutrophilia",
+    "platelet": "Thrombocytes",
+  };
+
+  const pathMap: Record<string, string> = {
+    "adipose": "Adipose Tissue",
+    "background": "Clear Sample",
+    "debris": "Tissue Debris",
+    "lympho": "Lymphocyte Presence",
+    "mucus": "Mucus Presence",
+    "smooth muscle": "Smooth Muscle Tissue",
+    "normal colon mucosa": "Normal Colon Tissue",
+    "cancer-associated stroma": "Cancerous Stroma",
+    "colorectal adenocarcinoma epithelium": "Colorectal Adenocarcinoma",
+  };
+
+  const mapLabel = (dataset: string, label: string): string => {
+    const l = label.toLowerCase().trim();
+    if (dataset === "retinamnist") return retinaMap[l] || label;
+    if (dataset === "dermamnist") return dermaMap[l] || label;
+    if (dataset === "bloodmnist") {
+      // Handle the long MedMNIST name if it's passed as-is
+      if (l.includes("immature granulocytes")) return bloodMap["immature granulocytes"];
+      return bloodMap[l] || label;
+    }
+    if (dataset === "pathmnist") return pathMap[l] || label;
+    return label;
+  };
+
+  const sanitized = { ...prediction };
+  sanitized.per_dataset = sanitized.per_dataset.map((p) => ({
+    ...p,
+    top_label_name: mapLabel(p.dataset, p.top_label_name),
+    scores: (p.scores || []).map((s: any) => ({
+      ...s,
+      label_name: mapLabel(p.dataset, s.label_name),
+    })),
+  }));
+
+  if (sanitized.best_label_name) {
+    sanitized.best_label_name = mapLabel(sanitized.best_dataset || "", sanitized.best_label_name);
+  }
+
+  return sanitized;
+}
+
 function chooseReliableImagePrediction(
   imagePrediction: ImagePredictionResult,
   message: string,
@@ -239,11 +311,6 @@ function chooseReliableImagePrediction(
   const signal = pickPrimaryImageSignal(imagePrediction, message, slots, confirmedSymptoms);
   const primary = signal.primary;
 
-  // ✅ NO CONFIDENCE FILTERING: Accept ALL image predictions
-  // Always use image analysis when available - no rejection based on confidence thresholds
-  // User requested: "i want image model working not any restriction of confidence or percentage based rejection"
-  
-  // Always return the image prediction as-is, without any filtering or rejection
   return {
     prediction: {
       ...imagePrediction,
@@ -252,7 +319,7 @@ function chooseReliableImagePrediction(
       best_label_name: primary.top_label_name,
       best_confidence: primary.top_confidence,
     },
-    reason: null,  // No filtering, so no reason needed
+    reason: null,
   };
 }
 
@@ -1303,49 +1370,58 @@ function resolveDiseaseMetadata(
   // This maps MedMNIST labels to available diseases in our text dataset (symptom_description_cleaned.csv)
   const mapping: Record<string, string> = {
     // ChestMNIST
-    "infiltration": "Pneumonia",
-    "effusion": "Pneumonia",
     "atelectasis": "Bronchial Asthma",
+    "cardiomegaly": "Hypertension",
+    "effusion": "Pneumonia",
+    "infiltration": "Pneumonia",
     "mass": "Tuberculosis",
     "nodule": "Tuberculosis",
+    "pneumonia": "Pneumonia",
+    "pneumothorax": "Pneumonia",
     "consolidation": "Pneumonia",
     "edema": "Pneumonia",
     "emphysema": "Bronchial Asthma",
     "fibrosis": "Tuberculosis",
-    "pleural_thickening": "Tuberculosis",
+    "pleural thickening": "Tuberculosis",
     "hernia": "GERD",
-    "pneumonia": "Pneumonia",
-    
+
     // DermaMNIST
-    "melanocytic nevi": "Psoriasis",
-    "melanoma": "Psoriasis",
-    "benign keratosis-like lesions": "Psoriasis",
-    "basal cell carcinoma": "Psoriasis",
     "actinic keratoses": "Psoriasis",
-    "vascular lesions": "Psoriasis",
+    "basal cell carcinoma": "Psoriasis",
+    "benign keratosis": "Psoriasis",
     "dermatofibroma": "Psoriasis",
-    "akiec": "Psoriasis",
-    "bcc": "Psoriasis",
-    "bkl": "Psoriasis",
-    "df": "Psoriasis",
-    "mel": "Psoriasis",
-    "nv": "Psoriasis",
-    "vasc": "Psoriasis",
+    "melanoma": "Psoriasis",
+    "melanocytic nevi": "Psoriasis",
+    "vascular lesions": "Psoriasis",
 
     // RetinaMNIST
-    "diabetic retinopathy": "Hypertension",
+    "no diabetic retinopathy": "Diabetes",
+    "mild diabetic retinopathy": "Diabetes",
+    "moderate diabetic retinopathy": "Diabetes",
+    "severe diabetic retinopathy": "Diabetes",
+    "proliferative diabetic retinopathy": "Diabetes",
+    "diabetic retinopathy": "Diabetes",
 
     // BloodMNIST
-    "erythroblast": "Malaria",
-    "lymphocyte": "Dengue",
-    "platelet": "Dengue",
-    "basophil": "Dengue",
-    "eosinophil": "Allergy",
-    "neutrophil": "Dengue",
-    
+    "basophilia": "Dengue",
+    "eosinophilia": "Allergy",
+    "erythroblastosis": "Malaria",
+    "myelocyte presence": "Dengue",
+    "lymphocytosis": "Dengue",
+    "monocytosis": "Dengue",
+    "neutrophilia": "Dengue",
+    "thrombocytes": "Dengue",
+
     // PathMNIST
-    "colorectal adenocarcinoma epithelium": "Gastroenteritis",
-    "cancer-associated stroma": "Gastroenteritis",
+    "adipose tissue": "Gastroenteritis",
+    "clear sample": "Gastroenteritis",
+    "tissue debris": "Gastroenteritis",
+    "lymphocyte presence": "Gastroenteritis",
+    "mucus presence": "Gastroenteritis",
+    "smooth muscle tissue": "Gastroenteritis",
+    "normal colon tissue": "Gastroenteritis",
+    "cancerous stroma": "Gastroenteritis",
+    "colorectal adenocarcinoma": "Gastroenteritis",
   };
 
   const mappedDisease = mapping[norm] || mapping[disease.trim()];
@@ -1701,6 +1777,11 @@ function replyForQuestion(questionText: string, confirmed: Set<string>, turns: n
   return `Symptoms identified so far: **${symptoms || "None yet"}**.\n\n**Question ${turns + 1}:** ${questionText}\n${reason}`;
 }
 
+function toLabel(value: string): string {
+  if (!value) return "";
+  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = (await getServerSession(authOptions as never)) as { user?: { id?: string } } | null;
@@ -1835,7 +1916,8 @@ export async function POST(req: NextRequest) {
       const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
       const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
-        const reliable = chooseReliableImagePrediction(imageFetch.prediction, userMessage, slots, confirmed);
+        const sanitized = sanitizeImagePrediction(imageFetch.prediction);
+        const reliable = chooseReliableImagePrediction(sanitized, userMessage, slots, confirmed);
         // ✅ ALWAYS USE IMAGE: Always set imagePrediction, never reject (always contributes)
         imagePrediction = reliable.prediction;
         if (reliable.reason) {
@@ -2184,11 +2266,11 @@ export async function POST(req: NextRequest) {
       : null;
 
     const imageCandidates = imagePrediction
-? imagePrediction.per_dataset.map((p) => ({
-    disease: p.top_label_name,
-    probability: Number(p.top_confidence.toFixed(1)),
-  }))
-: [];
+      ? imagePrediction.per_dataset.map((p) => ({
+          disease: p.top_label_name,
+          probability: Number(p.top_confidence.toFixed(1)),
+        }))
+      : [];
 
 let finalTopPredictions = [
   ...predictions.map((p) => ({
@@ -2206,7 +2288,7 @@ for (const p of finalTopPredictions) {
 }
 
 finalTopPredictions = Array.from(mergedMap.entries())
-  .map(([disease, probability]) => ({ disease, probability }))
+  .map(([disease, probability]) => ({ disease: toLabel(disease), probability }))
   .sort((a, b) => b.probability - a.probability)
   .slice(0, 5);
 
@@ -2242,7 +2324,6 @@ let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probabil
         precautions: diseaseInfo.precautions,
       })) || null;
 
-    const toLabel = (value: string): string => value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     const precautionsText =
       diseaseInfo.precautions.length > 0
         ? `\n\n**Self-care steps**\n${diseaseInfo.precautions.map((p) => `- ${p}`).join("\n")}`
