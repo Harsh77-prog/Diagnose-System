@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable, cast
 from collections import OrderedDict
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 from scipy import ndimage
 import medmnist  # only INFO is used during inference
@@ -22,7 +23,8 @@ from torchvision import transforms
 import cv2
 
 # force single-threaded CPU operation; reduces contention on Render
-torch.set_num_threads(1)
+# allow moderate multi-threading for parallel model execution
+torch.set_num_threads(2)
 
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
@@ -73,6 +75,7 @@ class ImagePredictor:
         self._predict_cache_lock = threading.Lock()
         self._predict_cache_ttl_sec = 20 * 60
         self._predict_cache_max_items = 256
+        self._executor = ThreadPoolExecutor(max_workers=len(DATASETS))
         LOGGER.info(
             "ImagePredictor init | cwd=%s | model_dir=%s | device=%s",
             os.getcwd(),
@@ -160,7 +163,13 @@ class ImagePredictor:
 
     def predict_selected(self, image_base64: str, requested_datasets: Iterable[str] | None = None) -> dict[str, Any]:
         selected = self._normalize_requested_datasets(requested_datasets)
-        ready: list[str] = [d for d in selected if self._ensure_model_loaded(d)]
+        
+        # Parallel load models
+        load_tasks = [self._executor.submit(self._ensure_model_loaded, d) for d in selected]
+        for future in as_completed(load_tasks):
+            future.result()
+            
+        ready: list[str] = [d for d in selected if d in self._models]
 
         if not ready:
             LOGGER.error("No image models available at inference time | diagnostics=%s", self.diagnostics())
@@ -176,8 +185,12 @@ class ImagePredictor:
 
         image = Image.open(io.BytesIO(image_bytes))
         
-        # Fast single pass logic
-        predictions = self._fast_predict(image, ready)
+        # Parallel inference logic
+        inference_start = time.perf_counter()
+        predictions = self._parallel_predict(image, ready)
+        inference_duration = round((time.perf_counter() - inference_start) * 1000, 2)
+        
+        LOGGER.info("Parallel inference completed | datasets=%d | duration_ms=%s", len(ready), inference_duration)
         
         if not predictions:
             raise RuntimeError("No predictions generated")
@@ -263,29 +276,29 @@ class ImagePredictor:
         except Exception as exc:  # noqa: BLE001
             raise ValueError("Invalid image_base64 payload") from exc
 
-    def _fast_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
+        return predictions
+
+    def _parallel_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
         """
-        Hyper-fast single pass prediction.
+        Run multiple dataset inferences in parallel across the global pool.
         """
         transform = transforms.Compose([
             transforms.Resize((28, 28)),
             transforms.Lambda(lambda img: img.convert("RGB")),
             transforms.ToTensor(),
         ])
-        tensor = transform(image).unsqueeze(0).to(self.device)
+        tensor = transform(image).unsqueeze(0).to(self.device).detach()
         
-        predictions: list[dict[str, Any]] = []
-        for dataset_name in dataset_names:
-            if not self._ensure_model_loaded(dataset_name):
-                continue
-                
+        def run_one(dataset_name: str) -> dict[str, Any] | None:
+            if dataset_name not in self._models:
+                return None
+            
             model = self._models[dataset_name]
             info = INFO[dataset_name]
             labels = cast(dict[str, str], info["label"])
             
             with torch.inference_mode():
                 logits = model.forward(tensor)
-                
                 if dataset_name == "chestmnist":
                     probs = torch.sigmoid(logits).squeeze(0)
                 else:
@@ -295,21 +308,26 @@ class ImagePredictor:
                 top_idx = int(np.argmax(probs_np))
                 top_conf = float(probs_np[top_idx] * 100.0)
                 
-                all_scores: list[dict[str, Any]] = [
-                    {
+                all_scores: list[dict[str, Any]] = []
+                for idx in range(len(probs_np)):
+                    all_scores.append({
                         "label_index": idx,
                         "label_name": labels[str(idx)],
                         "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
-                    }
-                    for idx in range(len(probs_np))
-                ]
+                    })
                 
-                predictions.append({
+                return {
                     "dataset": dataset_name,
                     "top_label_index": top_idx,
                     "top_label_name": labels[str(top_idx)],
                     "top_confidence": float(f"{top_conf:.2f}"),
-                    "scores": sorted(all_scores, key=lambda x: float(str(x["confidence"])), reverse=True)[:5]
-                })
-        
-        return predictions
+                    "scores": sorted(all_scores, key=lambda x: cast(float, x["confidence"]), reverse=True)[:5]
+                }
+
+        futures = [self._executor.submit(run_one, d) for d in dataset_names]
+        results = []
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                results.append(res)
+        return results

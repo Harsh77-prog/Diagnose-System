@@ -90,7 +90,7 @@ function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
-  return 120000; // Increased to 120s to ensure cold starts succeed
+  return 150000; // Increased to 150s (2.5 mins) to allow for parallel loading & inference without premature frontend timeout
 }
 
 function resolveBackendUrl(): string {
