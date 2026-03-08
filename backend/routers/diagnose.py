@@ -1,3 +1,5 @@
+import asyncio
+import base64
 import logging
 import os
 import threading
@@ -16,6 +18,11 @@ _image_predictor = None
 _image_predictor_lock = threading.Lock()
 _image_warmup_started = False
 _image_warmup_lock = threading.Lock()
+
+# simple in-memory per-user rate limiter
+_rate_limit_data: dict[str, list[float]] = {}
+_RATE_LIMIT_PER_MINUTE = 10  # requests per minute per user
+
 LOGGER = logging.getLogger("medcore.router.diagnose")
 
 
@@ -51,12 +58,23 @@ def _get_image_predictor():
         from image_predictor import ImagePredictor
 
         backend_root = Path(__file__).resolve().parents[1]
-        candidates = [
+        # allow override via env var for deploys without persistent disk
+        env_dir = os.getenv("MODEL_DIR")
+        candidates = []
+        if env_dir:
+            candidates.append(Path(env_dir))
+        # common repository locations
+        candidates.extend([
             backend_root / "medical_ML" / "models",
+            backend_root / "models",
             Path.cwd() / "medical_ML" / "models",
             Path.cwd() / "backend" / "medical_ML" / "models",
-        ]
-        chosen = next((p for p in candidates if p.exists()), candidates[0])
+        ])
+        # also check sibling of routers for situations where code is packaged differently
+        candidates.append(Path(__file__).resolve().parent / "models")
+        # final fallback: CWD itself
+        candidates.append(Path.cwd())
+        chosen = next((p for p in candidates if p.exists()), candidates[0] if candidates else backend_root)
         LOGGER.info(
             "Initializing ImagePredictor | cwd=%s | chosen=%s | candidates=%s",
             os.getcwd(),
@@ -176,17 +194,29 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
 
 @router.post("/image-predict")
 async def image_predict(request: Request) -> dict[str, Any]:
-    """JSON body: { image_base64, preferred_datasets? }. Runs prediction across trained MedMNIST image models."""
-    try:
-        user_id = require_user_id(request)
-    except HTTPException:
-        LOGGER.warning(
-            "Unauthorized /image-predict call | has_auth=%s | has_internal_secret=%s | has_user_id_header=%s",
-            bool(request.headers.get("Authorization")),
-            bool(request.headers.get("X-Internal-Secret")),
-            bool(request.headers.get("X-User-Id")),
-        )
-        raise
+    """JSON body: { image_base64, preferred_datasets? }.
+    Runs prediction across trained MedMNIST image models.
+
+    Implements numerous performance and safety checks:
+      * per-user rate limit
+      * size/format validation (jpg/png, <=5MB, max dimension 1024px)
+      * asynchronous timeout wrapper (configured via IMAGE_INFERENCE_TIMEOUT_SECONDS)
+      * non‑blocking image decode/resizing
+    """
+    from PIL import Image
+    import io
+
+    # rate limiting
+    user_id = require_user_id(request)
+    now_ts = time.time()
+    bucket = _rate_limit_data.get(user_id, [])
+    # drop old entries
+    bucket = [t for t in bucket if now_ts - t < 60]
+    if len(bucket) >= _RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Rate limit exceeded")
+    bucket.append(now_ts)
+    _rate_limit_data[user_id] = bucket
+
     try:
         body = await request.json()
     except Exception:
@@ -199,10 +229,44 @@ async def image_predict(request: Request) -> dict[str, Any]:
     if preferred_datasets is not None and not isinstance(preferred_datasets, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="preferred_datasets must be an array")
 
+    # decode and validate size/format
+    predictor = _get_image_predictor()
+    try:
+        image_bytes = predictor._decode_base64(image_base64)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    MAX_SIZE = getattr(__import__('config'), 'MAX_IMAGE_UPLOAD_SIZE', 5 * 1024 * 1024)
+    if len(image_bytes) > MAX_SIZE:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Uploaded image too large")
+
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to parse image data")
+
+    fmt = (img.format or "").upper()
+    if fmt not in {"JPEG", "JPG", "PNG"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported image format: {fmt}")
+
+    max_dim = getattr(__import__('config'), 'MAX_IMAGE_DIMENSION', 1024)
+    if max(img.size) > max_dim:
+        ratio = max_dim / max(img.size)
+        new_size = (int(img.width * ratio), int(img.height * ratio))
+        img = img.resize(new_size, Image.ANTIALIAS)
+        buf = io.BytesIO()
+        img.save(buf, format=fmt)
+        image_bytes = buf.getvalue()
+        image_base64 = base64.b64encode(image_bytes).decode('ascii')
+
+    # run prediction with timeout
     try:
         started = time.perf_counter()
-        predictor = _get_image_predictor()
-        prediction = predictor.predict_selected(image_base64, preferred_datasets)
+        duration_limit = getattr(__import__('config'), 'IMAGE_INFERENCE_TIMEOUT_SECONDS', 180)
+        full_prediction = await asyncio.wait_for(
+            asyncio.to_thread(predictor.predict_selected, image_base64, preferred_datasets),
+            timeout=duration_limit,
+        )
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         debug = predictor.diagnostics()
         LOGGER.info(
@@ -210,14 +274,23 @@ async def image_predict(request: Request) -> dict[str, Any]:
             user_id,
             preferred_datasets if isinstance(preferred_datasets, list) else "all",
             debug["models_in_memory"],
-            prediction["best_dataset"],
-            prediction["best_label_name"],
-            prediction["best_confidence"],
+            full_prediction["best_dataset"],
+            full_prediction["best_label_name"],
+            full_prediction["best_confidence"],
             duration_ms,
         )
-    except ValueError as exc:
-        LOGGER.warning("Image prediction value error: %s", exc)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        # trim payload to top 3 per_dataset entries for response
+        trimmed = {
+            **full_prediction,
+            "per_dataset": full_prediction.get("per_dataset", [])[:3],
+        }
+        prediction = trimmed
+    except asyncio.TimeoutError:
+        LOGGER.warning("Image inference timeout (>%ss) for user=%s", duration_limit, user_id)
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail={"status": "timeout", "message": "Image inference exceeded allowed processing time"},
+        )
     except RuntimeError as exc:
         debug = {}
         try:

@@ -90,8 +90,24 @@ The chat API uses this backend URL to run image model prediction.
 - Build command:
   - `pip install -r requirements.txt`
 - Start command:
-  - `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- Ensure model weights (`*.pth`) are available on disk (train during build or mount persistent storage).
+  - `uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2`
+    (two workers help parallelize requests on Render's single‑CPU instances)
+- Because free Render services sleep after inactivity, configure an external monitor (UptimeRobot, cron-job.org, etc.) to hit
+  `GET /health` every ~5 minutes to keep the service warm.
+- *Free tier note:* Render's free services cannot attach persistent disks. In that case:
+  1. **Commit your trained model files** (`*.pth` / `*.pt`) directly into the repository under
+     `backend/medical_ML/models` (or a sibling `models` directory). The loader now checks several
+     locations including paths relative to the code, so having them in the repo works fine.
+  2. Alternatively define an environment variable `MODEL_DIR` pointing to wherever the weights reside.
+     For example if you unpack them into `/opt/render/project/src/weights`, set `MODEL_DIR=/opt/render/project/src/weights`.
+
+  The backend searches the following candidate folders in order:
+  a) `$MODEL_DIR` if set
+  b) `backend/medical_ML/models` (repo default)
+  c) `backend/models`, `medical_ML/models` at cwd, etc.
+  d) `routers/models` (next to the router code)
+  e) plain working directory.
+  This ensures the service will find your files even without a paid disk.
 
 ## 7) Git Hygiene (Important)
 

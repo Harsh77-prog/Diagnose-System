@@ -13,13 +13,16 @@ from collections import OrderedDict
 
 import numpy as np
 from scipy import ndimage
-import medmnist
+import medmnist  # only INFO is used during inference
 import torch
 import torch.nn as nn
 from medmnist import INFO
 from PIL import Image
 from torchvision import transforms
 import cv2
+
+# force single-threaded CPU operation; reduces contention on Render
+torch.set_num_threads(1)
 
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
@@ -53,6 +56,8 @@ class ImagePredictor:
     def __init__(self, model_dir: str) -> None:
         self.model_dir = Path(model_dir).resolve()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # resize to 28 for MedMNIST models, but we also cap incoming
+        # images to 1024px in the router so this transform is always fast.
         self.transform = transforms.Compose(
             [
                 transforms.Resize((28, 28)),
@@ -79,11 +84,17 @@ class ImagePredictor:
     def _discover_model_files(self) -> None:
         missing_files: list[str] = []
         for dataset_name in DATASETS:
-            model_path = self.model_dir / f"{dataset_name}_model.pth"
-            if not model_path.exists():
-                missing_files.append(str(model_path))
+            # prefer TorchScript (.pt) if present, otherwise fall back to state dict (.pth)
+            found = False
+            for ext in ("pt", "pth"):
+                candidate = self.model_dir / f"{dataset_name}_model.{ext}"
+                if candidate.exists():
+                    self._available_model_files[dataset_name] = candidate
+                    found = True
+                    break
+            if not found:
+                missing_files.append(str(self.model_dir / f"{dataset_name}_model.(pt|pth)"))
                 continue
-            self._available_model_files[dataset_name] = model_path
 
         LOGGER.info(
             "Model file discovery | available=%s | missing_count=%d",
@@ -104,10 +115,14 @@ class ImagePredictor:
             if dataset_name in self._models:
                 return True
             try:
-                num_classes = len(INFO[dataset_name]["label"])
-                model = SimpleCNN(num_classes=num_classes).to(self.device)
-                state = torch.load(model_path, map_location=self.device)
-                model.load_state_dict(state)
+                # support TorchScript/pt files for faster loading & inference
+                if model_path.suffix == ".pt":
+                    model = torch.jit.load(str(model_path), map_location=self.device)
+                else:
+                    num_classes = len(INFO[dataset_name]["label"])
+                    model = SimpleCNN(num_classes=num_classes).to(self.device)
+                    state = torch.load(model_path, map_location=self.device)
+                    model.load_state_dict(state)
                 model.eval()
                 self._models[dataset_name] = model
                 LOGGER.info("Loaded model on demand | dataset=%s | path=%s", dataset_name, model_path)
@@ -195,8 +210,23 @@ class ImagePredictor:
         return self.predict_selected(image_base64=image_base64, requested_datasets=DATASETS)
 
     def warmup(self, requested_datasets: Iterable[str] | None = None) -> list[str]:
-        selected = self._normalize_requested_datasets(requested_datasets)
-        return [d for d in selected if self._ensure_model_loaded(d)]
+        """Ensure selected datasets are loaded and perform a dummy forward pass.
+
+        Returns the list of datasets that were successfully warmed.
+        """
+        warmed = []
+        for d in self._normalize_requested_datasets(requested_datasets):
+            if self._ensure_model_loaded(d):
+                warmed.append(d)
+                try:
+                    # run a dummy tensor to force weight allocation/compilation
+                    model = self._models[d]
+                    dummy = torch.randn(1, 3, 28, 28, device=self.device)
+                    with torch.no_grad():
+                        _ = model(dummy)
+                except Exception:  # noqa: BLE001
+                    LOGGER.exception("Warmup forward pass failed for %s", d)
+        return warmed
 
     def _cache_key(self, image_bytes: bytes, datasets: list[str]) -> str:
         digest = hashlib.sha256(image_bytes).hexdigest()

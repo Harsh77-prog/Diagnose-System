@@ -23,6 +23,11 @@ PREDICTION_CACHE_SIZE = int(os.getenv("PREDICTION_CACHE_SIZE", "500"))
 ENTROPY_CACHE_SIZE = int(os.getenv("ENTROPY_CACHE_SIZE", "500"))
 EMBEDDING_CACHE_SIZE = int(os.getenv("EMBEDDING_CACHE_SIZE", "1000"))
 
+# image upload rules
+MAX_IMAGE_UPLOAD_SIZE = int(os.getenv("MAX_IMAGE_UPLOAD_SIZE", str(5 * 1024 * 1024)))  # bytes
+MAX_IMAGE_DIMENSION = int(os.getenv("MAX_IMAGE_DIMENSION", "1024"))  # px
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "10"))
+
 # Session Management
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", "3600"))
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "1000"))

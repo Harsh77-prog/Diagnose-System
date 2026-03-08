@@ -89,6 +89,16 @@ def train_single_dataset(
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     output_path = MODEL_DIR / f"{dataset_name}_model.pth"
     torch.save(model.state_dict(), output_path)
+
+    # additionally produce a TorchScript version for deployment speedups
+    try:
+        ts = torch.jit.script(model.cpu())
+        ts_path = MODEL_DIR / f"{dataset_name}_model.pt"
+        ts.save(ts_path)
+        print(f"Wrote TorchScript model: {ts_path}")
+    except Exception as exc:
+        print(f"TorchScript conversion failed for {dataset_name}: {exc}")
+
     return output_path
 
 

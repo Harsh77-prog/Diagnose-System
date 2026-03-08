@@ -18,6 +18,10 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+import torch
+
+# limit CPU threads for Render-friendly consumption
+torch.set_num_threads(1)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -36,6 +40,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     logger.info("🚀 MedCoreAI Backend starting...")
+    logger.info("torch threads=%s", torch.get_num_threads())
     warmup_image_models_in_background()
     yield
     logger.info("🛑 MedCoreAI Backend shutting down...")
@@ -104,4 +109,11 @@ if __name__ == "__main__":
     import asyncio
     import uvicorn
     from config import BACKEND_HOST, BACKEND_PORT
-    uvicorn.run("main:app", host=BACKEND_HOST, port=BACKEND_PORT, reload=True)
+    # default to 2 workers for better concurrency on Render
+    uvicorn.run(
+        "main:app",
+        host=BACKEND_HOST,
+        port=BACKEND_PORT,
+        reload=True,
+        workers=2,
+    )
