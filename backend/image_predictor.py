@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 from collections import OrderedDict
 
 import numpy as np
@@ -179,6 +179,11 @@ class ImagePredictor:
         # Fast single pass logic
         predictions = self._fast_predict(image, ready)
         
+        if not predictions:
+            raise RuntimeError("No predictions generated")
+
+        best = max(predictions, key=lambda p: p["top_confidence"])
+
         result = {
             "best_dataset": best["dataset"],
             "best_label_index": best["top_label_index"],
@@ -191,8 +196,6 @@ class ImagePredictor:
             "image_type": "unknown",
             "image_type_confidence": 0.0,
         }
-        self._set_cached_prediction(cache_key, result)
-        return result
         self._set_cached_prediction(cache_key, result)
         return result
 
@@ -278,7 +281,7 @@ class ImagePredictor:
                 
             model = self._models[dataset_name]
             info = INFO[dataset_name]
-            labels = info["label"]
+            labels = cast(dict[str, str], info["label"])
             
             with torch.inference_mode():
                 logits = model.forward(tensor)
