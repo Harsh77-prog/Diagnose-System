@@ -12,20 +12,18 @@ numpy>=1.24.0
 Pillow>=10.0.0
 torchvision>=0.16.0
 medmnist>=3.0.2
+opencv-python-headless>=4.8.0
+deep-translator>=1.11.4
 
 # Optional/auxiliary packages required by full ML training or document parsing
 # Uncomment or install in a development environment as needed
-# python-jose[cryptography]==3.3.0
-# python-multipart==0.0.17
-# transformers>=4.36.0
-# scikit-learn>=1.3.0
-# xgboost>=2.0.0
-# scipy>=1.11.0
-# joblib>=1.3.0
-# pandas>=2.1.0
-# torchvision>=0.16.0
-# medmnist>=3.0.2
-# deep-translator>=1.11.4
-# opencv-python>=4.8.0
-# pypdf==5.1.0
-# python-dotenv==1.0.1
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.17
+transformers>=4.36.0
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+scipy>=1.11.0
+joblib>=1.3.0
+pandas>=2.1.0
+pypdf==5.1.0
+python-dotenv==1.0.1
