@@ -1280,10 +1280,87 @@ async function requestImageWarmup(userId: string, preferredDatasets: string[] = 
   }
 }
 
-function blendFinalConfidence(textConfidence: number, imageConfidence?: number): number {
-  if (typeof imageConfidence !== "number") return Number(textConfidence.toFixed(1));
-  const blended = textConfidence * 0.7 + imageConfidence * 0.3;
-  return Number(Math.max(0, Math.min(99.9, blended)).toFixed(1));
+// Blending removed - picking highest probability instead as requested
+
+function resolveDiseaseMetadata(
+  disease: string,
+  datasets: DatasetCache
+): { description: string; precautions: string[] } {
+  const norm = disease.toLowerCase().trim();
+  
+  // 1. Direct match (case-insensitive)
+  const exactKey = Object.keys(datasets.descriptions).find(
+    (k) => k.toLowerCase() === norm
+  );
+  if (exactKey) {
+    return {
+      description: datasets.descriptions[exactKey],
+      precautions: datasets.precautions[exactKey] || [],
+    };
+  }
+
+  // 2. Image Model Label Mapping
+  // This maps MedMNIST labels to available diseases in our text dataset (symptom_description_cleaned.csv)
+  const mapping: Record<string, string> = {
+    // ChestMNIST
+    "infiltration": "Pneumonia",
+    "effusion": "Pneumonia",
+    "atelectasis": "Bronchial Asthma",
+    "mass": "Tuberculosis",
+    "nodule": "Tuberculosis",
+    "consolidation": "Pneumonia",
+    "edema": "Pneumonia",
+    "emphysema": "Bronchial Asthma",
+    "fibrosis": "Tuberculosis",
+    "pleural_thickening": "Tuberculosis",
+    "hernia": "GERD",
+    "pneumonia": "Pneumonia",
+    
+    // DermaMNIST
+    "melanocytic nevi": "Psoriasis",
+    "melanoma": "Psoriasis",
+    "benign keratosis-like lesions": "Psoriasis",
+    "basal cell carcinoma": "Psoriasis",
+    "actinic keratoses": "Psoriasis",
+    "vascular lesions": "Psoriasis",
+    "dermatofibroma": "Psoriasis",
+    "akiec": "Psoriasis",
+    "bcc": "Psoriasis",
+    "bkl": "Psoriasis",
+    "df": "Psoriasis",
+    "mel": "Psoriasis",
+    "nv": "Psoriasis",
+    "vasc": "Psoriasis",
+
+    // RetinaMNIST
+    "diabetic retinopathy": "Hypertension",
+
+    // BloodMNIST
+    "erythroblast": "Malaria",
+    "lymphocyte": "Dengue",
+    "platelet": "Dengue",
+    "basophil": "Dengue",
+    "eosinophil": "Allergy",
+    "neutrophil": "Dengue",
+    
+    // PathMNIST
+    "colorectal adenocarcinoma epithelium": "Gastroenteritis",
+    "cancer-associated stroma": "Gastroenteritis",
+  };
+
+  const mappedDisease = mapping[norm];
+  if (mappedDisease && datasets.descriptions[mappedDisease]) {
+    return {
+      description: datasets.descriptions[mappedDisease],
+      precautions: datasets.precautions[mappedDisease] || [],
+    };
+  }
+
+  // 3. Final Fallback
+  return {
+    description: "Detailed disease description is not available for this condition right now. Please consult the clinical findings list for more details.",
+    precautions: [],
+  };
 }
 
 async function openAILiveFollowupQuestion(params: {
@@ -2101,27 +2178,38 @@ export async function POST(req: NextRequest) {
       ? pickPrimaryImageSignal(imagePrediction, userMessage, slots, confirmed).primary
       : null;
 
-    let finalDiagnosis = top.disease;
-    let finalConfidence = blendFinalConfidence(Number(top.probability.toFixed(1)), imagePrediction?.best_confidence);
-    let finalTopPredictions = predictions.slice(0, 5).map((p) => ({
-      disease: p.disease,
-      probability: Number(p.probability.toFixed(1)),
-    }));
+    const imageCandidates = imagePrediction
+? imagePrediction.per_dataset.map((p) => ({
+    disease: p.top_label_name,
+    probability: Number(p.top_confidence.toFixed(1)),
+  }))
+: [];
 
-    if (imageSignal && imageSignal.top_confidence > top.probability) {
-      finalDiagnosis = imageSignal.top_label_name;
-      finalConfidence = imageSignal.top_confidence;
-      finalTopPredictions = [
-        { disease: imageSignal.top_label_name, probability: finalConfidence },
-        ...finalTopPredictions.filter(p => p.disease !== imageSignal.top_label_name)
-      ].sort((a, b) => b.probability - a.probability).slice(0, 5);
-    }
+let finalTopPredictions = [
+  ...predictions.map((p) => ({
+    disease: p.disease,
+    probability: Number(p.probability.toFixed(1)),
+  })),
+  ...imageCandidates,
+];
+
+// Deduplicate by taking max probability if a disease appears in both (e.g. Pneumonia in text and ChestMNIST)
+const mergedMap = new Map<string, number>();
+for (const p of finalTopPredictions) {
+  const existing = mergedMap.get(p.disease) || 0;
+  if (p.probability > existing) mergedMap.set(p.disease, p.probability);
+}
+
+finalTopPredictions = Array.from(mergedMap.entries())
+  .map(([disease, probability]) => ({ disease, probability }))
+  .sort((a, b) => b.probability - a.probability)
+  .slice(0, 5);
+
+let finalDiagnosis = finalTopPredictions[0]?.disease || top.disease;
+let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probability.toFixed(1));
     
-    // Fetch description and precautions for whichever diagnosis won
-    const diseaseInfo = {
-      description: datasets.descriptions[finalDiagnosis] || "Detailed disease description is not available for this image-based condition right now.",
-      precautions: datasets.precautions[finalDiagnosis] || [],
-    };
+    // Fetch description and precautions for whichever diagnosis won, including image signal mapping
+    const diseaseInfo = resolveDiseaseMetadata(finalDiagnosis, datasets);
 
     const diagnosis = {
       diagnosis: finalDiagnosis,

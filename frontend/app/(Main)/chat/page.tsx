@@ -68,31 +68,11 @@ type DiagnosisPayload = {
 };
 
 function combinedTopPredictions(payload?: DiagnosisPayload | null): { disease: string; probability: number }[] {
-    const base = (payload?.top_predictions || []).slice(0, 5);
-    if (base.length === 0) return [];
-
-    const bestImageConfidence = Number(payload?.image_prediction?.best_confidence || 0);
-    if (!Number.isFinite(bestImageConfidence) || bestImageConfidence <= 0) {
-        return base.map((p) => ({ disease: p.disease, probability: Number(p.probability.toFixed(1)) }));
-    }
-
-    const blended = base.map((p, idx) => {
-        // Blend dataset probability with image signal strength.
-        const rankWeight = Math.max(0.35, 1 - idx * 0.15);
-        const probability = p.probability * 0.75 + bestImageConfidence * 0.25 * rankWeight;
-        return { disease: p.disease, probability };
-    });
-
-    const total = blended.reduce((sum, item) => sum + Math.max(0, item.probability), 0);
-    if (total <= 0) return base.map((p) => ({ disease: p.disease, probability: Number(p.probability.toFixed(1)) }));
-
-    return blended
-        .map((item) => ({
-            disease: item.disease,
-            probability: Number(((item.probability / total) * 100).toFixed(1)),
-        }))
-        .sort((a, b) => b.probability - a.probability)
-        .slice(0, 5);
+    const base = payload?.top_predictions || [];
+    return base.map((p) => ({
+        disease: p.disease,
+        probability: Number(p.probability.toFixed(1))
+    })).slice(0, 5);
 }
 
 function labelize(text: string): string {
@@ -169,14 +149,14 @@ function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, per
     }, [percentage, delay]);
 
     return (
-        <div className="mb-3 w-full max-w-sm">
-            <div className="flex justify-between text-[13px] mb-1">
-                <span className="font-semibold text-slate-800">{label.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</span>
-                <span className="text-slate-500 font-medium">{percentage.toFixed(1)}%</span>
+        <div className="mb-3 w-full">
+            <div className="flex items-center justify-between text-[12px] mb-1">
+                <span className="text-slate-700 font-medium">{label.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</span>
+                <span className="text-slate-600">{percentage.toFixed(1)}%</span>
             </div>
-            <div className="h-2 w-full bg-[#e5e5e5] rounded-full overflow-hidden">
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                 <div
-                    className="h-full bg-[#0f0f0f] rounded-full transition-all duration-1000 ease-out"
+                    className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500 transition-all duration-1000 ease-out"
                     style={{ width: `${width}%` }}
                 />
             </div>
@@ -1250,47 +1230,6 @@ export default function ChatDashboard() {
                                                                 </div>
                                                             </div>
 
-                                                            <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
-                                                                <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
-                                                                    <Triangle className="w-3.5 h-3.5" /> Image Model Signals
-                                                                </div>
-                                                                {imageSignals.length > 0 ? (
-                                                                    <div className="mt-2 space-y-2">
-                                                                        {imageSignals.slice(0, 5).map((pred, idx) => (
-                                                                            <div key={`${pred.dataset}:${pred.top_label_name}:${idx}`}>
-                                                                                <div className="flex items-center justify-between text-[12px] mb-1">
-                                                                                    <span className="text-slate-700 font-medium">{`${labelize(pred.dataset)} -> ${labelize(pred.top_label_name)}`}</span>
-                                                                                    <span className="text-slate-600">{Number(pred.top_confidence).toFixed(1)}%</span>
-                                                                                </div>
-                                                                                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                                                                    <div className="h-full rounded-full bg-gradient-to-r from-slate-700 to-slate-500" style={{ width: `${Number(pred.top_confidence)}%` }} />
-                                                                                </div>
-                                                                                {Array.isArray(pred.scores) && pred.scores.length > 0 ? (
-                                                                                    <div className="mt-2 text-[11px] text-slate-600 space-y-1.5">
-                                                                                        {pred.scores.slice(0, 3).map((score) => (
-                                                                                            <div key={`${pred.dataset}:${score.label_index}`}>
-                                                                                                <div className="flex items-center justify-between text-[11px] mb-0.5">
-                                                                                                    <span className="text-slate-700">{labelize(score.label_name)}</span>
-                                                                                                    <span className="text-slate-500">{Number(score.confidence).toFixed(1)}%</span>
-                                                                                                </div>
-                                                                                                <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                                                                                                    <div
-                                                                                                        className="h-full rounded-full bg-gradient-to-r from-slate-600 to-slate-400"
-                                                                                                        style={{ width: `${Number(score.confidence)}%` }}
-                                                                                                    />
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        ))}
-                                                                                    </div>
-                                                                                ) : null}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="text-[13px] text-slate-600 mt-2">No image model signals used for this prediction.</div>
-                                                                )}
-                                                            </div>
-
                                                             <div className="rounded-2xl border border-slate-200 bg-white p-4">
                                                                 <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold">What This Means</div>
                                                                 <div className="text-[13px] text-slate-700 mt-2 leading-relaxed">{description}</div>
@@ -1312,37 +1251,36 @@ export default function ChatDashboard() {
                                                                 </div>
                                                             ) : null}
 
-                                                            <div className="text-[11px] text-slate-500">This is informational only and not a final medical diagnosis.</div>
+                                                                                                                         {/* Unified Text Model Signals Card */}
+                                                             {(() => {
+                                                                 const textPredictions = combinedTopPredictions(diagnosisPayload);
+                                                                 if (textPredictions.length > 0) {
+                                                                     return (
+                                                                         <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
+                                                                             <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold mb-3">
+                                                                                 <Activity className="w-3.5 h-3.5" /> Dataset Prediction Chart
+                                                                             </div>
+                                                                             <div className="space-y-1">
+                                                                                 {textPredictions.map((pred, idx) => (
+                                                                                     <AnimatedProgress
+                                                                                         key={pred.disease}
+                                                                                         label={pred.disease}
+                                                                                         percentage={pred.probability}
+                                                                                         delay={idx * 150}
+                                                                                     />
+                                                                                 ))}
+                                                                             </div>
+                                                                         </div>
+                                                                     );
+                                                                 }
+                                                                 return null;
+                                                             })()}
+
+                                                             <div className="text-[11px] text-slate-500">This is informational only and not a final medical diagnosis.</div>
                                                         </div>
                                                     );
                                                 })()}
 
-                                                {/* Render Animated ML Progress Bars if payload exists */}
-                                                {msg.jsonPayload && (() => {
-                                                    try {
-                                                        const payload = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
-                                                        const predictions: { disease: string, probability: number }[] = combinedTopPredictions(payload);
-
-                                                        if (Array.isArray(predictions) && predictions.length > 0) {
-                                                            return (
-                                                                <div className="mt-5 p-4 rounded-xl border border-[#e5e5e5] bg-[#f9f9f9]">
-                                                                    <div className="text-[12px] font-semibold text-[#8e8e8e] uppercase tracking-wider mb-4"> <Triangle className="w-3.5 h-3.5" />Text Model Signals</div>
-                                                                    {predictions.map((pred, idx) => (
-                                                                        <AnimatedProgress
-                                                                            key={pred.disease}
-                                                                            label={pred.disease}
-                                                                            percentage={pred.probability}
-                                                                            delay={idx * 150}
-                                                                        />
-                                                                    ))}
-                                                                </div>
-                                                            );
-                                                        }
-                                                    } catch (e) {
-                                                        console.error("Failed to parse ML Payload:", e);
-                                                    }
-                                                    return null;
-                                                })()}
                                             </div>
                                         )}
                                     </div>
