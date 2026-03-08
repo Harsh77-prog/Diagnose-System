@@ -21,6 +21,9 @@ type Message = {
     content: string;
     jsonPayload?: string | null;
     isInitial?: boolean;
+    // New fields for Hindi
+    translatedContent?: string;
+    translatedPayload?: DiagnosisPayload;
 };
 
 type UserMessagePayload = {
@@ -137,6 +140,19 @@ async function parseResponseJson<T>(res: Response): Promise<T> {
         }
         throw new Error(`Invalid JSON response (status ${res.status})${textOnly ? `: ${textOnly}` : ""}`);
     }
+}
+
+// Custom Premium Loader for Hindi Button
+function PremiumHindiLoader() {
+    return (
+        <div className="flex items-center gap-1">
+            <svg className="animate-spin h-3 w-3 text-current" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-[10px] animate-pulse">Translate...</span>
+        </div>
+    );
 }
 
 function ImageTip({ text }: { text: string }) {
@@ -346,7 +362,7 @@ export default function ChatDashboard() {
     const [resultPanelMinimized, setResultPanelMinimized] = useState(false);
     const [mobilePanel, setMobilePanel] = useState<"none" | "history" | "prediction">("none");
     const [hindiByMessage, setHindiByMessage] = useState<Record<string, boolean>>({});
-    const [translatedByMessage, setTranslatedByMessage] = useState<Record<string, string>>({});
+    const [translatedByMessage, setTranslatedByMessage] = useState<Record<string, string | { content: string; payload?: DiagnosisPayload }>>({});
     const [translatingByMessage, setTranslatingByMessage] = useState<Record<string, boolean>>({});
     const [imageAnalysisProgress, setImageAnalysisProgress] = useState(0);
     const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
@@ -747,13 +763,38 @@ export default function ChatDashboard() {
         const request = (async () => {
             try {
                 setTranslatingByMessage((prev) => ({ ...prev, [msg.id]: true }));
+                
+                // If it's a diagnosis message, we want to translate the structural data too
+                let textToTranslate: string = msg.content;
+                let payloadObj: any = null;
+                
+                if (msg.jsonPayload) {
+                    try {
+                        const parsed = JSON.parse(msg.jsonPayload);
+                        if (parsed.diagnosis || parsed.disease_info) {
+                            payloadObj = parsed;
+                            // Pre-process payload for translation
+                            const toTranslate = {
+                                diagnosis: parsed.diagnosis,
+                                description: parsed.disease_info?.description,
+                                precautions: parsed.disease_info?.precautions,
+                                home_remedies: parsed.guidance?.home_remedies,
+                                lifestyle_changes: parsed.guidance?.lifestyle_changes,
+                                diet_adjustments: parsed.guidance?.diet_adjustments,
+                                text_content: msg.content // Also include main text
+                            };
+                            textToTranslate = JSON.stringify(toTranslate);
+                        }
+                    } catch { /* use msg.content as fallback */ }
+                }
+
                 // ✅ USE CACHED FETCH: Translation results are cacheable for 10 minutes
                 const data = await cachedFetch<{ translated_text?: string; error?: string }>(
                     "/api/diagnose/translate",
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: msg.content, target_lang: "hi" }),
+                        body: JSON.stringify({ text: textToTranslate, target_lang: "hi" }),
                     },
                     10 * 60 * 1000 // Cache for 10 minutes
                 );
@@ -762,18 +803,44 @@ export default function ChatDashboard() {
                     throw new Error(data.error || "Translation failed");
                 }
 
-                // 🔧 Safeguard: Extract text if translation is in JSON format
                 let finalTranslation = data.translated_text || msg.content;
-                if (finalTranslation.startsWith("{") && finalTranslation.includes("text")) {
+                let finalPayload: DiagnosisPayload | undefined = undefined;
+
+                if (finalTranslation.startsWith("{")) {
                     try {
-                        const jsonParsed = JSON.parse(finalTranslation) as { text?: string; translated_text?: string };
-                        finalTranslation = (jsonParsed.text || jsonParsed.translated_text || finalTranslation).trim();
-                    } catch {
-                        // If not valid JSON, use as-is
-                    }
+                        const jsonParsed = JSON.parse(finalTranslation);
+                        if (payloadObj && jsonParsed.diagnosis) {
+                            // Merge translated fields back into original structural payload
+                            finalPayload = {
+                                ...payloadObj,
+                                diagnosis: jsonParsed.diagnosis || payloadObj.diagnosis,
+                                disease_info: {
+                                    ...payloadObj.disease_info,
+                                    description: jsonParsed.description || payloadObj.disease_info?.description,
+                                    precautions: Array.isArray(jsonParsed.precautions) ? jsonParsed.precautions : payloadObj.disease_info?.precautions
+                                },
+                                guidance: {
+                                    ...payloadObj.guidance,
+                                    home_remedies: Array.isArray(jsonParsed.home_remedies) ? jsonParsed.home_remedies : payloadObj.guidance?.home_remedies,
+                                    lifestyle_changes: Array.isArray(jsonParsed.lifestyle_changes) ? jsonParsed.lifestyle_changes : payloadObj.guidance?.lifestyle_changes,
+                                    diet_adjustments: Array.isArray(jsonParsed.diet_adjustments) ? jsonParsed.diet_adjustments : payloadObj.guidance?.diet_adjustments,
+                                }
+                            };
+                            finalTranslation = jsonParsed.text_content || msg.content;
+                        } else if (jsonParsed.text || jsonParsed.translated_text) {
+                            finalTranslation = (jsonParsed.text || jsonParsed.translated_text || finalTranslation).trim();
+                        }
+                    } catch { /* use as-is if invalid JSON */ }
                 }
 
-                setTranslatedByMessage((prev) => ({ ...prev, [msg.id]: finalTranslation }));
+                setTranslatedByMessage((prev) => ({ 
+                    ...prev, 
+                    [msg.id]: { 
+                        content: finalTranslation, 
+                        payload: finalPayload 
+                    } 
+                } as any));
+                
                 delete failedHindiPrefetchRef.current[msg.id];
                 return true;
             } catch (err) {
@@ -1183,7 +1250,7 @@ export default function ChatDashboard() {
                                                 <span>MedCoreAI</span>
                                                 <button
                                                     type="button"
-                                                    className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${hindiByMessage[msg.id] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
+                                                    className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors flex items-center justify-center min-w-[50px] ${hindiByMessage[msg.id] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-700 border-slate-300 hover:bg-slate-100"}`}
                                                     onClick={async () => {
                                                         const isHindiEnabled = !!hindiByMessage[msg.id];
                                                         if (isHindiEnabled) {
@@ -1194,7 +1261,7 @@ export default function ChatDashboard() {
                                                         setHindiByMessage((prev) => ({ ...prev, [msg.id]: translated }));
                                                     }}
                                                 >
-                                                    {translatingByMessage[msg.id] ? "Hindi..." : "Hindi"}
+                                                    {translatingByMessage[msg.id] ? <PremiumHindiLoader /> : (hindiByMessage[msg.id] ? "Hindi - On" : "Hindi")}
                                                 </button>
                                             </div>
                                         )}
@@ -1223,10 +1290,16 @@ export default function ChatDashboard() {
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
                                                 {(() => {
-                                                    const renderedText = (hindiByMessage[msg.id] ? (translatedByMessage[msg.id] || normalizeBrandName(msg.content)) : normalizeBrandName(msg.content));
+                                                    const hindiData = translatedByMessage[msg.id] as any;
+                                                    const isHindi = !!hindiByMessage[msg.id];
+                                                    
+                                                    const renderedText = (isHindi && hindiData ? hindiData.content : normalizeBrandName(msg.content));
+                                                    
                                                     let diagnosisPayload: DiagnosisPayload | null = null;
                                                     try {
-                                                        if (msg.jsonPayload) {
+                                                        if (isHindi && hindiData?.payload) {
+                                                            diagnosisPayload = hindiData.payload;
+                                                        } else if (msg.jsonPayload) {
                                                             const parsed = JSON.parse(msg.jsonPayload) as DiagnosisPayload;
                                                             if (parsed?.diagnosis) diagnosisPayload = parsed;
                                                         }
@@ -1242,7 +1315,6 @@ export default function ChatDashboard() {
 
                                                     const symptoms = diagnosisPayload.confirmed_symptoms || [];
                                                     const precautions = diagnosisPayload.disease_info?.precautions || [];
-                                                    const imageSignals = diagnosisPayload.image_prediction?.per_dataset || [];
                                                     const description = diagnosisPayload.disease_info?.description || renderedText;
                                                     const gender = diagnosisPayload.demographics?.gender || "unknown";
                                                     const ageGroup = diagnosisPayload.demographics?.age_group || "unknown";
@@ -1253,24 +1325,24 @@ export default function ChatDashboard() {
                                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                                 <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
                                                                     <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
-                                                                        <Circle className="w-3.5 h-3.5" /> Likely Condition
+                                                                        <Circle className="w-3.5 h-3.5" /> {isHindi ? "संभावित स्थिति" : "Likely Condition"}
                                                                     </div>
                                                                     <div className="text-[17px] font-semibold text-slate-900 mt-2">{labelize(diagnosisPayload.diagnosis)}</div>
-                                                                    <div className="text-[13px] text-slate-600 mt-1">Confidence: {confidence.toFixed(1)}%</div>
+                                                                    <div className="text-[13px] text-slate-600 mt-1">{isHindi ? "विश्वास:" : "Confidence:"} {confidence.toFixed(1)}%</div>
                                                                 </div>
                                                                 <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4">
                                                                     <div className="flex items-center gap-2 text-slate-700 text-[11px] uppercase tracking-wider font-semibold">
-                                                                        <Square className="w-3.5 h-3.5" /> Symptoms And Context
+                                                                        <Square className="w-3.5 h-3.5" /> {isHindi ? "लक्षण और संदर्भ" : "Symptoms And Context"}
                                                                     </div>
                                                                     <div className="text-[13px] text-slate-700 mt-2">
-                                                                        <div><span className="font-semibold">Symptoms:</span> {symptoms.length > 0 ? symptoms.map(labelize).join(", ") : "No clear symptoms captured yet."}</div>
-                                                                        <div className="mt-1"><span className="font-semibold">Profile:</span> {labelize(String(gender))}, {labelize(String(ageGroup))}</div>
+                                                                        <div><span className="font-semibold">{isHindi ? "लक्षण:" : "Symptoms:"}</span> {symptoms.length > 0 ? symptoms.map((s) => isHindi ? s : labelize(s)).join(", ") : (isHindi ? "अभी तक कोई स्पष्ट लक्षण नहीं मिले हैं।" : "No clear symptoms captured yet.")}</div>
+                                                                        <div className="mt-1"><span className="font-semibold">{isHindi ? "प्रोफ़ाइल:" : "Profile:"}</span> {isHindi ? gender : labelize(String(gender))}, {isHindi ? ageGroup : labelize(String(ageGroup))}</div>
                                                                     </div>
                                                                 </div>
                                                             </div>
 
                                                             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                                                <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold">What This Means</div>
+                                                                <div className="text-[11px] uppercase tracking-wider text-slate-600 font-semibold">{isHindi ? "इसका क्या मतलब है" : "What This Means"}</div>
                                                                 <div className="text-[13px] text-slate-700 mt-2 leading-relaxed">{description}</div>
                                                             </div>
 

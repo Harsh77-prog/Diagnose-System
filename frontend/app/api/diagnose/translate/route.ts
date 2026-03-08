@@ -43,11 +43,14 @@ async function translateWithOpenAI(text: string, targetLang: string): Promise<st
             content:
               "You are a professional medical translator. Translate the provided medical text to " + 
               targetLang + 
-              ". IMPORTANT: Return ONLY the translated text itself, nothing else. Do not return JSON or any wrapper format. Do not include any explanation or metadata. Only the translated text.",
+              ". \n\n" +
+              "If the input is a JSON object, translate ONLY the values for these keys: 'diagnosis', 'description', 'precautions', 'home_remedies', 'lifestyle_changes', 'diet_adjustments'. Keep the JSON structure EXACTLY the same.\n" +
+              "If the input is plain text, just return the translated text.\n" +
+              "IMPORTANT: Return ONLY the translated result, nothing else. No markdown blocks, no explanations.",
           },
           {
             role: "user",
-            content: "Translate this text to " + targetLang + ":\n\n" + text,
+            content: "Translate this to " + targetLang + ":\n\n" + text,
           },
         ],
       }),
@@ -129,6 +132,24 @@ export async function POST(req: NextRequest) {
     const payload = await res.json().catch(() => ({}));
     if (!res.ok) {
       const backendError = payload?.detail || payload?.error || "Translation failed";
+      
+      // If backend fails, attempt OpenAI fallback for structured data if possible
+      if (typeof text === "string" && text.startsWith("{")) {
+         try {
+           const parsed = JSON.parse(text);
+           const openAITranslated = await translateWithOpenAI(JSON.stringify(parsed), targetLang);
+           if (openAITranslated) {
+             return NextResponse.json({
+               source_text: text,
+               target_lang: targetLang,
+               translated_text: openAITranslated,
+               provider: "openai_fallback",
+               backend_error: backendError,
+             });
+           }
+         } catch { /* fallback to normal plain text logic */ }
+      }
+
       const openAITranslated = await translateWithOpenAI(text, targetLang);
       if (openAITranslated) {
         return NextResponse.json({
@@ -143,11 +164,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ✅ Extract translated_text to ensure consistent response format
-    const translatedText = (payload?.translated_text || text).trim();
+    const translatedRaw = (payload?.translated_text || text).trim();
+    
     return NextResponse.json({
       source_text: text,
       target_lang: targetLang,
-      translated_text: translatedText,
+      translated_text: translatedRaw,
       provider: "backend",
     });
   } catch (err) {
