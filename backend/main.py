@@ -35,6 +35,16 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+import threading
+import time
+
+def _periodic_warmup():
+    while True:
+        try:
+            time.sleep(300) # Every 5 minutes
+            warmup_image_models_in_background()
+        except Exception:
+            pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +52,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 MedCoreAI Backend starting...")
     logger.info("torch threads=%s", torch.get_num_threads())
     warmup_image_models_in_background()
+    threading.Thread(target=_periodic_warmup, name="periodic-warmup", daemon=True).start()
     yield
     logger.info("🛑 MedCoreAI Backend shutting down...")
 

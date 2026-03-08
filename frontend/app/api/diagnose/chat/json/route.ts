@@ -90,7 +90,7 @@ function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 10000) return parsed;
-  return 60000;
+  return 120000; // Increased to 120s to ensure cold starts succeed
 }
 
 function resolveBackendUrl(): string {
@@ -1266,7 +1266,10 @@ async function requestImageWarmup(userId: string, preferredDatasets: string[] = 
     if (err instanceof Error && err.name === "AbortError") {
       return;
     }
-    console.warn("[diagnose:image] warmup skipped", err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("fetch failed")) {
+      console.warn("[diagnose:image] warmup skipped", msg);
+    }
   } finally {
     clearTimeout(timer);
   }
