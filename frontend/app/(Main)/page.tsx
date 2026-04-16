@@ -229,8 +229,7 @@ export default function Page() {
             className="mx-auto max-w-2xl text-lg text-neutral-600 mb-10 transition-all duration-700 delay-200 opacity-100 translate-y-0"
           >
             Experience the future of healthcare with our AI-powered medical assistant. 
-            Get instant, accurate health guidance available 24/7, backed by advanced 
-            machine learning and medical expertise.
+            Get instant, accurate health guidance available 24/7
           </p>
 
           {/* CTA Buttons */}
