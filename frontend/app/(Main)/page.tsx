@@ -8,6 +8,15 @@ import {
   Globe,
   Hospital,
   Lock,
+  Sparkles,
+  ShieldCheck,
+  ChevronRight,
+  HeartPulse,
+  FileText,
+  Stethoscope,
+  Clock,
+  Users,
+  Zap,
 } from "lucide-react";
 import {
   Accordion,
@@ -18,6 +27,8 @@ import {
 import { Process1 } from "@/components/process1";
 import { Separator } from "@/components/ui/separator";
 import { useRouter } from "next/navigation";
+import { useRef } from "react";
+import { MedicalParticleRingCanvas } from "@/components/medical-particle-background";
 
 const faqs = [
   {
@@ -74,219 +85,415 @@ const faqs = [
 
 const features = [
   {
-    i: <Brain className="h-12 w-10" />,
-    h: "Conversational AI Doctor",
-    s: "Text-based medical conversations designed to collect symptoms, ask relevant follow-up questions, and guide users through structured discussions.",
+    icon: Brain,
+    title: "Conversational AI Doctor",
+    description:
+      "Text-based medical conversations designed to collect symptoms, ask relevant follow-up questions, and guide users through structured discussions.",
   },
-
   {
-    i: <ClipboardPlus className="h-12 w-10" />,
-    h: "Medical Image Analysis",
-    s: "Upload medical images such as X-rays or scans to receive AI-generated observations and visual explanations for review.",
+    icon: ClipboardPlus,
+    title: "Medical Image Analysis",
+    description:
+      "Upload medical images such as X-rays or scans to receive AI-generated observations and visual explanations for review.",
   },
-
   {
-    i: <Activity className="h-12 w-10" />,
-    h: "Symptom Analysis",
-    s: "Analyzes user-reported symptoms to identify possible conditions, categorize severity, and highlight when professional consultation may be needed.",
+    icon: Activity,
+    title: "Symptom Analysis",
+    description:
+      "Analyzes user-reported symptoms to identify possible conditions, categorize severity, and highlight when professional consultation may be needed.",
   },
-
   {
-    i: <Hospital className="h-12 w-10" />,
-    h: "Healthcare Provider Network",
-    s: "Supports referrals to appropriate healthcare providers based on context, enabling smoother transitions from AI guidance to real care.",
+    icon: Hospital,
+    title: "Healthcare Provider Network",
+    description:
+      "Supports referrals to appropriate healthcare providers based on context, enabling smoother transitions from AI guidance to real care.",
   },
-
   {
-    i: <Lock className="h-12 w-10" />,
-    h: "HIPAA-Compliant Security",
-    s: "Built with strong encryption, secure data handling practices, and privacy-first architecture aligned with healthcare compliance standards.",
+    icon: Lock,
+    title: "HIPAA-Compliant Security",
+    description:
+      "Built with strong encryption, secure data handling practices, and privacy-first architecture aligned with healthcare compliance standards.",
   },
-
   {
-    i: <Globe className="h-12 w-10" />,
-    h: "Multi-Language Support",
-    s: "Enables conversations in multiple languages, allowing users to interact comfortably using familiar and preferred language options.",
+    icon: Globe,
+    title: "Multi-Language Support",
+    description:
+      "Enables conversations in multiple languages, allowing users to interact comfortably using familiar and preferred language options.",
   },
 ];
 
-export default function Page() {
-  const router = useRouter();
+const stats = [
+  { icon: Users, value: "1M+", label: "Users Trusted" },
+  { icon: ShieldCheck, value: "94%", label: "Accuracy Rate" },
+  { icon: Clock, value: "24/7", label: "Availability" },
+  { icon: Globe, value: "50+", label: "Languages" },
+];
+
+const quickActions = [
+  { icon: HeartPulse, label: "Check Symptoms", path: "/chat" },
+  { icon: FileText, label: "Analyze Reports", path: "/chat" },
+  { icon: Stethoscope, label: "Talk to AI Doctor", path: "/chat" },
+];
+
+// Feature card component with hover effects
+function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
+  const Icon = feature.icon;
+
   return (
-    <main>
-          <section className="relative w-full overflow-hidden px-8 py-24 text-white md:py-52">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/image copy.png')" }}
-        />
-        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(0,0,0,0.86)_5%,rgba(0,0,0,0.7)_45%,rgba(0,0,0,0.88)_100%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.16),transparent_35%),radial-gradient(circle_at_85%_5%,rgba(255,255,255,0.12),transparent_28%)]" />
-        <div className="absolute left-10 top-20 h-40 w-40 rounded-full border border-white/20" />
-        <div className="absolute bottom-14 right-10 h-28 w-28 rounded-full border border-white/20" />
-
-        <div className="relative z-10 mx-auto flex max-w-6xl flex-col items-center gap-8 text-center">
-          <p className="inline-flex rounded-full border border-white/30 bg-white/10 px-4 py-1 text-xs uppercase tracking-[0.18em] text-white/95 backdrop-blur-sm">
-            AI Health Companion
-          </p>
-
-          <h1 className="scroll-m-20 text-center text-5xl font-bold tracking-tight md:max-w-[52vw] md:text-7xl">
-            Medical conversations, simplified.
-          </h1>
-
-          <div className="text-md font-semibold text-center text-white/90 md:max-w-[48vw]">
-            A text-first AI medical assistant that helps users understand symptoms, reports, and likely next steps without
-            avatars, simulations, or exaggerated claims.
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Button className="w-fit px-6" onClick={() => router.push("/signup")}>
-              Get Started <ArrowRight />
-            </Button>
-            <Button
-              variant="secondary"
-              className="w-fit border border-white/20 bg-white/10 px-6 text-white hover:bg-white/20"
-              onClick={() => router.push("/chat")}
-            >
-              Try Chat
-            </Button>
-          </div>
-
-          <div className="mt-4 grid w-full max-w-3xl gap-3 text-left sm:grid-cols-3">
-            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
-              24/7 conversational guidance
-            </div>
-            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
-              Structured follow-up questions
-            </div>
-            <div className="rounded-xl border border-white/20 bg-white/10 p-3 text-xs text-white/90 backdrop-blur-sm">
-              Safety-first informational output
-            </div>
-          </div>
+    <div
+      className="relative group p-6 rounded-2xl border border-neutral-200 bg-white backdrop-blur-sm transition-all duration-500 hover:scale-[1.02] hover:shadow-xl"
+      style={{
+        animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
+      }}
+    >
+      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-neutral-100 to-neutral-50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      
+      <div className="relative z-10">
+        <div className="inline-flex p-3 rounded-xl bg-neutral-900 mb-4">
+          <Icon className="h-6 w-6 text-white" />
         </div>
-      </section>
-
-      {/*Features*/}
-
-      <section
-        id="features"
-        className="h-auto p-8 py-16 md:py-42 gap-8 border-b w-full flex justify-center items-center flex-col"
-      >
-        <h1 className="scroll-m-20 text-center text-5xl md:text-6xl font-bold tracking-tight text-center break-word">
-          Everything you need for better health
-        </h1>
-        <div className="grid md:grid-cols-3">
-          {features.map((feature, i) => (
-            <div
-              key={i}
-              className={`border ${i == 0 ? "border-t-1" : ""} ${i >= 0 && i < 3 ? "md:border-t-1" : ""} ${i == 2 && i < 5 ? "md:border-r-1" : ""} md:border-r-0 border-t-0 border-dashed max-w-112 p-8 gap-2 flex flex-col items-center`}
-            >
-              {feature.i}
-              <div>
-                <div className="text-lg font-semibold text-center ">
-                  {feature.h}
-                </div>
-                <div className="text-md font-semibold text-center text-muted-foreground">
-                  {feature.s}
-                </div>
-              </div>
-            </div>
-          ))}
+        
+        <h3 className="text-xl font-semibold mb-3 text-neutral-900 group-hover:text-neutral-700 transition-colors duration-300">
+          {feature.title}
+        </h3>
+        
+        <p className="text-neutral-600 leading-relaxed">
+          {feature.description}
+        </p>
+        
+        <div className="mt-4 flex items-center gap-2 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-y-2 group-hover:translate-y-0">
+          <span>Learn more</span>
+          <ChevronRight className="h-4 w-4" />
         </div>
-      </section>
-
-      {/*Process*/}
-      <section className="h-auto p-8  gap-8 border-b w-full flex justify-center items-center flex-col">
-        <Process1 className="py-8 md:py-32" />
-      </section>
-
-      {/*FAQ section*/}
-
-      <section className="md:sticky top-0 z-1 h-auto w-fit p-8 md:py-24 gap-12  w-full flex md:flex-row justify-center items-center md:items-start flex-col">
-        <div className="gap-4 flex flex-col md:max-w-[42vw]">
-          {" "}
-          <h1 className="scroll-m-20 text-center text-5xl font-bold tracking-tight text-center md:text-start break-word">
-            Frequently asked questions
-          </h1>
-          <div className="text-lg font-semibold text-center md:text-start">
-            We've compiled the most important information to help you get the
-            most out of your experience. Can't find what you're looking for?
-          </div>
-        </div>
-
-        <Accordion
-          type="single"
-          collapsible
-          defaultValue="item-1"
-          className="max-w-lg"
-        >
-          {faqs.map((faq, i) => (
-            <AccordionItem key={i} value={i.toString()}>
-              <AccordionTrigger className="text-md font-semibold ">
-                {faq.trigger}
-              </AccordionTrigger>
-              <AccordionContent>{faq.content}</AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-      </section>
-
-      <section className=" relative z-2 rounded-t-2xl md:rounded-t-4xl h-auto p-8 py-20 md:py-62 gap-8 bg-neutral-900 w-full flex justify-center items-center flex-col">
-        <h1 className=" text-neutral-200 scroll-m-20 text-center text-5xl md:text-8xl font-bold tracking-tight text-center break-word md:max-w-[56vw]">
-          Ready to experience smarter healthcare?
-        </h1>
-        <div className="text-lg text-muted-foreground font-semibold text-center md:max-w-[45vw]">
-          Start a conversation. Understand better. Decide responsibly.
-        </div>
-        <Button
-          className="w-fit mt-2 px-6"
-          variant={"secondary"}
-          onClick={() => router.push("/signup")}
-        >
-          Get Started <ArrowRight />
-        </Button>
-      </section>
-      <Separator className="w-[50vw]"></Separator>
-      <section className=" p-8 py-0 relative z-2 bg-neutral-100 w-full flex justify-center items-center ">
-        <div className=" w-304  md:gap-56 md:py-16 gap-0  flex justify-between flex-col md:flex-row md:border-b">
-          <div className=" flex flex-col justify-center  py-4 ">
-            <div className="text-xl md:text-2xl text-foreground font-bold text-start py-2">
-              MedCoreAI
-            </div>
-            <div className="w-full text-sm md:text-lg md:text-md text-muted-foreground font-normal text-start ">
-              AI-powered medical guidance you can trust. <br />
-              Helping you make smarter health decisions, instantly.
-            </div>
-          </div>
-
-          <div className="flex flex-col py-4 border-b md:w-fit md:border-b-0  ">
-            <div className="text-md md:text-xl text-foreground py-1 font-semibold text-start">
-              Usefull links
-            </div>
-            <div className="text-sm md:text-lg text-muted-foreground font-normal text-start">
-              Features
-            </div>
-            <div className="text-sm md:text-lg text-muted-foreground font-normal text-start">
-              Process
-            </div>
-            <div className="text-sm md:text-lg text-muted-foreground font-normal text-start">
-              Faqs
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className=" relative z-2 p-8 py-0 gap-8  bg-neutral-100 w-full flex justify-center items-center flex-col">
-        <div className="flex justify-between w-full py-4 md:px-28 border-b md:max-w-[75vw]">
-          <div className="text-sm text-muted-foreground font-semibold text-center ">
-            (c) 2026 medcoreai.com
-          </div>
-          <div className="text-sm text-muted-foreground font-semibold text-center ">
-            Built by <span className="text-foreground">@Team</span>
-          </div>
-        </div>
-      </section>
-
-      {/* footer */}
-    </main>
+      </div>
+    </div>
   );
 }
 
+// Stat card component for light theme
+function StatCard({ stat, index }: { stat: typeof stats[0]; index: number }) {
+  const Icon = stat.icon;
+  
+  return (
+    <div
+      className="flex flex-col items-center p-6 rounded-xl bg-white border border-neutral-200"
+      style={{
+        animation: `fadeInUp 0.6s ease-out ${index * 0.15}s both`,
+      }}
+    >
+      <Icon className="h-8 w-8 text-neutral-900 mb-3" />
+      <div className="text-3xl font-bold text-neutral-900">{stat.value}</div>
+      <div className="text-sm text-neutral-500">{stat.label}</div>
+    </div>
+  );
+}
+
+export default function Page() {
+  const router = useRouter();
+  const heroRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <main className="overflow-x-hidden">
+      {/* Hero Section - Light Theme */}
+      <section 
+        ref={heroRef}
+        className="relative w-full min-h-screen flex items-center justify-center px-6 pt-24 bg-gradient-to-br from-white via-neutral-50 to-neutral-100"
+      >
+        {/* Medical Particle Ring Background - Gradient Shiny Black Theme */}
+        <MedicalParticleRingCanvas intensity="low" theme="shiny" />
+        
+        {/* Grid Pattern Overlay */}
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiMwMDAwMDAiIGZpbGwtb3BhY2l0eT0iMC4wMiI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAzMHYySDI0di0yaDEyek0zNiAyNnYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-30" />
+        
+        <div className="relative z-10 max-w-6xl mx-auto text-center">
+          {/* Badge */}
+          <div 
+            className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 backdrop-blur-sm mb-8 transition-all duration-700 opacity-100 translate-y-0 shadow-sm"
+          >
+            <Sparkles className="h-4 w-4 text-neutral-600" />
+            <span>AI-Powered Healthcare Revolution</span>
+          </div>
+
+          {/* Main Heading */}
+          <h1 
+            className="scroll-m-20 text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl md:text-6xl lg:text-7xl mb-6 transition-all duration-700 delay-100 opacity-100 translate-y-0"
+          >
+            Everything you need for{" "}
+            <span className="bg-gradient-to-r from-neutral-700 via-neutral-900 to-neutral-700 bg-clip-text text-transparent">
+              better health
+            </span>
+          </h1>
+
+          {/* Subheading */}
+          <p 
+            className="mx-auto max-w-2xl text-lg text-neutral-600 mb-10 transition-all duration-700 delay-200 opacity-100 translate-y-0"
+          >
+            Experience the future of healthcare with our AI-powered medical assistant. 
+            Get instant, accurate health guidance available 24/7, backed by advanced 
+            machine learning and medical expertise.
+          </p>
+
+          {/* CTA Buttons */}
+          <div 
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12 transition-all duration-700 delay-300 opacity-100 translate-y-0"
+          >
+            <Button 
+              size="lg"
+              className="px-8 py-6 text-lg bg-neutral-900 hover:bg-neutral-800 text-white shadow-lg shadow-neutral-900/25 transition-all duration-300 hover:shadow-neutral-900/40 hover:scale-105"
+              onClick={() => router.push("/signup")}
+            >
+              Get Started Free
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="px-8 py-6 text-lg border-neutral-300 text-neutral-900 hover:bg-neutral-100 hover:border-neutral-400 backdrop-blur-sm transition-all duration-300"
+              onClick={() => router.push("/chat")}
+            >
+              Try Demo Chat
+            </Button>
+          </div>
+
+          {/* Quick Actions */}
+          <div 
+            className="flex flex-wrap items-center justify-center gap-3 mb-12 transition-all duration-700 delay-400 opacity-100 translate-y-0"
+          >
+            {quickActions.map((action, index) => {
+              const ActionIcon = action.icon;
+              return (
+                <button
+                  key={index}
+                  onClick={() => router.push(action.path)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-neutral-200 text-sm text-neutral-700 hover:bg-neutral-50 hover:border-neutral-300 transition-all duration-300 backdrop-blur-sm"
+                >
+                  <ActionIcon className="h-4 w-4" />
+                  {action.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Stats */}
+          <div 
+            className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto mt-16 transition-all duration-700 delay-500 opacity-100 translate-y-0"
+          >
+            {stats.map((stat, index) => (
+              <StatCard key={index} stat={stat} index={index} />
+            ))}
+          </div>
+        </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
+          <div className="flex flex-col items-center gap-2 text-neutral-400">
+            <span className="text-xs uppercase tracking-widest">Scroll</span>
+            <div className="w-px h-12 bg-gradient-to-b from-neutral-400 to-transparent" />
+          </div>
+        </div>
+
+        <style jsx>{`
+          @keyframes fadeInUp {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+        `}</style>
+      </section>
+
+      {/* Features Section - Light Theme */}
+      <section id="features" className="relative py-24 px-6 bg-white">
+        <div className="max-w-7xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 mb-6 shadow-sm">
+              <Zap className="h-4 w-4 text-neutral-600" />
+              <span>Powerful Features</span>
+            </div>
+            <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-4">
+              Comprehensive Healthcare AI
+            </h2>
+            <p className="text-lg text-neutral-600 max-w-2xl mx-auto">
+              Advanced AI capabilities designed to provide you with accurate, 
+              personalized health guidance whenever you need it.
+            </p>
+          </div>
+
+          {/* Features Grid */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature, index) => (
+              <FeatureCard key={index} feature={feature} index={index} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Process Section */}
+      <section className="relative py-24 px-6 bg-neutral-50 border-y border-neutral-200">
+        <div className="max-w-7xl mx-auto">
+          <Process1 className="py-0" />
+        </div>
+      </section>
+
+      {/* FAQ Section - Light Theme */}
+      <section className="relative py-24 px-6 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
+            {/* Left Side - Title */}
+            <div className="lg:sticky lg:top-32">
+              <div className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 mb-6 shadow-sm">
+                <ShieldCheck className="h-4 w-4 text-neutral-600" />
+                <span>Get Answers</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-bold text-neutral-900 mb-6">
+                Frequently Asked Questions
+              </h2>
+              <p className="text-lg text-neutral-600 mb-8">
+                We've compiled the most important information to help you get the 
+                most out of your experience. Can't find what you're looking for?
+              </p>
+              <Button
+                variant="outline"
+                className="border-neutral-300 text-neutral-900 hover:bg-neutral-100"
+                onClick={() => router.push("/contact")}
+              >
+                Contact Support
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Right Side - Accordion */}
+            <div>
+              <Accordion
+                type="single"
+                collapsible
+                defaultValue="item-1"
+                className="space-y-4"
+              >
+                {faqs.map((faq, i) => (
+                  <AccordionItem 
+                    key={i} 
+                    value={i.toString()}
+                    className="border border-neutral-200 rounded-xl px-6 bg-white data-[state=open]:bg-neutral-50 transition-all duration-300"
+                  >
+                    <AccordionTrigger className="text-left py-4 text-base font-semibold text-neutral-900 hover:text-neutral-700 transition-colors">
+                      {faq.trigger}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-neutral-600 pb-4">
+                      {faq.content}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section - Light Theme */}
+      <section className="relative py-32 px-6 overflow-hidden bg-gradient-to-br from-neutral-100 via-white to-neutral-100">
+        {/* Animated orbs */}
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-neutral-200 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-neutral-200 rounded-full blur-3xl animate-pulse delay-1000" />
+        
+        <div className="relative z-10 max-w-4xl mx-auto text-center">
+          <h2 className="text-4xl md:text-6xl font-bold text-neutral-900 mb-6">
+            Ready to experience{" "}
+            <span className="bg-gradient-to-r from-neutral-700 via-neutral-900 to-neutral-700 bg-clip-text text-transparent">
+              smarter healthcare?
+            </span>
+          </h2>
+          <p className="text-xl text-neutral-600 mb-10 max-w-2xl mx-auto">
+            Start a conversation. Understand better. Decide responsibly. 
+            Join thousands of users who trust MedCoreAI for their health guidance.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Button
+              size="lg"
+              className="px-8 py-6 text-lg bg-neutral-900 hover:bg-neutral-800 text-white shadow-lg shadow-neutral-900/25 transition-all duration-300 hover:shadow-neutral-900/40 hover:scale-105"
+              onClick={() => router.push("/signup")}
+            >
+              Get Started Free
+              <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="px-8 py-6 text-lg border-neutral-300 text-neutral-900 hover:bg-neutral-100 transition-all duration-300"
+              onClick={() => router.push("/chat")}
+            >
+              Try It Now
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer - Light Theme */}
+      <footer className="relative bg-white border-t border-neutral-200">
+        <div className="max-w-7xl mx-auto px-6 py-16">
+          <div className="grid md:grid-cols-4 gap-12 mb-12">
+            {/* Brand */}
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-neutral-900 flex items-center justify-center">
+                  <Brain className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-neutral-900">MedCoreAI</span>
+              </div>
+              <p className="text-neutral-600 mb-6 max-w-md">
+                AI-powered medical guidance you can trust. Helping you make 
+                smarter health decisions, instantly.
+              </p>
+              <div className="flex gap-4">
+                <a href="#" className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors">
+                  <Globe className="h-5 w-5" />
+                </a>
+                <a href="#" className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors">
+                  <Lock className="h-5 w-5" />
+                </a>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div>
+              <h4 className="text-neutral-900 font-semibold mb-4">Product</h4>
+              <ul className="space-y-3">
+                <li><a href="#features" className="text-neutral-600 hover:text-neutral-900 transition-colors">Features</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Pricing</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Enterprise</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Security</a></li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-neutral-900 font-semibold mb-4">Company</h4>
+              <ul className="space-y-3">
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">About</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Blog</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Careers</a></li>
+                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Contact</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <Separator className="bg-neutral-200 mb-8" />
+
+          {/* Bottom Bar */}
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-neutral-500">
+            <p>&copy; 2026 MedCoreAI. All rights reserved.</p>
+            <div className="flex gap-6">
+              <a href="#" className="hover:text-neutral-900 transition-colors">Privacy Policy</a>
+              <a href="#" className="hover:text-neutral-900 transition-colors">Terms of Service</a>
+              <a href="#" className="hover:text-neutral-900 transition-colors">Built by @Team</a>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </main>
+  );
+}
