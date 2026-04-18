@@ -1573,7 +1573,7 @@ export default function ChatDashboard() {
                                                                             rel="noopener noreferrer"
                                                                             className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
                                                                         >
-                                                                            Open Report
+                                                                            View PDF
                                                                         </a>
                                                                     )}
                                                                 </div>
