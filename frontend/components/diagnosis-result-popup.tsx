@@ -117,7 +117,7 @@ export default function DiagnosisResultPopup({
             const canvas = await html2canvas(element, {
                 scale: 2,
                 useCORS: true,
-                logging: true,
+                logging: false,
                 backgroundColor: "#ffffff",
                 imageTimeout: 30000,
                 allowTaint: true,
@@ -128,7 +128,7 @@ export default function DiagnosisResultPopup({
                 y: 0,
                 scrollX: 0,
                 scrollY: 0,
-                foreignObjectRendering: true,
+                foreignObjectRendering: false,
                 removeContainer: true,
                 ignoreElements: (el) => {
                     // Ignore elements that might cause issues
@@ -136,6 +136,31 @@ export default function DiagnosisResultPopup({
                         return true;
                     }
                     return false;
+                },
+                // Fix for unsupported color functions like lab()
+                onclone: (clonedDoc) => {
+                    // Replace unsupported lab() color function with a fallback
+                    const allElements = clonedDoc.querySelectorAll<HTMLElement>('*');
+                    allElements.forEach((el) => {
+                        const style = el.style;
+                        if (style) {
+                            // Fix background-color with lab()
+                            const bgColor = style.backgroundColor;
+                            if (bgColor && bgColor.includes('lab(')) {
+                                style.backgroundColor = '#ffffff';
+                            }
+                            // Fix color with lab()
+                            const color = style.color;
+                            if (color && color.includes('lab(')) {
+                                style.color = '#000000';
+                            }
+                            // Fix border-color with lab()
+                            const borderColor = style.borderColor;
+                            if (borderColor && borderColor.includes('lab(')) {
+                                style.borderColor = '#e5e5e5';
+                            }
+                        }
+                    });
                 }
             });
 
