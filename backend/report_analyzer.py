@@ -13,9 +13,9 @@ from typing import Any, Optional
 LOGGER = logging.getLogger("medcore.report_analyzer")
 
 # ── Configuration ────────────────────────────────────────────────────────────
-OPEN_API_BASE_URL = os.getenv("OPEN_API_BASE_URL", "https://api.openai.com/v1")
-OPEN_API_KEY = os.getenv("OPEN_API_KEY", "")
-OPEN_API_MODEL = os.getenv("OPEN_API_MODEL", "gpt-3.5-turbo")
+OPEN_API_BASE_URL = os.getenv("OPEN_API_BASE_URL") or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPEN_API_KEY = os.getenv("OPEN_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+OPEN_API_MODEL = os.getenv("OPEN_API_MODEL") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # ── Report Analysis System Prompt ────────────────────────────────────────────
 REPORT_ANALYSIS_PROMPT = """You are a medical report analysis expert. Your task is to extract symptoms and medical findings from lab reports and convert them into a standardized symptom list.
@@ -163,6 +163,9 @@ async def analyze_report_with_api(report_text: str) -> dict[str, Any]:
                 return {
                     "symptoms": result.get("symptoms_list", []),
                     "findings": result.get("extracted_findings", []),
+                    "serious_findings": result.get("serious_findings", []),
+                    "abnormal_findings": result.get("abnormal_findings", []),
+                    "normal_findings": result.get("normal_findings", []),
                     "summary": result.get("summary", ""),
                     "raw_response": result_text
                 }

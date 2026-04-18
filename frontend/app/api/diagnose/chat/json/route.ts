@@ -31,6 +31,7 @@ type FollowupState = {
   currentQuestionText: string;
   currentQuestionChoices?: string[];
   imagePrediction?: ImagePredictionResult | null;
+  reportAnalysis?: ReportAnalysisResult | null;
   slots: {
     gender?: "male" | "female" | "custom";
     ageGroup?: "infant" | "toddler" | "child" | "adolescent" | "youth" | "adult" | "middle_aged" | "senior_citizen";
@@ -50,6 +51,9 @@ type FollowupState = {
     imageAvailable?: boolean;
     imageProvided?: boolean;
     imageObservationShown?: boolean;
+    reportAvailable?: boolean;
+    reportProvided?: boolean;
+    reportObservationShown?: boolean;
   };
 };
 
@@ -72,6 +76,29 @@ type ImagePredictionResult = {
 type ImagePredictionFetchResult = {
   prediction: ImagePredictionResult | null;
   debug: Record<string, unknown> | null;
+  error: string | null;
+  status: number | null;
+};
+
+type ReportFinding = {
+  finding?: string;
+  symptom?: string;
+  severity?: string;
+};
+
+type ReportAnalysisResult = {
+  symptoms: string[];
+  findings: ReportFinding[];
+  summary?: string;
+  serious_findings?: string[];
+  abnormal_findings?: string[];
+  normal_findings?: string[];
+  extracted_text?: string;
+  error?: string;
+};
+
+type ReportAnalysisFetchResult = {
+  report: ReportAnalysisResult | null;
   error: string | null;
   status: number | null;
 };
@@ -1171,6 +1198,7 @@ function parseState(messages: Array<{ role: string; jsonPayload: string | null }
           currentQuestionText: p.currentQuestionText,
           currentQuestionChoices: p.currentQuestionChoices || undefined,
           imagePrediction: (p as FollowupState).imagePrediction || null,
+          reportAnalysis: (p as FollowupState).reportAnalysis || null,
           slots: p.slots || {},
         };
       }
@@ -1243,6 +1271,101 @@ function cleanBase64Payload(value?: string | null): string {
   if (!payload) return "";
   if (payload.startsWith("data:") && payload.includes(",")) return payload.split(",", 2)[1].trim();
   return payload;
+}
+
+function sanitizeReportAnalysis(report: ReportAnalysisResult): ReportAnalysisResult {
+  const cleanList = (items?: string[]) =>
+    Array.isArray(items)
+      ? items
+          .map((item) => String(item || "").trim())
+          .filter(Boolean)
+          .slice(0, 12)
+      : [];
+
+  const findings = Array.isArray(report.findings)
+    ? report.findings
+        .map((finding) => ({
+          finding: String(finding?.finding || "").trim(),
+          symptom: String(finding?.symptom || "").trim(),
+          severity: String(finding?.severity || "").trim().toLowerCase(),
+        }))
+        .filter((finding) => finding.finding || finding.symptom)
+        .slice(0, 12)
+    : [];
+
+  return {
+    symptoms: cleanList(report.symptoms),
+    findings,
+    summary: String(report.summary || "").trim(),
+    serious_findings: cleanList(report.serious_findings),
+    abnormal_findings: cleanList(report.abnormal_findings),
+    normal_findings: cleanList(report.normal_findings),
+    extracted_text: String(report.extracted_text || "").trim(),
+    error: String(report.error || "").trim() || undefined,
+  };
+}
+
+function addReportSignalsToConfirmed(report: ReportAnalysisResult, datasets: DatasetCache, confirmed: Set<string>) {
+  for (const rawSymptom of report.symptoms || []) {
+    const normalized = normalizeToken(rawSymptom);
+    if (!normalized) continue;
+    if (datasets.symptomSet.has(normalized)) {
+      confirmed.add(normalized);
+      continue;
+    }
+    for (const datasetSymptom of datasets.symptoms) {
+      if (
+        normalized === datasetSymptom ||
+        (normalized.length >= 4 && datasetSymptom.includes(normalized)) ||
+        (datasetSymptom.length >= 4 && normalized.includes(datasetSymptom))
+      ) {
+        confirmed.add(datasetSymptom);
+      }
+    }
+  }
+
+  const analysisText = [
+    report.summary || "",
+    ...(report.symptoms || []),
+    ...(report.serious_findings || []),
+    ...(report.abnormal_findings || []),
+    ...(report.normal_findings || []),
+    ...(report.findings || []).map((finding) =>
+      [finding.finding || "", finding.symptom || "", finding.severity || ""].filter(Boolean).join(" ")
+    ),
+    report.extracted_text || "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  for (const symptom of extractSymptoms(analysisText, datasets)) confirmed.add(symptom);
+}
+
+function formatReportAnalysisSummary(report: ReportAnalysisResult): string {
+  const serious = (report.serious_findings || []).slice(0, 4);
+  const abnormal =
+    (report.abnormal_findings || []).slice(0, 4).length > 0
+      ? (report.abnormal_findings || []).slice(0, 4)
+      : (report.findings || [])
+          .filter((finding) => finding.severity === "abnormal")
+          .map((finding) => finding.symptom || finding.finding || "")
+          .filter(Boolean)
+          .slice(0, 4);
+  const normal = (report.normal_findings || []).slice(0, 4);
+  const extractedSymptoms = (report.symptoms || []).slice(0, 8);
+
+  const lines = ["I analyzed your uploaded medical report and extracted the clinically useful details."];
+  if (report.summary) lines.push("", `**Report summary**`, report.summary);
+  if (serious.length > 0) lines.push("", `**Serious findings**`, ...serious.map((item) => `- ${item}`));
+  if (abnormal.length > 0) lines.push("", `**Abnormal findings**`, ...abnormal.map((item) => `- ${item}`));
+  if (normal.length > 0) lines.push("", `**Normal or stable findings**`, ...normal.map((item) => `- ${item}`));
+  if (extractedSymptoms.length > 0) {
+    lines.push("", `**Symptoms/signals extracted for diagnosis**`, extractedSymptoms.map(formatSymptom).join(", "));
+  }
+  if (serious.length === 0 && abnormal.length === 0 && normal.length === 0) {
+    lines.push("", "I did not find any clearly structured serious or abnormal report markers to highlight.");
+  }
+  return lines.join("\n");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -1377,6 +1500,76 @@ async function fetchImagePrediction(
       prediction: null,
       debug: null,
       error: errorText,
+      status: null,
+    };
+  }
+}
+
+async function fetchReportAnalysis(
+  reportBase64: string,
+  filename: string,
+  mimeType: string,
+  userId: string
+): Promise<ReportAnalysisFetchResult> {
+  const backendUrl = resolveBackendUrl();
+  if (!backendUrl) {
+    return { report: null, error: "BACKEND_URL is not configured.", status: 503 };
+  }
+  if (backendLikelyMisconfigured(backendUrl)) {
+    return {
+      report: null,
+      error: "Report backend URL is set to localhost in a Vercel deployment. Set BACKEND_URL to your public backend URL.",
+      status: 503,
+    };
+  }
+
+  try {
+    const bytes = Buffer.from(cleanBase64Payload(reportBase64), "base64");
+    if (!bytes.length) {
+      return { report: null, error: "Uploaded report payload was empty.", status: 400 };
+    }
+
+    const sharedSecret = (process.env.SHARED_SECRET || "").trim();
+    const headers: Record<string, string> = {};
+    if (sharedSecret) {
+      headers["X-Internal-Secret"] = sharedSecret;
+      headers["X-User-Id"] = userId;
+    }
+
+    const form = new FormData();
+    const blob = new Blob([bytes], { type: mimeType || "application/pdf" });
+    form.append("file", blob, filename || "medical-report.pdf");
+
+    const res = await fetch(`${backendUrl}/api/diagnose/upload-report`, {
+      method: "POST",
+      headers,
+      body: form,
+    });
+
+    const payload = (await res.json().catch(() => ({}))) as {
+      detail?: string;
+      error?: string;
+      report_prediction?: ReportAnalysisResult;
+    };
+
+    if (!res.ok) {
+      return {
+        report: null,
+        error: payload.detail || payload.error || `Backend returned HTTP ${res.status}`,
+        status: res.status,
+      };
+    }
+
+    const report = payload.report_prediction ? sanitizeReportAnalysis(payload.report_prediction) : null;
+    return {
+      report,
+      error: report ? null : "Backend returned no report_prediction payload",
+      status: res.status,
+    };
+  } catch (err) {
+    return {
+      report: null,
+      error: `${describeFetchError(err)}. Check BACKEND_URL is reachable from Next.js.`,
       status: null,
     };
   }
@@ -1884,12 +2077,19 @@ export async function POST(req: NextRequest) {
       image_base64?: string | null;
       image_filename?: string | null;
       image_mime?: string | null;
+      report_base64?: string | null;
+      report_filename?: string | null;
+      report_mime?: string | null;
     };
     const userMessage = (body.message || "").trim();
     if (!userMessage) return NextResponse.json({ error: "message is required" }, { status: 400 });
     const action = body.session_action || null;
     const imageBase64 = cleanBase64Payload(body.image_base64);
     const hasImagePayload = imageBase64.length > 0;
+    const reportBase64 = cleanBase64Payload(body.report_base64);
+    const hasReportPayload = reportBase64.length > 0;
+    const reportFilename = (body.report_filename || "medical-report.pdf").trim();
+    const reportMime = (body.report_mime || "application/pdf").trim();
 
     const chatSession = await prisma.chatSession.findUnique({ where: { id: sessionId } });
     if (!chatSession || chatSession.userId !== userId) {
@@ -1953,7 +2153,9 @@ export async function POST(req: NextRequest) {
     const asked = new Set<string>(parsedState?.askedSymptoms || []);
     const slots: FollowupState["slots"] = { ...(parsedState?.slots || {}) };
     let imagePrediction: ImagePredictionResult | null = parsedState?.imagePrediction || null;
+    let reportAnalysis: ReportAnalysisResult | null = parsedState?.reportAnalysis || null;
     let imageAnalysisNote: string | null = null;
+    let reportAnalysisNote: string | null = null;
     let turns = parsedState?.turns || 0;
     let maxTurns = parsedState?.maxTurns && parsedState.maxTurns > 0 ? Math.max(7, parsedState.maxTurns) : 0;
 
@@ -2024,6 +2226,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (hasReportPayload) {
+      slots.reportAvailable = true;
+      const reportFetch = await fetchReportAnalysis(reportBase64, reportFilename, reportMime, userId);
+      if (reportFetch.report) {
+        slots.reportProvided = true;
+        reportAnalysis = reportFetch.report;
+        addReportSignalsToConfirmed(reportAnalysis, datasets, confirmed);
+      } else {
+        slots.reportProvided = false;
+        reportAnalysisNote = reportFetch.error || "Report analysis unavailable.";
+      }
+    }
+
     if (parsedState && action && parsedState.currentQuestionId) {
       const qid = parsedState.currentQuestionId;
       const answer = action === "custom" ? yesNoFromText(userMessage) : action;
@@ -2072,10 +2287,23 @@ export async function POST(req: NextRequest) {
           slots.imageAvailable = true;
           slots.imageProvided = true;
         }
-      } else if (qid === "image_condition_confirm") {
-        if (imagePrediction) {
-          addImageGuidedSymptoms(imagePrediction, confirmed, denied, answer);
+      } else if (qid === "report_available") {
+        if (answer === "yes") {
+          slots.reportAvailable = true;
+          if (!hasReportPayload) slots.reportProvided = false;
         }
+        if (answer === "no") {
+          slots.reportAvailable = false;
+          slots.reportProvided = false;
+          reportAnalysis = null;
+        }
+      } else if (qid === "report_upload") {
+        if (hasReportPayload) {
+          slots.reportAvailable = true;
+          slots.reportProvided = true;
+        }
+      } else if (qid === "image_condition_confirm") {
+        if (imagePrediction) addImageGuidedSymptoms(imagePrediction, confirmed, denied, answer);
       } else if (qid === "pain_location") {
         const parsedLocation = extractPainLocation(userMessage);
         if (parsedLocation) {
@@ -2144,13 +2372,6 @@ export async function POST(req: NextRequest) {
             `${idx + 1}. ${p.dataset}: ${p.top_label_name} (${Number(p.top_confidence).toFixed(1)}%)`
         )
         .join("\n");
-      const question = imageSpecificQuestion({
-        ...imagePrediction,
-        best_dataset: imageSignal.primary.dataset,
-        best_label_index: imageSignal.primary.top_label_index,
-        best_label_name: imageSignal.primary.top_label_name,
-        best_confidence: imageSignal.primary.top_confidence,
-      });
       const reply = [
         "I analyzed your uploaded image using trained MedMNIST image models.",
         "",
@@ -2164,7 +2385,7 @@ export async function POST(req: NextRequest) {
         "",
         "This image result is generated from your local image datasets/models, not a fake placeholder.",
         "",
-        `**Question ${turns + 1}:** ${question}`,
+        `**Question ${turns + 1}:** Do you have any medical report?`,
       ].join("\n");
 
       const nextState = makeState({
@@ -2174,17 +2395,18 @@ export async function POST(req: NextRequest) {
         deniedSymptoms: Array.from(denied),
         askedSymptoms: Array.from(asked),
         topCandidates: parsedState?.topCandidates || [],
-        currentQuestionId: "image_condition_confirm",
-        currentQuestionText: question,
+        currentQuestionId: "report_available",
+        currentQuestionText: "Do you have any medical report?",
         currentQuestionChoices: ["yes", "no"],
         imagePrediction,
+        reportAnalysis,
         slots,
       });
 
       return NextResponse.json({
         reply,
         follow_up_suggested: true,
-        follow_up_question: question,
+        follow_up_question: "Do you have any medical report?",
         follow_up_choices: ["yes", "no"],
         follow_up_state: nextState,
         image_analysis: {
@@ -2193,6 +2415,75 @@ export async function POST(req: NextRequest) {
           status: "ok",
         },
       });
+    }
+
+    if (hasReportPayload && reportAnalysis && !slots.reportObservationShown) {
+      slots.reportObservationShown = true;
+      let nextQuestion: { id: string; text: string; choices?: string[] } | null = null;
+      const predictionsAfterReport = applyClinicalContextAdjustments(
+        applyDemographicAdjustments(scoreDiseases(datasets.diseases, confirmed, denied), {
+          gender: slots.gender,
+          ageGroup: slots.ageGroup,
+        }),
+        slots
+      );
+      const topCandidatesAfterReport = predictionsAfterReport.slice(0, 5).map((p) => p.disease);
+      const askedTracker = new Set<string>(asked);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const candidate = await openAILiveFollowupQuestion({
+          history: priorText,
+          currentMessage: `${userMessage}\n\nReport summary:\n${reportAnalysis.summary || ""}`,
+          confirmedSymptoms: Array.from(confirmed),
+          deniedSymptoms: Array.from(denied),
+          topCandidates: topCandidatesAfterReport,
+          askedItems: Array.from(askedTracker),
+          turns,
+          maxTurns,
+          slots,
+        });
+        if (!candidate) break;
+        const key = questionTextKey(candidate.text);
+        if (askedTracker.has(key)) {
+          askedTracker.add(candidate.id);
+          continue;
+        }
+        nextQuestion = candidate;
+        break;
+      }
+      if (!nextQuestion) {
+        nextQuestion = pickFallbackQuestionFromDataset(
+          datasets,
+          confirmed,
+          denied,
+          askedTracker,
+          topCandidatesAfterReport
+        );
+      }
+
+      if (nextQuestion && turns < maxTurns) {
+        const nextState = makeState({
+          turns,
+          maxTurns,
+          confirmedSymptoms: Array.from(confirmed),
+          deniedSymptoms: Array.from(denied),
+          askedSymptoms: Array.from(asked),
+          topCandidates: topCandidatesAfterReport,
+          currentQuestionId: nextQuestion.id,
+          currentQuestionText: nextQuestion.text,
+          currentQuestionChoices: nextQuestion.choices,
+          imagePrediction,
+          reportAnalysis,
+          slots,
+        });
+
+        return NextResponse.json({
+          reply: `${formatReportAnalysisSummary(reportAnalysis)}\n\n**Question ${turns + 1}:** ${nextQuestion.text}`,
+          follow_up_suggested: true,
+          follow_up_question: nextQuestion.text,
+          follow_up_choices: nextQuestion.choices || null,
+          follow_up_state: nextState,
+        });
+      }
     }
 
     const predictions = applyClinicalContextAdjustments(
@@ -2234,6 +2525,18 @@ export async function POST(req: NextRequest) {
           id: "image_upload",
           text: "Please upload one medical image now and send a short message (for example: 'uploaded image').",
           choices: ["upload"],  // ✅ Single "upload" option instead of yes/no
+        };
+      } else if (typeof slots.reportAvailable !== "boolean") {
+        question = {
+          id: "report_available",
+          text: "Do you have any medical report?",
+          choices: ["yes", "no"],
+        };
+      } else if (slots.reportAvailable === true && !slots.reportProvided) {
+        question = {
+          id: "report_upload",
+          text: "Upload the scanned copy of your medical report. If you have multiple reports, please merge them into one PDF and upload that file.",
+          choices: ["upload"],
         };
       } else {
         const askedTracker = new Set<string>(asked);
@@ -2286,6 +2589,7 @@ export async function POST(req: NextRequest) {
         currentQuestionText: question.text,
         currentQuestionChoices: question.choices,
         imagePrediction,
+        reportAnalysis,
         slots,
       });
 
@@ -2409,6 +2713,8 @@ let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probabil
       considered_prior_history: false,
       image_prediction: imagePrediction,
       used_image: Boolean(imagePrediction),
+      report_analysis: reportAnalysis,
+      used_report: Boolean(reportAnalysis),
     };
     const aiGuidance =
       (await openAIDiagnosisGuidance({
@@ -2458,11 +2764,16 @@ let finalConfidence = finalTopPredictions[0]?.probability || Number(top.probabil
       : `\n\n**Image clues from your upload**\nNot used for this prediction.${
           imageAnalysisNote ? `\nReason: ${imageAnalysisNote}` : ""
         }`;
+    const reportText = reportAnalysis
+      ? `\n\n**Medical report analysis used**\n${formatReportAnalysisSummary(reportAnalysis)}`
+      : `\n\n**Medical report analysis used**\nNot used for this prediction.${
+          reportAnalysisNote ? `\nReason: ${reportAnalysisNote}` : ""
+        }`;
     const reply = `**Your preliminary result**\nLikely condition: ${toLabel(diagnosis.diagnosis)}\nConfidence: ${
       diagnosis.confidence
     }%\n\n**What I used to estimate this**\nSymptoms: ${
       diagnosis.confirmed_symptoms.map(formatSymptom).join(", ") || "No clear symptoms captured yet"
-    }\n${demographicsText}${imageText}\n\n**What this means**\n${certaintyText}\n${
+    }\n${demographicsText}${imageText}${reportText}\n\n**What this means**\n${certaintyText}\n${
       diseaseInfo.description || "Detailed condition description is not available right now."
     }${precautionsText}\n\nThis guidance is for you and is not a final medical diagnosis.`;
 

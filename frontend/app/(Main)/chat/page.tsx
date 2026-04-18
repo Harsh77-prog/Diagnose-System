@@ -29,13 +29,24 @@ type Message = {
 type UserMessagePayload = {
     image_preview?: string;
     image_name?: string;
+    report_name?: string;
 };
 
 type FollowupStatePayload = {
     kind?: "followup_state";
     pending?: boolean;
+    currentQuestionId?: string;
     currentQuestionText?: string;
     currentQuestionChoices?: string[];
+};
+
+type ReportAnalysisPayload = {
+    symptoms?: string[];
+    findings?: { finding?: string; symptom?: string; severity?: string }[];
+    summary?: string;
+    serious_findings?: string[];
+    abnormal_findings?: string[];
+    normal_findings?: string[];
 };
 
 type DiagnosisPayload = {
@@ -68,6 +79,7 @@ type DiagnosisPayload = {
         description?: string;
         precautions?: string[];
     };
+    report_analysis?: ReportAnalysisPayload | null;
 };
 
 function combinedTopPredictions(payload?: DiagnosisPayload | null): { disease: string; probability: number }[] {
@@ -351,6 +363,7 @@ export default function ChatDashboard() {
     const [attachments, setAttachments] = useState<File[]>([]);
     const [loading, setLoading] = useState(false);
     const [followUpActive, setFollowUpActive] = useState(false);
+    const [followUpQuestionId, setFollowUpQuestionId] = useState<string>("");
     const [followUpQuestion, setFollowUpQuestion] = useState<string>("");
     const [followUpChoices, setFollowUpChoices] = useState<string[]>([]);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -408,6 +421,21 @@ export default function ChatDashboard() {
     function handleFileAdd(files: FileList | null) {
         if (!files || files.length === 0) return;
         const incoming = Array.from(files);
+        const uploadQuestionId = followUpActive ? followUpQuestionId : "";
+        if (uploadQuestionId === "image_upload") {
+            const images = incoming.filter((file) => file.type.startsWith("image/"));
+            if (images.length > 0) {
+                void sendMessage("uploaded image", "custom", images);
+                return;
+            }
+        }
+        if (uploadQuestionId === "report_upload") {
+            const reports = incoming.filter((file) => !file.type.startsWith("image/"));
+            if (reports.length > 0) {
+                void sendMessage("uploaded medical report", "custom", reports);
+                return;
+            }
+        }
         setAttachments((prev) => [...prev, ...incoming]);
     }
 
@@ -452,6 +480,7 @@ export default function ChatDashboard() {
         setCurrentSessionId(null);
         setMessages([]);
         setFollowUpActive(false);
+        setFollowUpQuestionId("");
         setFollowUpQuestion("");
         setFollowUpChoices([]);
         setInput("");
@@ -472,6 +501,7 @@ export default function ChatDashboard() {
         setCurrentSessionId(id);
         setLoading(true);
         setFollowUpActive(false);
+        setFollowUpQuestionId("");
         setFollowUpChoices([]);
         setLatestDiagnosis(null);
         setLatestDiagnosisMessageId(null);
@@ -499,6 +529,7 @@ export default function ChatDashboard() {
                         const payload = JSON.parse(lastMsg.jsonPayload) as FollowupStatePayload;
                         if (payload.kind === "followup_state" && payload.pending) {
                             setFollowUpActive(true);
+                            setFollowUpQuestionId(payload.currentQuestionId || "");
                             if (payload.currentQuestionText) {
                                 setFollowUpQuestion(payload.currentQuestionText);
                             } else {
@@ -507,22 +538,26 @@ export default function ChatDashboard() {
                             setFollowUpChoices(Array.isArray(payload.currentQuestionChoices) ? payload.currentQuestionChoices : []);
                         } else {
                             setFollowUpActive(false);
+                            setFollowUpQuestionId("");
                             setFollowUpQuestion("");
                             setFollowUpChoices([]);
                         }
                     } catch {
                         setFollowUpActive(false);
+                        setFollowUpQuestionId("");
                         setFollowUpQuestion("");
                         setFollowUpChoices([]);
                     }
                 } else {
                     setFollowUpActive(false);
+                    setFollowUpQuestionId("");
                     setFollowUpQuestion("");
                     setFollowUpChoices([]);
                 }
             } else {
                 setMessages([]);
                 setFollowUpActive(false);
+                setFollowUpQuestionId("");
                 setFollowUpQuestion("");
                 setFollowUpChoices([]);
             }
@@ -554,20 +589,22 @@ export default function ChatDashboard() {
         }
     }
 
-    async function sendMessage(text: string, action?: "yes" | "no" | "custom") {
+    async function sendMessage(text: string, action?: "yes" | "no" | "custom", overrideAttachments?: File[]) {
         if (loading) return;
         if (!text.trim() && !action) return;
 
         const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
-        const pendingAttachments = [...attachments];
+        const pendingAttachments = overrideAttachments ? [...overrideAttachments] : [...attachments];
         const firstImage = pendingAttachments.find((f) => f.type.startsWith("image/")) || null;
+        const firstReport = pendingAttachments.find((f) => !f.type.startsWith("image/")) || null;
         const imageDataUrl = firstImage ? await fileToBase64(firstImage) : null;
+        const reportDataUrl = firstReport ? await fileToBase64(firstReport) : null;
         const optimisticUserMessage: Message = {
             id: Date.now().toString(),
             role: "user",
             content: sentText,
-            jsonPayload: imageDataUrl
-                ? JSON.stringify({ image_preview: imageDataUrl, image_name: firstImage?.name } as UserMessagePayload)
+            jsonPayload: (imageDataUrl || firstReport)
+                ? JSON.stringify({ image_preview: imageDataUrl || undefined, image_name: firstImage?.name, report_name: firstReport?.name } as UserMessagePayload)
                 : null,
         };
         setMessages(prev => [...prev, optimisticUserMessage]);
@@ -607,7 +644,7 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         role: "user",
                         content: sentText,
-                        jsonPayload: imageDataUrl ? { image_preview: imageDataUrl, image_name: firstImage?.name } : null
+                        jsonPayload: imageDataUrl || firstReport ? { image_preview: imageDataUrl || undefined, image_name: firstImage?.name, report_name: firstReport?.name } : null
                     })
                 });
 
@@ -661,7 +698,10 @@ export default function ChatDashboard() {
                             session_action: action || null,
                             image_base64: imageDataUrl,
                             image_filename: firstImage?.name || null,
-                            image_mime: firstImage?.type || null
+                            image_mime: firstImage?.type || null,
+                            report_base64: reportDataUrl,
+                            report_filename: firstReport?.name || null,
+                            report_mime: firstReport?.type || null
                         }),
                     });
 
@@ -732,10 +772,13 @@ export default function ChatDashboard() {
 
                 if (shouldDiagnose && data.follow_up_suggested) {
                     setFollowUpActive(true);
+                    const statePayload = (data.follow_up_state && typeof data.follow_up_state === "object") ? data.follow_up_state as { currentQuestionId?: string } : null;
+                    setFollowUpQuestionId(statePayload?.currentQuestionId || "");
                     setFollowUpQuestion(data.follow_up_question || "Please answer the follow-up question.");
                     setFollowUpChoices(Array.isArray(data.follow_up_choices) ? data.follow_up_choices : []);
                 } else {
                     setFollowUpActive(false);
+                    setFollowUpQuestionId("");
                     setFollowUpQuestion("");
                     setFollowUpChoices([]);
                 }
@@ -1496,7 +1539,11 @@ export default function ChatDashboard() {
                                                     onClick={() => {
                                                         // ✅ Special handling for "upload" choice - trigger file picker
                                                         if (choice === "upload") {
-                                                            imageInputRef.current?.click();
+                                                            if (followUpQuestionId === "report_upload") {
+                                                                reportInputRef.current?.click();
+                                                            } else {
+                                                                imageInputRef.current?.click();
+                                                            }
                                                         } else {
                                                             sendMessage(choice, "custom");
                                                         }
@@ -1560,8 +1607,7 @@ export default function ChatDashboard() {
                                 <input
                                     ref={reportInputRef}
                                     type="file"
-                                    accept=".pdf,.doc,.docx,.txt,.csv"
-                                    multiple
+                                    accept=".pdf,.txt,.csv,.png,.jpg,.jpeg,.webp"
                                     className="hidden"
                                     onChange={(e) => {
                                         handleFileAdd(e.target.files);
