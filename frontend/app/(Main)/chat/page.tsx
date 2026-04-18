@@ -30,6 +30,7 @@ type UserMessagePayload = {
     image_preview?: string;
     image_name?: string;
     report_name?: string;
+    report_preview?: string;
 };
 
 type FollowupStatePayload = {
@@ -313,6 +314,88 @@ function ImageAnalysisProgressBar({
     );
 }
 
+// ✨ Beautiful Report Analysis Progress Bar Component
+function ReportAnalysisProgressBar({
+    progress,
+    phase,
+    isVisible
+}: {
+    progress: number;
+    phase: "extracting" | "analyzing" | "inferring" | "results";
+    isVisible: boolean;
+}) {
+    const phaseNames = {
+        extracting: { label: "📄 Extracting Text", time: "2-4s" },
+        analyzing: { label: "🧠 Analyzing Content", time: "4-7s" },
+        inferring: { label: "💡 Extracting Symptoms", time: "6-10s" },
+        results: { label: "📋 Compiling Report", time: "1-2s" }
+    };
+
+    const phaseInfo = phaseNames[phase];
+    const totalEstimate = phase === "extracting" ? "2-4s" : phase === "analyzing" ? "6-11s" : phase === "inferring" ? "12-21s" : "13-23s";
+
+    if (!isVisible) return null;
+
+    return (
+        <div className="max-w-3xl mx-auto w-full px-2 md:px-0">
+            <div className="rounded-2xl border border-[#e5e5e5] bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#f8fafc] p-6 shadow-sm animate-in fade-in duration-300">
+                {/* Header with Phase Info */}
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-[#0f0f0f] animate-pulse" />
+                        <div>
+                            <div className="text-sm font-semibold text-[#0f0f0f]">{phaseInfo.label}</div>
+                            <div className="text-xs text-[#8e8e8e] mt-0.5">Estimated: ~{phaseInfo.time}</div>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-bold text-[#0f0f0f]">{Math.round(progress)}%</div>
+                        <div className="text-xs text-[#8e8e8e] mt-0.5">Total: ~{totalEstimate}</div>
+                    </div>
+                </div>
+
+                {/* Main Progress Bar */}
+                <div className="w-full h-3 bg-[#e5e5e5] rounded-full overflow-hidden shadow-inner mb-4">
+                    <div
+                        className="h-full bg-gradient-to-r from-[#0f0f0f] via-[#404040] to-[#0f0f0f] rounded-full shadow-lg transition-all duration-300 ease-out relative overflow-hidden"
+                        style={{ width: `${progress}%` }}
+                    >
+                        <div className="absolute inset-0 bg-white/10 animate-pulse" />
+                    </div>
+                </div>
+
+                {/* Phase Indicators */}
+                <div className="flex justify-between text-xs font-medium">
+                    <div className={`flex items-center gap-1 ${phase === "extracting" || progress > 0 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "extracting" ? "bg-[#0f0f0f] scale-150" : progress > 0 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
+                        Extract
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "analyzing" || progress > 25 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "analyzing" ? "bg-[#0f0f0f] scale-150" : progress > 25 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
+                        Analyze
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "inferring" || progress > 50 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "inferring" ? "bg-[#0f0f0f] scale-150" : progress > 50 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
+                        Infer
+                    </div>
+                    <div className={`flex items-center gap-1 ${phase === "results" || progress > 75 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "results" ? "bg-[#0f0f0f] scale-150" : progress > 75 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
+                        Results
+                    </div>
+                </div>
+
+                {/* Info Text */}
+                <div className="mt-4 text-xs text-[#666666] text-center">
+                    {phase === "extracting" && "Extracting text from your medical report..."}
+                    {phase === "analyzing" && "Analyzing report content with AI..."}
+                    {phase === "inferring" && "Extracting symptoms and medical findings..."}
+                    {phase === "results" && "Compiling analysis results..."}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Generates ChatGPT style clean topic headings
 function generateChatTitle(prompt: string) {
     const cleaned = prompt.trim().replace(/\s+/g, " ").replace(/[?.!]+$/, "");
@@ -381,6 +464,19 @@ export default function ChatDashboard() {
     const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
     const [analysisPhase, setAnalysisPhase] = useState<"detecting" | "analyzing" | "inferring" | "results">
         ("detecting");
+    
+    // Report analysis progress state
+    const [reportAnalysisProgress, setReportAnalysisProgress] = useState(0);
+    const [isAnalyzingReport, setIsAnalyzingReport] = useState(false);
+    const [reportAnalysisPhase, setReportAnalysisPhase] = useState<"extracting" | "analyzing" | "inferring" | "results">
+        ("extracting");
+    
+    // Track uploaded report for preview
+    const [latestUploadedReport, setLatestUploadedReport] = useState<{ preview: string; name: string; type: string } | null>(null);
+    
+    // Track symptoms identified from image and report analysis
+    const [imageIdentifiedSymptoms, setImageIdentifiedSymptoms] = useState<string[]>([]);
+    const [reportIdentifiedSymptoms, setReportIdentifiedSymptoms] = useState<string[]>([]);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -460,6 +556,28 @@ export default function ChatDashboard() {
 
     useEffect(() => {
         setLatestUploadedImage(extractLatestUploadedImage(messages));
+    }, [messages]);
+
+    // Track latest uploaded report from messages
+    useEffect(() => {
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const msg = messages[i];
+            if (msg.role !== "user" || !msg.jsonPayload) continue;
+            try {
+                const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
+                if (parsed.report_preview || parsed.report_name) {
+                    setLatestUploadedReport({
+                        preview: parsed.report_preview || "",
+                        name: parsed.report_name || "Uploaded Report",
+                        type: "pdf"
+                    });
+                    return;
+                }
+            } catch {
+                continue;
+            }
+        }
+        setLatestUploadedReport(null);
     }, [messages]);
 
     async function fetchSessions() {
@@ -603,8 +721,13 @@ export default function ChatDashboard() {
             id: Date.now().toString(),
             role: "user",
             content: sentText,
-            jsonPayload: (imageDataUrl || firstReport)
-                ? JSON.stringify({ image_preview: imageDataUrl || undefined, image_name: firstImage?.name, report_name: firstReport?.name } as UserMessagePayload)
+            jsonPayload: (imageDataUrl || reportDataUrl)
+                ? JSON.stringify({ 
+                    image_preview: imageDataUrl || undefined, 
+                    image_name: firstImage?.name, 
+                    report_name: firstReport?.name,
+                    report_preview: reportDataUrl || undefined
+                } as UserMessagePayload)
                 : null,
         };
         setMessages(prev => [...prev, optimisticUserMessage]);
@@ -672,6 +795,32 @@ export default function ChatDashboard() {
                             }
                         });
                     }, 300);
+                }
+
+                // 🚀 Start progress tracking if report is being analyzed
+                let reportProgressInterval: NodeJS.Timeout | null = null;
+                if (reportDataUrl) {
+                    setIsAnalyzingReport(true);
+                    setReportAnalysisProgress(0);
+                    setReportAnalysisPhase("extracting");
+
+                    reportProgressInterval = setInterval(() => {
+                        setReportAnalysisProgress(prev => {
+                            if (prev < 25) {
+                                setReportAnalysisPhase("extracting");
+                                return prev + Math.random() * 4;
+                            } else if (prev < 60) {
+                                setReportAnalysisPhase("analyzing");
+                                return prev + Math.random() * 3;
+                            } else if (prev < 85) {
+                                setReportAnalysisPhase("inferring");
+                                return prev + Math.random() * 2;
+                            } else {
+                                setReportAnalysisPhase("results");
+                                return Math.min(prev + Math.random() * 1, 99);
+                            }
+                        });
+                    }, 400);
                 }
 
                 // Check if this should trigger diagnosis flow
@@ -752,6 +901,33 @@ export default function ChatDashboard() {
                     setIsAnalyzingImage(false);
                 }
 
+                // 🎯 Complete progress bar if report was analyzed
+                if (reportProgressInterval) {
+                    clearInterval(reportProgressInterval);
+                    setReportAnalysisProgress(100);
+                    setReportAnalysisPhase("results");
+                    await new Promise(resolve => setTimeout(resolve, 800));
+                    setIsAnalyzingReport(false);
+                }
+
+                // 🧬 Extract symptoms from API response if diagnosis was performed
+                if (shouldDiagnose && data.ml_diagnosis) {
+                    const diagnosis = data.ml_diagnosis as DiagnosisPayload;
+                    
+                    // Extract image symptoms
+                    if (diagnosis.image_prediction?.per_dataset) {
+                        const imgSymptoms = diagnosis.image_prediction.per_dataset
+                            .map(ds => ds.top_label_name)
+                            .filter(Boolean);
+                        setImageIdentifiedSymptoms(imgSymptoms);
+                    }
+                    
+                    // Extract report symptoms
+                    if (diagnosis.report_analysis?.symptoms) {
+                        setReportIdentifiedSymptoms(diagnosis.report_analysis.symptoms);
+                    }
+                }
+
                 // Save Assistant Message to DB
                 await fetch(`/api/chat/sessions/${activeSessionId}/messages`, {
                     method: "POST",
@@ -785,9 +961,11 @@ export default function ChatDashboard() {
             }
         } catch (err: any) {
             console.error("Chat Error:", err);
-            // 🛑 Clean up progress bar on error
+            // 🛑 Clean up progress bars on error
             setIsAnalyzingImage(false);
             setImageAnalysisProgress(0);
+            setIsAnalyzingReport(false);
+            setReportAnalysisProgress(0);
             const fallbackMessage = `Error: ${err?.message || "Unexpected chat error"}`;
 
             if (activeSessionId) {
@@ -1497,6 +1675,17 @@ export default function ChatDashboard() {
                                         </div>
                                     )}
 
+                                    {/* Report Analysis Progress Bar - Shows in message flow */}
+                                    {isAnalyzingReport && (
+                                        <div className="mb-6">
+                                            <ReportAnalysisProgressBar
+                                                progress={reportAnalysisProgress}
+                                                phase={reportAnalysisPhase}
+                                                isVisible={isAnalyzingReport}
+                                            />
+                                        </div>
+                                    )}
+
                                     {/* Standard MedCoreAI thinking indicator */}
                                     <div className="flex items-start gap-4">
                                         <div className="shrink-0 mr-0 mt-1">
@@ -1743,6 +1932,71 @@ export default function ChatDashboard() {
                                     alt={latestUploadedImage.name || "Uploaded medical image"}
                                     className="w-full max-h-72 object-contain rounded-xl border border-slate-200"
                                 />
+                            </div>
+                        ) : null}
+
+                        {latestUploadedReport ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-700">Uploaded Report</div>
+                                    <FileText className="w-4 h-4 text-slate-500" />
+                                </div>
+                                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                                    <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                                        <FileText className="w-5 h-5 text-red-600" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-slate-800 truncate">{latestUploadedReport.name}</div>
+                                        <div className="text-xs text-slate-500">PDF Document</div>
+                                    </div>
+                                    {latestUploadedReport.preview && (
+                                        <a
+                                            href={latestUploadedReport.preview}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
+                                        >
+                                            View
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {(imageIdentifiedSymptoms.length > 0 || reportIdentifiedSymptoms.length > 0) ? (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center">
+                                        <Activity className="w-3.5 h-3.5 text-green-600" />
+                                    </div>
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-slate-700">Symptoms Identified So Far</div>
+                                </div>
+                                <div className="space-y-3">
+                                    {imageIdentifiedSymptoms.length > 0 && (
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 mb-1.5 uppercase tracking-wide">From Image Analysis</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {imageIdentifiedSymptoms.map((symptom, idx) => (
+                                                    <span key={`img-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                                        {labelize(symptom)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {reportIdentifiedSymptoms.length > 0 && (
+                                        <div>
+                                            <div className="text-[10px] text-slate-500 mb-1.5 uppercase tracking-wide">From Report Analysis</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {reportIdentifiedSymptoms.map((symptom, idx) => (
+                                                    <span key={`rep-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                                        {labelize(symptom)}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ) : null}
 
