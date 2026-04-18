@@ -1536,16 +1536,51 @@ export default function ChatDashboard() {
                                                 {msg.jsonPayload && (() => {
                                                     try {
                                                         const payload = JSON.parse(msg.jsonPayload) as UserMessagePayload;
-                                                        if (!payload.image_preview) return null;
-                                                        return (
-                                                            <div className="mt-2">
-                                                                <img
-                                                                    src={payload.image_preview}
-                                                                    alt={payload.image_name || "Uploaded medical image"}
-                                                                    className="max-h-56 w-auto rounded-xl border border-slate-300"
-                                                                />
-                                                            </div>
-                                                        );
+                                                        let hasAttachment = false;
+                                                        
+                                                        // Show image preview if available
+                                                        if (payload.image_preview) {
+                                                            hasAttachment = true;
+                                                            return (
+                                                                <div className="mt-2">
+                                                                    <img
+                                                                        src={payload.image_preview}
+                                                                        alt={payload.image_name || "Uploaded medical image"}
+                                                                        className="max-h-56 w-auto rounded-xl border border-slate-300"
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        }
+                                                        
+                                                        // Show report preview link if available
+                                                        if (payload.report_preview || payload.report_name) {
+                                                            hasAttachment = true;
+                                                            return (
+                                                                <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-300">
+                                                                    <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
+                                                                        <FileText className="w-5 h-5 text-red-600" />
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="text-sm font-medium text-slate-800 truncate">
+                                                                            {payload.report_name || "Uploaded Report"}
+                                                                        </div>
+                                                                        <div className="text-xs text-slate-500">PDF Document</div>
+                                                                    </div>
+                                                                    {payload.report_preview && (
+                                                                        <a
+                                                                            href={payload.report_preview}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
+                                                                        >
+                                                                            Open Report
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        
+                                                        return null;
                                                     } catch {
                                                         return null;
                                                     }
