@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { cachedFetch, clearCache } from "@/lib/api-cache"; // ✅ Deduplication & Caching
+import DiagnosisResultPopup from "@/components/diagnosis-result-popup";
 
 // Types
 type ChatSession = {
@@ -477,6 +478,9 @@ export default function ChatDashboard() {
     // Track symptoms identified from image and report analysis
     const [imageIdentifiedSymptoms, setImageIdentifiedSymptoms] = useState<string[]>([]);
     const [reportIdentifiedSymptoms, setReportIdentifiedSymptoms] = useState<string[]>([]);
+
+    // Popup state for diagnosis result modal
+    const [showDiagnosisPopup, setShowDiagnosisPopup] = useState(false);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -957,6 +961,14 @@ export default function ChatDashboard() {
                     setFollowUpQuestionId("");
                     setFollowUpQuestion("");
                     setFollowUpChoices([]);
+                    
+                    // 🎯 Trigger popup when diagnosis is complete (no more follow-up questions)
+                    if (shouldDiagnose && data.ml_diagnosis) {
+                        // Small delay to allow the message to be rendered first
+                        setTimeout(() => {
+                            setShowDiagnosisPopup(true);
+                        }, 500);
+                    }
                 }
             }
         } catch (err: any) {
@@ -2120,6 +2132,17 @@ export default function ChatDashboard() {
                     </div>
                 )}
             </aside>
+
+            {/* Diagnosis Result Popup Modal */}
+            <DiagnosisResultPopup
+                isOpen={showDiagnosisPopup}
+                onClose={() => setShowDiagnosisPopup(false)}
+                diagnosis={latestDiagnosis}
+                uploadedReport={latestUploadedReport}
+                uploadedImage={latestUploadedImage || undefined}
+                imageIdentifiedSymptoms={imageIdentifiedSymptoms}
+                reportIdentifiedSymptoms={reportIdentifiedSymptoms}
+            />
         </div >
     );
 }
