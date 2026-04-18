@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from routers.diagnose import router as diagnose_router, warmup_image_models_in_background
+from routers.conversation import router as conversation_router
 from config import REQUEST_TIMEOUT_SECONDS
 
 logging.basicConfig(
@@ -97,6 +98,7 @@ async def timeout_middleware(request: Request, call_next):
 
 
 app.include_router(diagnose_router)
+app.include_router(conversation_router)
 
 
 @app.get("/")

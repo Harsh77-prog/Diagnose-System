@@ -637,31 +637,69 @@ export default function ChatDashboard() {
                     }, 300);
                 }
 
-                // Ask ML Engine
-                const res = await fetch("/api/diagnose/chat/json", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "x-session-id": activeSessionId
-                    },
-                    body: JSON.stringify({
-                        message: sentText,
-                        session_action: action || null,
-                        image_base64: imageDataUrl,
-                        image_filename: firstImage?.name || null,
-                        image_mime: firstImage?.type || null
-                    }),
-                });
+                // Check if this should trigger diagnosis flow
+                const messageLower = sentText.toLowerCase().trim();
+                const diagnosisPrefixes = ["diagnose:", "predict:", "symptoms:", "symptom:"];
+                const diagnosisKeywords = ["diagnose", "predict", "symptom", "symptoms", "ill", "sick", "pain", "ache", "fever", "cough", "cold"];
+                const shouldDiagnose = diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
+                    diagnosisKeywords.some(keyword => messageLower.includes(keyword));
 
-                const data = await parseResponseJson<{
-                    error?: string;
-                    reply?: string;
-                    ml_diagnosis?: unknown;
-                    follow_up_state?: unknown;
-                    follow_up_suggested?: boolean;
-                    follow_up_question?: string;
-                    follow_up_choices?: string[] | null;
-                }>(res);
+                let data: any;
+
+                if (shouldDiagnose) {
+                    // Use diagnosis engine
+                    const res = await fetch("/api/diagnose/chat/json", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "x-session-id": activeSessionId
+                        },
+                        body: JSON.stringify({
+                            message: sentText,
+                            session_action: action || null,
+                            image_base64: imageDataUrl,
+                            image_filename: firstImage?.name || null,
+                            image_mime: firstImage?.type || null
+                        }),
+                    });
+
+                    data = await parseResponseJson<{
+                        error?: string;
+                        reply?: string;
+                        ml_diagnosis?: unknown;
+                        follow_up_state?: unknown;
+                        follow_up_suggested?: boolean;
+                        follow_up_question?: string;
+                        follow_up_choices?: string[] | null;
+                    }>(res);
+
+                    if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
+                } else {
+                    // Use normal conversation API
+                    const res = await fetch("/api/conversation/chat/json", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "x-session-id": activeSessionId
+                        },
+                        body: JSON.stringify({
+                            message: sentText,
+                            session_action: action || null,
+                            image_base64: imageDataUrl,
+                            image_filename: firstImage?.name || null,
+                            image_mime: firstImage?.type || null
+                        }),
+                    });
+
+                    data = await parseResponseJson<{
+                        error?: string;
+                        reply?: string;
+                        is_diagnosis_suggestion?: boolean;
+                        source?: string;
+                    }>(res);
+
+                    if (!res.ok) throw new Error(data.error || "Failed to fetch conversation response");
+                }
 
                 // 🎯 Complete progress bar if image was analyzed
                 if (progressInterval) {
@@ -672,8 +710,6 @@ export default function ChatDashboard() {
                     setIsAnalyzingImage(false);
                 }
 
-                if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
-
                 // Save Assistant Message to DB
                 await fetch(`/api/chat/sessions/${activeSessionId}/messages`, {
                     method: "POST",
@@ -681,7 +717,7 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         role: "assistant",
                         content: data.reply || "Error parsing response",
-                        jsonPayload: data.ml_diagnosis || data.follow_up_state || null
+                        jsonPayload: shouldDiagnose ? (data.ml_diagnosis || data.follow_up_state || null) : null
                     })
                 });
 
@@ -692,7 +728,7 @@ export default function ChatDashboard() {
                     setMessages(syncData.messages);
                 }
 
-                if (data.follow_up_suggested) {
+                if (shouldDiagnose && data.follow_up_suggested) {
                     setFollowUpActive(true);
                     setFollowUpQuestion(data.follow_up_question || "Please answer the follow-up question.");
                     setFollowUpChoices(Array.isArray(data.follow_up_choices) ? data.follow_up_choices : []);
@@ -1199,34 +1235,39 @@ export default function ChatDashboard() {
                             <div className="w-16 h-16 rounded-2xl bg-[#0f0f0f] text-white flex items-center justify-center shadow-md mb-6">
                                 <Activity className="w-8 h-8" />
                             </div>
-                            <h2 className="text-2xl font-medium text-[#0f0f0f] mb-8">How can I help you today?</h2>
+                            <h2 className="text-2xl font-medium text-[#0f0f0f] mb-2">नमस्ते! मैं MedCoreAI हूँ</h2>
+                            <p className="text-sm text-[#666666] mb-8">आपकी स्वास्थ्य सेवा में आपका स्वागत है। मैं आपकी सामान्य बातचीत के साथ-साथ चिकित्सा निदान दोनों में मदद कर सकता हूँ।</p>
 
                             {/* Prompt Chips */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Evaluate my recent symptoms details.")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("मेरे लक्षणों का मूल्यांकन करें।")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">Evaluate symptoms</span>
-                                        <span className="text-xs text-[#8e8e8e]">Get a preliminary AI diagnosis</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">लक्षण मूल्यांकन</span>
+                                        <span className="text-xs text-[#8e8e8e]">प्रारंभिक AI निदान प्राप्त करें</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("What are the precautions for stomach ache?")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("पेट दर्द के लिए सावधानियां क्या हैं?")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">Health precautions</span>
-                                        <span className="text-xs text-[#8e8e8e]">Learn how to manage conditions</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">स्वास्थ्य सावधानियां</span>
+                                        <span className="text-xs text-[#8e8e8e]">स्थितियों को प्रबंधित करना सीखें</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Give me a healthy list of dietary habits.")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("स्वस्थ आहार आदतों की सूची दें।")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">Dietary habits</span>
-                                        <span className="text-xs text-[#8e8e8e]">Improve your daily lifestyle</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">आहार आदतें</span>
+                                        <span className="text-xs text-[#8e8e8e]">अपनी दैनिक जीवनशैली में सुधार करें</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Explain common medical terminology.")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("सामान्य चिकित्सा शब्दावली समझाएं।")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">Understand reports</span>
-                                        <span className="text-xs text-[#8e8e8e]">Decode medical jargon</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">रिपोर्ट समझें</span>
+                                        <span className="text-xs text-[#8e8e8e]">चिकित्सा जार्गन डिकोड करें</span>
                                     </div>
                                 </Button>
+                            </div>
+                            
+                            <div className="mt-6 text-xs text-[#8e8e8e]">
+                                निदान शुरू करने के लिए "diagnose:" या "predict:" के साथ संदेश शुरू करें। उदाहरण: "diagnose: मुझे बुखार है"
                             </div>
                         </div>
                     ) : (

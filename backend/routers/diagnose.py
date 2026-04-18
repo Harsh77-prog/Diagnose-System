@@ -136,25 +136,6 @@ async def diagnose_chat(
     return result
 
 
-@router.post("/upload-report")
-async def upload_report(
-    request: Request,
-    file: UploadFile = File(...),
-) -> dict[str, Any]:
-    """Upload a report (PDF or text). Returns extracted text for the client to send in the next /chat call."""
-    user_id = require_user_id(request)
-    content = await file.read()
-    filename = file.filename or ""
-    mime = file.content_type or ""
-
-    text = parse_report_content(content_bytes=content, filename=filename, mime_type=mime)
-    return {
-        "extracted_text": text,
-        "filename": filename,
-        "user_id": user_id,
-    }
-
-
 @router.get("/history")
 async def get_history(request: Request) -> dict[str, Any]:
     """Get current user's diagnosis conversation history."""
@@ -166,7 +147,7 @@ async def get_history(request: Request) -> dict[str, Any]:
 
 @router.post("/chat/json")
 async def diagnose_chat_json(request: Request) -> dict[str, Any]:
-    """JSON body: { message, session_action?, image_prediction? }. ML-powered diagnosis."""
+    """JSON body: { message, session_action?, image_prediction?, report_prediction? }. ML-powered diagnosis."""
     user_id = require_user_id(request)
     try:
         body = await request.json()
@@ -178,18 +159,69 @@ async def diagnose_chat_json(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="message is required")
 
     session_action = body.get("session_action")
-    image_prediction = body.get("image_prediction")  # New: Accept image results
+    image_prediction = body.get("image_prediction")  # Image analysis results
+    report_prediction = body.get("report_prediction")  # Report analysis results
     session_id = request.headers.get("X-Session-Id") or user_id
 
-    # Update call to pass image_prediction
-    result = _run_ml_diagnose(
+    # Call diagnosis with all available data
+    from diagnose_ml import run_ml_diagnose
+    
+    result = run_ml_diagnose(
         user_id=user_id,
         session_id=session_id,
         user_message=message,
         session_action=session_action,
         image_prediction=image_prediction,
+        report_prediction=report_prediction,
     )
     return result
+
+
+@router.post("/upload-report")
+async def upload_report(
+    request: Request,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Upload a medical report (PDF, image, or text). 
+    Extracts text using OCR and analyzes with API to extract symptoms.
+    """
+    user_id = require_user_id(request)
+    
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No file provided")
+    
+    content = await file.read()
+    filename = file.filename
+    mime_type = file.content_type or ""
+    
+    # Process the report
+    from report_analyzer import process_report
+    
+    try:
+        result = await process_report(
+            file_content=content,
+            filename=filename,
+            mime_type=mime_type,
+        )
+        
+        if "error" in result and not result.get("symptoms"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Failed to process report")
+            )
+        
+        return {
+            "report_prediction": result,
+            "user_id": user_id,
+            "filename": filename,
+        }
+        
+    except Exception as e:
+        LOGGER.error(f"Report processing failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Report processing failed: {str(e)}"
+        )
 
 
 @router.post("/image-predict")
@@ -333,6 +365,34 @@ async def image_predict_warmup(request: Request) -> dict[str, Any]:
         "warmed_datasets": warmed,
         "latency_ms": duration_ms,
         "image_debug": debug,
+    }
+
+
+@router.post("/recommend-datasets")
+async def recommend_datasets(request: Request) -> dict[str, Any]:
+    """JSON body: { symptoms: list[str] }.
+    Returns recommended MedMNIST datasets based on the extracted symptoms.
+    This helps the frontend select the right image models for diagnosis.
+    """
+    require_user_id(request)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON")
+
+    symptoms = body.get("symptoms", [])
+    if not symptoms or not isinstance(symptoms, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="symptoms array is required")
+
+    # Get recommended datasets based on symptoms
+    from diagnose_ml import get_recommended_datasets
+    
+    recommended = get_recommended_datasets(symptoms)
+    
+    return {
+        "symptoms": symptoms,
+        "recommended_datasets": recommended,
+        "explanation": f"Based on your symptoms, we recommend using these image analysis models for more accurate diagnosis."
     }
 
 

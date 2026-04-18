@@ -58,7 +58,7 @@ These files are ignored by Git (`*.pth`).
 ## 4) Run Backend (Render/local)
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Backend health:
