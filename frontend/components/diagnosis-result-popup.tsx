@@ -99,7 +99,14 @@ export default function DiagnosisResultPopup({
         setIsDownloading(true);
         try {
             const element = reportRef.current;
-            if (!element) return;
+            if (!element) {
+                console.error("Report element not found");
+                setIsDownloading(false);
+                return;
+            }
+
+            // Wait a moment for any animations to complete
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Create a canvas with higher quality
             const canvas = await html2canvas(element, {
@@ -108,30 +115,45 @@ export default function DiagnosisResultPopup({
                 logging: false,
                 backgroundColor: "#ffffff",
                 imageTimeout: 0,
+                allowTaint: true,
+                windowWidth: 1200,
+                width: element.scrollWidth,
+                height: element.scrollHeight,
+                x: 0,
+                y: 0,
+                scrollX: 0,
+                scrollY: 0,
             });
 
-            const imgData = canvas.toDataURL("image/png");
+            const imgData = canvas.toDataURL("image/png", 1.0);
+            
+            // Create PDF
             const pdf = new jsPDF({
                 orientation: "portrait",
                 unit: "mm",
                 format: "a4",
+                compress: true,
             });
 
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = pdf.internal.pageSize.getHeight();
             const imgWidth = canvas.width;
             const imgHeight = canvas.height;
-            const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+            const ratio = Math.min(pdfWidth / imgWidth, (pdfHeight - 20) / imgHeight);
             const imgX = (pdfWidth - imgWidth * ratio) / 2;
             const imgY = 10;
 
             pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-            pdf.save(`MedCoreAI_Diagnosis_Report_${diagnosis.diagnosis.replace(/\s+/g, "_")}.pdf`);
+            
+            // Generate filename
+            const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            pdf.save(filename);
 
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 3000);
         } catch (error) {
             console.error("Failed to generate PDF:", error);
+            alert("Failed to generate PDF. Please try again.");
         } finally {
             setIsDownloading(false);
         }
@@ -146,7 +168,22 @@ export default function DiagnosisResultPopup({
             />
 
             {/* Main popup container */}
-            <div className="relative max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300">
+            <div
+                className="relative max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300"
+                style={{
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none',
+                }}
+            >
+                <style jsx>{`
+                    .scrollbar-hide::-webkit-scrollbar {
+                        display: none;
+                    }
+                    .scrollbar-hide {
+                        -ms-overflow-style: none;
+                        scrollbar-width: none;
+                    }
+                `}</style>
                 {/* Close button with animation */}
                 <button
                     onClick={onClose}
