@@ -106,7 +106,7 @@ export default function DiagnosisResultPopup({
             }
 
             // Wait a moment for any animations to complete
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 200));
 
             // Create a canvas with higher quality
             const canvas = await html2canvas(element, {
@@ -114,19 +114,29 @@ export default function DiagnosisResultPopup({
                 useCORS: true,
                 logging: false,
                 backgroundColor: "#ffffff",
-                imageTimeout: 0,
+                imageTimeout: 30000,
                 allowTaint: true,
-                windowWidth: 1200,
+                windowWidth: element.scrollWidth,
                 width: element.scrollWidth,
                 height: element.scrollHeight,
                 x: 0,
                 y: 0,
                 scrollX: 0,
-                scrollY: 0,
+                scrollY: -element.scrollTop,
+                foreignObjectRendering: true,
+                removeContainer: true,
             });
+
+            if (!canvas) {
+                throw new Error("Failed to create canvas from report content");
+            }
 
             const imgData = canvas.toDataURL("image/png", 1.0);
             
+            if (!imgData) {
+                throw new Error("Failed to convert canvas to image data");
+            }
+
             // Create PDF
             const pdf = new jsPDF({
                 orientation: "portrait",
@@ -153,7 +163,7 @@ export default function DiagnosisResultPopup({
             setTimeout(() => setShowSuccess(false), 3000);
         } catch (error) {
             console.error("Failed to generate PDF:", error);
-            alert("Failed to generate PDF. Please try again.");
+            alert("Failed to generate PDF. Please try again. If the issue persists, try taking a screenshot instead.");
         } finally {
             setIsDownloading(false);
         }
@@ -169,59 +179,63 @@ export default function DiagnosisResultPopup({
 
             {/* Main popup container */}
             <div
-                className="relative max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300"
+                className="relative max-w-4xl w-full mx-4 max-h-[90vh] bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
                 style={{
                     scrollbarWidth: 'none',
                     msOverflowStyle: 'none',
                 }}
             >
                 <style jsx>{`
-                    .scrollbar-hide::-webkit-scrollbar {
+                    div::-webkit-scrollbar {
                         display: none;
                     }
-                    .scrollbar-hide {
+                    div {
                         -ms-overflow-style: none;
                         scrollbar-width: none;
                     }
                 `}</style>
-                {/* Close button with animation */}
-                <button
-                    onClick={onClose}
-                    className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center hover:bg-slate-700 transition-all duration-300 hover:rotate-90 hover:scale-110 group"
-                    aria-label="Close"
-                >
-                    <X className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90" />
-                </button>
 
-                {/* Download button */}
-                <button
-                    onClick={handleDownloadPDF}
-                    disabled={isDownloading}
-                    className="absolute top-4 left-4 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition-all duration-300 disabled:opacity-50"
-                >
-                    {isDownloading ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
-                            <span>Generating...</span>
-                        </>
-                    ) : (
-                        <>
-                            <Download className="w-4 h-4" />
-                            <span>Download PDF</span>
-                        </>
-                    )}
-                </button>
+                {/* Fixed header with buttons */}
+                <div className="sticky top-0 z-20 bg-white rounded-t-3xl px-6 py-4 flex items-center justify-between border-b border-slate-100">
+                    {/* Download button */}
+                    <button
+                        onClick={handleDownloadPDF}
+                        disabled={isDownloading}
+                        className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 transition-all duration-300 disabled:opacity-50"
+                    >
+                        {isDownloading ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-slate-600 border-t-transparent rounded-full animate-spin" />
+                                <span>Generating...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Download className="w-4 h-4" />
+                                <span>Download PDF</span>
+                            </>
+                        )}
+                    </button>
+
+                    {/* Close button with animation */}
+                    <button
+                        onClick={onClose}
+                        className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center hover:bg-slate-700 transition-all duration-300 hover:rotate-90 hover:scale-110 group"
+                        aria-label="Close"
+                    >
+                        <X className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90" />
+                    </button>
+                </div>
 
                 {/* Success toast */}
                 {showSuccess && (
-                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 rounded-full bg-green-600 text-white text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full bg-green-600 text-white text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-300">
                         <CheckCircle2 className="w-4 h-4" />
                         <span>PDF downloaded successfully!</span>
                     </div>
                 )}
 
-                {/* Report content */}
-                <div ref={reportRef} className="p-8 md:p-12">
+                {/* Scrollable Report content */}
+                <div ref={reportRef} className="flex-1 overflow-y-auto p-8 md:p-12">
                     {/* Header with branding */}
                     <div className="flex items-center justify-between mb-8 pb-6 border-b-2 border-slate-900">
                         <div className="flex items-center gap-3">
