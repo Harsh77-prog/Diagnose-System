@@ -1235,39 +1235,39 @@ export default function ChatDashboard() {
                             <div className="w-16 h-16 rounded-2xl bg-[#0f0f0f] text-white flex items-center justify-center shadow-md mb-6">
                                 <Activity className="w-8 h-8" />
                             </div>
-                            <h2 className="text-2xl font-medium text-[#0f0f0f] mb-2">नमस्ते! मैं MedCoreAI हूँ</h2>
-                            <p className="text-sm text-[#666666] mb-8">आपकी स्वास्थ्य सेवा में आपका स्वागत है। मैं आपकी सामान्य बातचीत के साथ-साथ चिकित्सा निदान दोनों में मदद कर सकता हूँ।</p>
+                            <h2 className="text-2xl font-medium text-[#0f0f0f] mb-2">Hello! I am MedCoreAI</h2>
+                            <p className="text-sm text-[#666666] mb-8">Welcome to your healthcare companion. I can help you with general conversations as well as medical diagnosis assistance.</p>
 
                             {/* Prompt Chips */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full">
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("मेरे लक्षणों का मूल्यांकन करें।")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Evaluate my symptoms.")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">लक्षण मूल्यांकन</span>
-                                        <span className="text-xs text-[#8e8e8e]">प्रारंभिक AI निदान प्राप्त करें</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">Symptom Evaluation</span>
+                                        <span className="text-xs text-[#8e8e8e]">Get preliminary AI diagnosis</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("पेट दर्द के लिए सावधानियां क्या हैं?")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("What precautions should I take for stomach pain?")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">स्वास्थ्य सावधानियां</span>
-                                        <span className="text-xs text-[#8e8e8e]">स्थितियों को प्रबंधित करना सीखें</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">Health Precautions</span>
+                                        <span className="text-xs text-[#8e8e8e]">Learn to manage conditions</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("स्वस्थ आहार आदतों की सूची दें।")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Give me a healthy list of dietary habits.")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">आहार आदतें</span>
-                                        <span className="text-xs text-[#8e8e8e]">अपनी दैनिक जीवनशैली में सुधार करें</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">Dietary Habits</span>
+                                        <span className="text-xs text-[#8e8e8e]">Improve your daily lifestyle</span>
                                     </div>
                                 </Button>
-                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("सामान्य चिकित्सा शब्दावली समझाएं।")}>
+                                <Button variant="outline" className="h-auto py-3 px-4 justify-start text-left rounded-xl border-[#e5e5e5] hover:bg-[#f9f9f9] transition-colors" onClick={() => setInput("Explain common medical terminology.")}>
                                     <div className="flex flex-col gap-1 items-start">
-                                        <span className="text-sm font-medium text-[#0f0f0f]">रिपोर्ट समझें</span>
-                                        <span className="text-xs text-[#8e8e8e]">चिकित्सा जार्गन डिकोड करें</span>
+                                        <span className="text-sm font-medium text-[#0f0f0f]">Understand Reports</span>
+                                        <span className="text-xs text-[#8e8e8e]">Decode medical jargon</span>
                                     </div>
                                 </Button>
                             </div>
                             
                             <div className="mt-6 text-xs text-[#8e8e8e]">
-                                निदान शुरू करने के लिए "diagnose:" या "predict:" के साथ संदेश शुरू करें। उदाहरण: "diagnose: मुझे बुखार है"
+                                Start your message with "diagnose:" or "predict:" to begin diagnosis. Example: "diagnose: I have a fever"
                             </div>
                         </div>
                     ) : (

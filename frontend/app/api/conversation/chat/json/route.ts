@@ -8,6 +8,10 @@ function resolveBackendUrl(): string {
   return (process.env.BACKEND_URL || "").trim().replace(/\/+$/, "");
 }
 
+function getSharedSecret(): string {
+  return process.env.SHARED_SECRET || "";
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
@@ -39,11 +43,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Forward request to backend
+    // Get shared secret and user ID for backend authentication
+    const sharedSecret = getSharedSecret();
+    const userId = session.user.email || "anonymous";
+
+    // Forward request to backend with authentication headers
     const backendResponse = await fetch(`${backendUrl}/api/conversation/chat/json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // Pass authentication headers to backend
+        "X-Internal-Secret": sharedSecret,
+        "X-User-Id": userId,
         // Pass session ID if provided
         ...(request.headers.get("x-session-id") && {
           "x-session-id": request.headers.get("x-session-id")!,
