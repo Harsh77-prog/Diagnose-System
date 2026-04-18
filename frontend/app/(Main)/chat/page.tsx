@@ -638,10 +638,12 @@ export default function ChatDashboard() {
                 }
 
                 // Check if this should trigger diagnosis flow
+                // Always use diagnosis API if there's an active follow-up state
+                const hasActiveFollowup = followUpActive;
                 const messageLower = sentText.toLowerCase().trim();
                 const diagnosisPrefixes = ["diagnose:", "predict:", "symptoms:", "symptom:"];
                 const diagnosisKeywords = ["diagnose", "predict", "symptom", "symptoms", "ill", "sick", "pain", "ache", "fever", "cough", "cold"];
-                const shouldDiagnose = diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
+                const shouldDiagnose = hasActiveFollowup || diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
                     diagnosisKeywords.some(keyword => messageLower.includes(keyword));
 
                 let data: any;
