@@ -102,17 +102,22 @@ export default function DiagnosisResultPopup({
             if (!element) {
                 console.error("Report element not found");
                 setIsDownloading(false);
+                alert("Error: Report content not available. Please try again.");
                 return;
             }
 
+            console.log("Starting PDF generation...");
+            console.log("Element dimensions:", element.scrollWidth, element.scrollHeight);
+
             // Wait a moment for any animations to complete
-            await new Promise(resolve => setTimeout(resolve, 200));
+            await new Promise(resolve => setTimeout(resolve, 500));
 
             // Create a canvas with higher quality
+            console.log("Creating canvas...");
             const canvas = await html2canvas(element, {
                 scale: 2,
                 useCORS: true,
-                logging: false,
+                logging: true,
                 backgroundColor: "#ffffff",
                 imageTimeout: 30000,
                 allowTaint: true,
@@ -122,14 +127,23 @@ export default function DiagnosisResultPopup({
                 x: 0,
                 y: 0,
                 scrollX: 0,
-                scrollY: -element.scrollTop,
+                scrollY: 0,
                 foreignObjectRendering: true,
                 removeContainer: true,
+                ignoreElements: (el) => {
+                    // Ignore elements that might cause issues
+                    if (el.tagName === 'BUTTON' && el.closest('[data-ignore-in-pdf]')) {
+                        return true;
+                    }
+                    return false;
+                }
             });
 
             if (!canvas) {
                 throw new Error("Failed to create canvas from report content");
             }
+
+            console.log("Canvas created:", canvas.width, canvas.height);
 
             const imgData = canvas.toDataURL("image/png", 1.0);
             
@@ -137,7 +151,10 @@ export default function DiagnosisResultPopup({
                 throw new Error("Failed to convert canvas to image data");
             }
 
+            console.log("Image data created, length:", imgData.length);
+
             // Create PDF
+            console.log("Creating PDF...");
             const pdf = new jsPDF({
                 orientation: "portrait",
                 unit: "mm",
@@ -153,17 +170,22 @@ export default function DiagnosisResultPopup({
             const imgX = (pdfWidth - imgWidth * ratio) / 2;
             const imgY = 10;
 
+            console.log("Adding image to PDF...");
             pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, imgHeight * ratio);
             
             // Generate filename
             const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            
+            console.log("Saving PDF as:", filename);
             pdf.save(filename);
 
+            console.log("PDF saved successfully!");
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 3000);
         } catch (error) {
             console.error("Failed to generate PDF:", error);
-            alert("Failed to generate PDF. Please try again. If the issue persists, try taking a screenshot instead.");
+            const errorMessage = error instanceof Error ? error.message : "Unknown error";
+            alert(`Failed to generate PDF: ${errorMessage}\n\nPlease try again or take a screenshot instead.`);
         } finally {
             setIsDownloading(false);
         }
