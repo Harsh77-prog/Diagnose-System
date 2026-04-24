@@ -70,23 +70,60 @@ function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-    const buffer = new ArrayBuffer(bytes.length);
-    new Uint8Array(buffer).set(bytes);
-    return buffer;
+function sanitizeFilenamePart(value: string): string {
+    return value.replace(/[<>:"/\\|?*\x00-\x1F]+/g, "_").replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function uint8ArrayToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+function looksLikePdf(report?: UploadedReport | null): boolean {
+    if (!report) {
+        return false;
+    }
+
+    const reportType = report.type?.toLowerCase() || "";
+    const reportName = report.name?.toLowerCase() || "";
+    const reportPreview = report.preview?.toLowerCase() || "";
+
+    return reportType.includes("pdf")
+        || reportName.endsWith(".pdf")
+        || reportPreview.startsWith("data:application/pdf");
 }
 
 function triggerPdfDownload(pdfBytes: Uint8Array, filename: string) {
-    const blob = new Blob([toArrayBuffer(pdfBytes)], { type: "application/pdf" });
+    if (pdfBytes.length === 0) {
+        throw new Error("Generated PDF is empty");
+    }
+
+    const blob = new Blob([uint8ArrayToArrayBuffer(pdfBytes)], { type: "application/pdf" });
+    const legacyNavigator = window.navigator as Navigator & {
+        msSaveOrOpenBlob?: (blob: Blob, defaultName?: string) => boolean;
+    };
+
+    if (legacyNavigator.msSaveOrOpenBlob) {
+        legacyNavigator.msSaveOrOpenBlob(blob, filename);
+        return;
+    }
+
     const downloadUrl = URL.createObjectURL(blob);
     const downloadLink = document.createElement("a");
     downloadLink.href = downloadUrl;
     downloadLink.download = filename;
     downloadLink.style.display = "none";
+    downloadLink.rel = "noopener noreferrer";
     document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+
+    try {
+        downloadLink.click();
+    } finally {
+        document.body.removeChild(downloadLink);
+    }
+
+    window.setTimeout(() => {
+        URL.revokeObjectURL(downloadUrl);
+    }, 60000);
 }
 
 function sanitizeClonedDocument(clonedDoc: Document) {
@@ -387,6 +424,11 @@ async function appendExistingPdf(pdfDoc: PDFDocument, pdfUrl: string) {
     copiedPages.forEach((page) => pdfDoc.addPage(page));
 }
 
+async function downloadPdfDocument(pdfDoc: PDFDocument, filename: string) {
+    const pdfBytes = await pdfDoc.save();
+    triggerPdfDownload(pdfBytes, filename);
+}
+
 export default function DiagnosisResultPopup({
     isOpen,
     onClose,
@@ -414,7 +456,8 @@ export default function DiagnosisResultPopup({
 
     const handleDownloadPDF = async () => {
         setIsDownloading(true);
-        const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+        const safeDiagnosisName = sanitizeFilenamePart(diagnosis.diagnosis).slice(0, 30) || "Diagnosis";
+        const filename = `MedCoreAI_Report_${safeDiagnosisName}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
         try {
             const element = reportRef.current;
@@ -441,7 +484,7 @@ export default function DiagnosisResultPopup({
                 }
             }
 
-            if (uploadedReport?.preview) {
+            if (uploadedReport?.preview && looksLikePdf(uploadedReport)) {
                 try {
                     await appendExistingPdf(finalPdf, uploadedReport.preview);
                 } catch (attachmentError) {
@@ -449,7 +492,7 @@ export default function DiagnosisResultPopup({
                 }
             }
 
-            triggerPdfDownload(new Uint8Array(toArrayBuffer(await finalPdf.save())), filename);
+            await downloadPdfDocument(finalPdf, filename);
             setDownloadFeedback("success");
             setTimeout(() => setDownloadFeedback(null), 3600);
         } catch (error) {
@@ -467,7 +510,7 @@ export default function DiagnosisResultPopup({
                     }
                 }
 
-                if (uploadedReport?.preview) {
+                if (uploadedReport?.preview && looksLikePdf(uploadedReport)) {
                     try {
                         await appendExistingPdf(emergencyPdf, uploadedReport.preview);
                     } catch (attachmentError) {
@@ -475,7 +518,7 @@ export default function DiagnosisResultPopup({
                     }
                 }
 
-                triggerPdfDownload(new Uint8Array(toArrayBuffer(await emergencyPdf.save())), filename);
+                await downloadPdfDocument(emergencyPdf, filename);
                 setDownloadFeedback("success");
                 setTimeout(() => setDownloadFeedback(null), 3600);
             } catch (fallbackError) {

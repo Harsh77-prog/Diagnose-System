@@ -309,7 +309,7 @@ function AnalysisProgressPanel({
                                 {Math.round(safeProgress)}%
                             </div>
                             <div className={`mt-1 text-[11px] ${theme.subtext}`}>
-                                Step ~{currentTime} • Total ~{totalEstimate}
+                                Step ~{currentTime} | Total ~{totalEstimate}
                             </div>
                         </div>
                     </div>
