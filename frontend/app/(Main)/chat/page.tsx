@@ -32,6 +32,7 @@ type UserMessagePayload = {
     image_name?: string;
     report_name?: string;
     report_preview?: string;
+    report_type?: string;
 };
 
 type FollowupStatePayload = {
@@ -116,20 +117,88 @@ function extractLatestDiagnosis(messages: Message[]): { messageId: string; paylo
     return null;
 }
 
-function extractLatestUploadedImage(messages: Message[]): { preview: string; name?: string } | null {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
+function isDiagnosisPayload(value: unknown): value is DiagnosisPayload {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<DiagnosisPayload>;
+    return typeof candidate.diagnosis === "string" && Array.isArray(candidate.top_predictions);
+}
+
+function extractContextForDiagnosis(
+    messages: Message[],
+    diagnosisMessageId: string,
+    diagnosisPayload: DiagnosisPayload
+): {
+    uploadedImage: { preview: string; name?: string } | null;
+    uploadedReport: { preview: string; name: string; type: string } | null;
+    imageSymptoms: string[];
+    reportSymptoms: string[];
+} {
+    const diagnosisIndex = messages.findIndex((msg) => msg.id === diagnosisMessageId);
+    const imageSymptoms = (diagnosisPayload.image_prediction?.per_dataset || [])
+        .map((dataset) => dataset.top_label_name)
+        .filter(Boolean);
+    const reportSymptoms = diagnosisPayload.report_analysis?.symptoms || [];
+
+    if (diagnosisIndex === -1) {
+        return {
+            uploadedImage: null,
+            uploadedReport: null,
+            imageSymptoms,
+            reportSymptoms,
+        };
+    }
+
+    let boundaryIndex = -1;
+    for (let i = diagnosisIndex - 1; i >= 0; i -= 1) {
         const msg = messages[i];
-        if (msg.role !== "user" || !msg.jsonPayload) continue;
+        if (msg.role !== "assistant" || !msg.jsonPayload) continue;
         try {
-            const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
-            if (parsed.image_preview) {
-                return { preview: parsed.image_preview, name: parsed.image_name };
+            const parsed = JSON.parse(msg.jsonPayload) as unknown;
+            if (isDiagnosisPayload(parsed)) {
+                boundaryIndex = i;
+                break;
             }
         } catch {
             continue;
         }
     }
-    return null;
+
+    for (let i = diagnosisIndex - 1; i > boundaryIndex; i -= 1) {
+        const msg = messages[i];
+        if (msg.role !== "user" || !msg.jsonPayload) continue;
+
+        try {
+            const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
+            const uploadedImage = parsed.image_preview
+                ? { preview: parsed.image_preview, name: parsed.image_name }
+                : null;
+            const uploadedReport = (parsed.report_preview || parsed.report_name)
+                ? {
+                    preview: parsed.report_preview || "",
+                    name: parsed.report_name || "Uploaded Report",
+                    type: parsed.report_type || "application/pdf",
+                }
+                : null;
+
+            if (uploadedImage || uploadedReport) {
+                return {
+                    uploadedImage,
+                    uploadedReport,
+                    imageSymptoms,
+                    reportSymptoms,
+                };
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    return {
+        uploadedImage: null,
+        uploadedReport: null,
+        imageSymptoms,
+        reportSymptoms,
+    };
 }
 
 async function parseResponseJson<T>(res: Response): Promise<T> {
@@ -791,40 +860,23 @@ export default function ChatDashboard() {
         if (!latest) {
             setLatestDiagnosis(null);
             setLatestDiagnosisMessageId(null);
+            setLatestUploadedImage(null);
+            setLatestUploadedReport(null);
+            setImageIdentifiedSymptoms([]);
+            setReportIdentifiedSymptoms([]);
             return;
         }
         if (latest.messageId !== latestDiagnosisMessageId) {
+            const context = extractContextForDiagnosis(messages, latest.messageId, latest.payload);
             setLatestDiagnosis(latest.payload);
             setLatestDiagnosisMessageId(latest.messageId);
+            setLatestUploadedImage(context.uploadedImage);
+            setLatestUploadedReport(context.uploadedReport);
+            setImageIdentifiedSymptoms(context.imageSymptoms);
+            setReportIdentifiedSymptoms(context.reportSymptoms);
             setResultPanelMinimized(false);
         }
     }, [messages, latestDiagnosisMessageId]);
-
-    useEffect(() => {
-        setLatestUploadedImage(extractLatestUploadedImage(messages));
-    }, [messages]);
-
-    // Track latest uploaded report from messages
-    useEffect(() => {
-        for (let i = messages.length - 1; i >= 0; i -= 1) {
-            const msg = messages[i];
-            if (msg.role !== "user" || !msg.jsonPayload) continue;
-            try {
-                const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
-                if (parsed.report_preview || parsed.report_name) {
-                    setLatestUploadedReport({
-                        preview: parsed.report_preview || "",
-                        name: parsed.report_name || "Uploaded Report",
-                        type: "pdf"
-                    });
-                    return;
-                }
-            } catch {
-                continue;
-            }
-        }
-        setLatestUploadedReport(null);
-    }, [messages]);
 
     useEffect(() => {
         return () => {
@@ -983,7 +1035,8 @@ export default function ChatDashboard() {
                     image_preview: imageDataUrl || undefined, 
                     image_name: firstImage?.name, 
                     report_name: firstReport?.name,
-                    report_preview: reportPreviewUrl || undefined
+                    report_preview: reportPreviewUrl || undefined,
+                    report_type: firstReport?.type || undefined
                 } as UserMessagePayload)
                 : null,
         };
@@ -1028,7 +1081,8 @@ export default function ChatDashboard() {
                             image_preview: imageDataUrl || undefined,
                             image_name: firstImage?.name,
                             report_name: firstReport?.name,
-                            report_preview: reportPreviewUrl || undefined
+                            report_preview: reportPreviewUrl || undefined,
+                            report_type: firstReport?.type || undefined
                         } : null
                     })
                 });
