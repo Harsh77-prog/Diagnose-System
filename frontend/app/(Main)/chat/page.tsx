@@ -429,7 +429,7 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
             .filter(Boolean);
         const primarySignal = normalized.match(/Primary image signal \(context-weighted\):\s*\*?\*?(.+?)\*?\*?(?:\n|$)/i)?.[1]?.trim();
         const rawSignal = normalized.match(/Raw highest-confidence dataset:\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
-        const followupQuestion = normalized.match(/\*\*Question\s+\d+:\*\*\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
+        const followupBlock = normalized.match(/(\*\*Question\s+\d+:\*\*[\s\S]*)$/i)?.[1]?.trim();
 
         return (
             <div className="not-prose mt-1 max-w-2xl space-y-3">
@@ -479,14 +479,15 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
                             </div>
                         )}
                     </div>
-
-                    {followupQuestion && (
-                        <div className="mt-4 rounded-2xl border border-slate-300 bg-gradient-to-r from-white to-slate-100 p-4">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">Next question</div>
-                            <div className="mt-2 text-[14px] font-medium leading-relaxed text-slate-800">{followupQuestion}</div>
-                        </div>
-                    )}
                 </div>
+
+                {followupBlock ? (
+                    <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-[#0f0f0f]">
+                        {followupBlock.split("**").map((part, i) =>
+                            i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{part}</strong> : part
+                        )}
+                    </div>
+                ) : null}
             </div>
         );
     }
@@ -506,7 +507,7 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
         const extractedSignals = sectionMatches
             .find(([, title]) => title.toLowerCase() === "symptoms/signals extracted for diagnosis")?.[2]
             ?.split(",").map((item) => item.trim()).filter(Boolean) || [];
-        const followupQuestion = normalized.match(/\*\*Question\s+\d+:\*\*\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
+        const followupBlock = normalized.match(/(\*\*Question\s+\d+:\*\*[\s\S]*)$/i)?.[1]?.trim();
 
         const renderChips = (items: string[], tone: "red" | "amber" | "emerald") => {
             const tones = {
@@ -578,13 +579,15 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
                         </div>
                     )}
 
-                    {followupQuestion && (
-                        <div className="mt-4 rounded-2xl border border-slate-300 bg-gradient-to-r from-white to-slate-100 p-4">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">Next question</div>
-                            <div className="mt-2 text-[14px] font-medium leading-relaxed text-slate-800">{followupQuestion}</div>
-                        </div>
-                    )}
                 </div>
+
+                {followupBlock ? (
+                    <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-[#0f0f0f]">
+                        {followupBlock.split("**").map((part, i) =>
+                            i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{part}</strong> : part
+                        )}
+                    </div>
+                ) : null}
             </div>
         );
     }
@@ -961,7 +964,12 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         role: "user",
                         content: sentText,
-                        jsonPayload: imageDataUrl || firstReport ? { image_preview: imageDataUrl || undefined, image_name: firstImage?.name, report_name: firstReport?.name } : null
+                        jsonPayload: imageDataUrl || firstReport ? {
+                            image_preview: imageDataUrl || undefined,
+                            image_name: firstImage?.name,
+                            report_name: firstReport?.name,
+                            report_preview: reportPreviewUrl || undefined
+                        } : null
                     })
                 });
 

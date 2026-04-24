@@ -110,8 +110,17 @@ function sanitizeClonedDocument(clonedDoc: Document) {
 }
 
 async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
-    const pngDataUrl = canvas.toDataURL("image/png", 1.0);
-    return fetch(pngDataUrl).then((response) => response.arrayBuffer());
+    const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((value) => {
+            if (value) {
+                resolve(value);
+                return;
+            }
+            reject(new Error("Failed to convert canvas into PNG blob"));
+        }, "image/png", 1.0);
+    });
+
+    return blob.arrayBuffer();
 }
 
 async function captureReportCanvas(element: HTMLDivElement): Promise<HTMLCanvasElement> {
@@ -166,8 +175,103 @@ async function captureReportCanvas(element: HTMLDivElement): Promise<HTMLCanvasE
 
     try {
         return await html2canvas(clonedElement, baseOptions);
+    } catch (error) {
+        console.warn("Hidden popup capture failed, retrying with the visible popup.", error);
+        return html2canvas(element, {
+            ...baseOptions,
+            windowWidth: Math.max(window.innerWidth, renderWidth),
+            windowHeight: Math.max(window.innerHeight, renderHeight),
+        });
     } finally {
         document.body.removeChild(captureRoot);
+    }
+}
+
+function wrapPdfText(text: string, maxChars = 92): string[] {
+    return text
+        .split("\n")
+        .flatMap((paragraph) => {
+            const trimmed = paragraph.trim();
+            if (!trimmed) {
+                return [""];
+            }
+
+            const words = trimmed.split(/\s+/);
+            const lines: string[] = [];
+            let current = "";
+
+            for (const word of words) {
+                const next = current ? `${current} ${word}` : word;
+                if (next.length > maxChars) {
+                    if (current) {
+                        lines.push(current);
+                    }
+                    current = word;
+                } else {
+                    current = next;
+                }
+            }
+
+            if (current) {
+                lines.push(current);
+            }
+
+            return lines;
+        });
+}
+
+async function appendTextFallbackPdf(
+    pdfDoc: PDFDocument,
+    diagnosis: DiagnosisPayload,
+    imageIdentifiedSymptoms: string[],
+    reportIdentifiedSymptoms: string[]
+) {
+    const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 42;
+    const lineHeight = 18;
+
+    const sections = [
+        `MedCoreAI Diagnostic Report`,
+        "",
+        `Likely condition: ${labelize(diagnosis.diagnosis)}`,
+        `Confidence: ${Number(diagnosis.confidence || 0).toFixed(1)}%`,
+        `Profile: ${labelize(String(diagnosis.demographics?.gender || "unknown"))}, ${labelize(String(diagnosis.demographics?.age_group || "unknown"))}`,
+        "",
+        `Symptoms: ${(diagnosis.confirmed_symptoms || []).map(labelize).join(", ") || "No symptoms captured"}`,
+        "",
+        `What this means: ${diagnosis.disease_info?.description || "No additional description available."}`,
+        "",
+        `Home remedies: ${(diagnosis.guidance?.home_remedies || []).join("; ") || "None listed."}`,
+        `Lifestyle changes: ${(diagnosis.guidance?.lifestyle_changes || []).join("; ") || "None listed."}`,
+        `Diet adjustments: ${(diagnosis.guidance?.diet_adjustments || []).join("; ") || "None listed."}`,
+        "",
+        `Image analysis signals: ${imageIdentifiedSymptoms.map(labelize).join(", ") || "None captured."}`,
+        `Report analysis signals: ${reportIdentifiedSymptoms.map(labelize).join(", ") || "None captured."}`,
+        "",
+        `This report is informational and not a final medical diagnosis. Please consult a qualified healthcare provider.`,
+    ];
+
+    const lines = wrapPdfText(sections.join("\n"));
+    let page = pdfDoc.addPage([pageWidth, pageHeight]);
+    let cursorY = pageHeight - margin;
+
+    for (const [index, line] of lines.entries()) {
+        if (cursorY < margin) {
+            page = pdfDoc.addPage([pageWidth, pageHeight]);
+            cursorY = pageHeight - margin;
+        }
+
+        const isHeading = index === 0;
+        page.drawText(line, {
+            x: margin,
+            y: cursorY,
+            size: isHeading ? 18 : 11,
+            font: isHeading ? boldFont : regularFont,
+        });
+        cursorY -= isHeading ? 28 : lineHeight;
     }
 }
 
@@ -310,11 +414,12 @@ export default function DiagnosisResultPopup({
 
     const handleDownloadPDF = async () => {
         setIsDownloading(true);
+        const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
+
         try {
             const element = reportRef.current;
             if (!element) {
-                alert("Error: Report content not available. Please try again.");
-                return;
+                throw new Error("Report content not available");
             }
 
             await document.fonts.ready;
@@ -325,16 +430,23 @@ export default function DiagnosisResultPopup({
                 throw new Error("Failed to create canvas from report content");
             }
 
-            const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
             const finalPdf = await PDFDocument.create();
             await appendCanvasToPdf(finalPdf, canvas);
 
             if (uploadedImage?.preview) {
-                await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
+                try {
+                    await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
+                } catch (attachmentError) {
+                    console.warn("Image attachment could not be added to the PDF.", attachmentError);
+                }
             }
 
             if (uploadedReport?.preview) {
-                await appendExistingPdf(finalPdf, uploadedReport.preview);
+                try {
+                    await appendExistingPdf(finalPdf, uploadedReport.preview);
+                } catch (attachmentError) {
+                    console.warn("Report attachment could not be merged into the PDF.", attachmentError);
+                }
             }
 
             triggerPdfDownload(new Uint8Array(toArrayBuffer(await finalPdf.save())), filename);
@@ -343,8 +455,34 @@ export default function DiagnosisResultPopup({
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
             console.error("Failed to generate PDF:", errorMessage);
-            setDownloadFeedback("error");
-            setTimeout(() => setDownloadFeedback(null), 4200);
+            try {
+                const emergencyPdf = await PDFDocument.create();
+                await appendTextFallbackPdf(emergencyPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
+
+                if (uploadedImage?.preview) {
+                    try {
+                        await appendImageToPdf(emergencyPdf, uploadedImage.preview, uploadedImage.name);
+                    } catch (attachmentError) {
+                        console.warn("Image attachment could not be added to the emergency PDF.", attachmentError);
+                    }
+                }
+
+                if (uploadedReport?.preview) {
+                    try {
+                        await appendExistingPdf(emergencyPdf, uploadedReport.preview);
+                    } catch (attachmentError) {
+                        console.warn("Report attachment could not be merged into the emergency PDF.", attachmentError);
+                    }
+                }
+
+                triggerPdfDownload(new Uint8Array(toArrayBuffer(await emergencyPdf.save())), filename);
+                setDownloadFeedback("success");
+                setTimeout(() => setDownloadFeedback(null), 3600);
+            } catch (fallbackError) {
+                console.error("Emergency PDF generation failed:", fallbackError);
+                setDownloadFeedback("error");
+                setTimeout(() => setDownloadFeedback(null), 4200);
+            }
         } finally {
             setIsDownloading(false);
         }
