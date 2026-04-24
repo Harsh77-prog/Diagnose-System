@@ -233,7 +233,134 @@ function AnimatedProgress({ label, percentage, delay = 0 }: { label: string, per
     );
 }
 
-// ✨ Beautiful Image Analysis Progress Bar Component
+function AnalysisProgressPanel({
+    progress,
+    currentLabel,
+    currentTime,
+    totalEstimate,
+    details,
+    steps,
+    activeStep,
+    accent = "teal"
+}: {
+    progress: number;
+    currentLabel: string;
+    currentTime: string;
+    totalEstimate: string;
+    details: string;
+    steps: { key: string; short: string; label: string }[];
+    activeStep: string;
+    accent?: "teal" | "slate";
+}) {
+    const safeProgress = Math.max(0, Math.min(100, progress));
+    const theme = accent === "teal"
+        ? {
+            shell: "border-[#d8e7e5] bg-[radial-gradient(circle_at_top,rgba(121,167,160,0.18),transparent_42%),linear-gradient(135deg,#fcfffe_0%,#f4f8f7_45%,#eef4f3_100%)]",
+            badge: "border-[#cddfdb] bg-white/85 text-[#355d58]",
+            dot: "bg-[#567f78] shadow-[0_0_0_6px_rgba(86,127,120,0.14)]",
+            title: "text-[#183532]",
+            subtext: "text-[#5f7470]",
+            stat: "text-[#254844]",
+            rail: "bg-[#dbe7e4]",
+            fill: "bg-[linear-gradient(90deg,#4d726c_0%,#73958f_52%,#567f78_100%)]",
+            glow: "bg-[radial-gradient(circle,rgba(167,214,205,0.9)_0%,rgba(167,214,205,0.18)_55%,transparent_75%)]",
+            scan: "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),rgba(255,255,255,0.7),rgba(255,255,255,0.2),transparent)]",
+            stepIdle: "border-[#d9e5e2] bg-white/70 text-[#94a5a1]",
+            stepDone: "border-[#bed1cd] bg-[#edf4f2] text-[#446963]",
+            stepActive: "border-[#89aaa4] bg-[#f8fbfb] text-[#23403c] shadow-[0_8px_24px_rgba(86,127,120,0.14)]"
+        }
+        : {
+            shell: "border-[#e2e6eb] bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),transparent_42%),linear-gradient(135deg,#ffffff_0%,#f7f9fb_45%,#eef2f6_100%)]",
+            badge: "border-[#dde3ea] bg-white/90 text-[#4c5b70]",
+            dot: "bg-[#607086] shadow-[0_0_0_6px_rgba(96,112,134,0.14)]",
+            title: "text-[#1f2937]",
+            subtext: "text-[#6b7280]",
+            stat: "text-[#334155]",
+            rail: "bg-[#e5eaf0]",
+            fill: "bg-[linear-gradient(90deg,#556476_0%,#7e8d9f_50%,#5f7084_100%)]",
+            glow: "bg-[radial-gradient(circle,rgba(191,201,214,0.9)_0%,rgba(191,201,214,0.18)_55%,transparent_75%)]",
+            scan: "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),rgba(255,255,255,0.68),rgba(255,255,255,0.2),transparent)]",
+            stepIdle: "border-[#e4e8ee] bg-white/75 text-[#98a2b0]",
+            stepDone: "border-[#d3dae4] bg-[#f2f5f8] text-[#556476]",
+            stepActive: "border-[#a9b5c4] bg-[#fbfcfd] text-[#334155] shadow-[0_8px_24px_rgba(96,112,134,0.12)]"
+        };
+
+    return (
+        <div className="mx-auto w-full max-w-3xl px-2 md:px-0">
+            <div className={`overflow-hidden rounded-[28px] border p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-sm animate-in fade-in duration-300 md:p-5 ${theme.shell}`}>
+                <div className="flex flex-col gap-4">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <span className={`inline-flex h-2.5 w-2.5 rounded-full animate-pulse ${theme.dot}`} />
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.24em] ${theme.badge}`}>
+                                    Live Analysis
+                                </span>
+                            </div>
+                            <div className={`mt-3 text-sm font-semibold md:text-[15px] ${theme.title}`}>
+                                {currentLabel}
+                            </div>
+                            <div className={`mt-1 text-xs ${theme.subtext}`}>
+                                {details}
+                            </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                            <div className={`text-2xl font-semibold tabular-nums md:text-[28px] ${theme.stat}`}>
+                                {Math.round(safeProgress)}%
+                            </div>
+                            <div className={`mt-1 text-[11px] ${theme.subtext}`}>
+                                Step ~{currentTime} � Total ~{totalEstimate}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                        <div className="relative h-1.5 overflow-hidden rounded-full">
+                            <div className={`absolute inset-0 rounded-full ${theme.rail}`} />
+                            <div
+                                className={`relative h-full rounded-full transition-all duration-500 ease-out ${theme.fill}`}
+                                style={{ width: `${safeProgress}%` }}
+                            >
+                                <div className={`absolute inset-y-0 right-0 w-20 -translate-x-1/4 animate-[pulse_1.8s_ease-in-out_infinite] ${theme.scan}`} />
+                            </div>
+                            <div
+                                className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full ${theme.glow} transition-all duration-500 ease-out`}
+                                style={{ left: `clamp(0px, calc(${safeProgress}% - 10px), calc(100% - 20px))` }}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                            {steps.map((step, index) => {
+                                const isActive = step.key === activeStep;
+                                const isDone = safeProgress >= index * 25 + 10 && !isActive;
+                                const stateClass = isActive ? theme.stepActive : isDone ? theme.stepDone : theme.stepIdle;
+
+                                return (
+                                    <div
+                                        key={step.key}
+                                        className={`rounded-2xl border px-3 py-2 transition-all duration-300 ${stateClass}`}
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="text-[10px] font-semibold uppercase tracking-[0.2em]">
+                                                {step.short}
+                                            </span>
+                                            <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "animate-pulse bg-current" : "bg-current/55"}`} />
+                                        </div>
+                                        <div className="mt-1.5 text-[12px] font-medium">
+                                            {step.label}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Image analysis progress bar
 function ImageAnalysisProgressBar({
     progress,
     phase,
@@ -244,10 +371,10 @@ function ImageAnalysisProgressBar({
     isVisible: boolean;
 }) {
     const phaseNames = {
-        detecting: { label: "🔍 Detecting Image Type", time: "2-3s" },
-        analyzing: { label: "🧬 Analyzing Medical Features", time: "5-8s" },
-        inferring: { label: "🤖 Running AI Models", time: "8-12s" },
-        results: { label: "✅ Processing Results", time: "1-2s" }
+        detecting: { label: "Scanning image structure", time: "2-3s" },
+        analyzing: { label: "Mapping medical features", time: "5-8s" },
+        inferring: { label: "Running diagnostic models", time: "8-12s" },
+        results: { label: "Preparing final findings", time: "1-2s" }
     };
 
     const phaseInfo = phaseNames[phase];
@@ -256,66 +383,33 @@ function ImageAnalysisProgressBar({
     if (!isVisible) return null;
 
     return (
-        <div className="max-w-3xl mx-auto w-full px-2 md:px-0">
-            <div className="rounded-2xl border border-[#e5e5e5] bg-gradient-to-br from-[#fafafa] via-[#f5f5f5] to-[#fafafa] p-6 shadow-sm animate-in fade-in duration-300">
-                {/* Header with Phase Info */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#0f0f0f] animate-pulse" />
-                        <div>
-                            <div className="text-sm font-semibold text-[#0f0f0f]">{phaseInfo.label}</div>
-                            <div className="text-xs text-[#8e8e8e] mt-0.5">Estimated: ~{phaseInfo.time}</div>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-2xl font-bold text-[#0f0f0f]">{Math.round(progress)}%</div>
-                        <div className="text-xs text-[#8e8e8e] mt-0.5">Total: ~{totalEstimate}</div>
-                    </div>
-                </div>
-
-                {/* Main Progress Bar */}
-                <div className="w-full h-3 bg-[#e5e5e5] rounded-full overflow-hidden shadow-inner mb-4">
-                    <div
-                        className="h-full bg-gradient-to-r from-[#0f0f0f] via-[#404040] to-[#0f0f0f] rounded-full shadow-lg transition-all duration-300 ease-out relative overflow-hidden"
-                        style={{ width: `${progress}%` }}
-                    >
-                        <div className="absolute inset-0 bg-white/10 animate-pulse" />
-                    </div>
-                </div>
-
-                {/* Phase Indicators */}
-                <div className="flex justify-between text-xs font-medium">
-                    <div className={`flex items-center gap-1 ${phase === "detecting" || progress > 0 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "detecting" ? "bg-[#0f0f0f] scale-150" : progress > 0 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Detect
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "analyzing" || progress > 25 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "analyzing" ? "bg-[#0f0f0f] scale-150" : progress > 25 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Analyze
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "inferring" || progress > 50 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "inferring" ? "bg-[#0f0f0f] scale-150" : progress > 50 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Infer
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "results" || progress > 75 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "results" ? "bg-[#0f0f0f] scale-150" : progress > 75 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Results
-                    </div>
-                </div>
-
-                {/* Info Text */}
-                <div className="mt-4 text-xs text-[#666666] text-center">
-                    {phase === "detecting" && "Analyzing image characteristics and medical content..."}
-                    {phase === "analyzing" && "Extracting features and running medical filters..."}
-                    {phase === "inferring" && "Running inference on 5 deep learning models..."}
-                    {phase === "results" && "Generating diagnosis and compiling results..."}
-                </div>
-            </div>
-        </div>
+        <AnalysisProgressPanel
+            progress={progress}
+            currentLabel={phaseInfo.label}
+            currentTime={phaseInfo.time}
+            totalEstimate={totalEstimate}
+            activeStep={phase}
+            accent="teal"
+            steps={[
+                { key: "detecting", short: "01", label: "Detect" },
+                { key: "analyzing", short: "02", label: "Analyze" },
+                { key: "inferring", short: "03", label: "Infer" },
+                { key: "results", short: "04", label: "Results" }
+            ]}
+            details={
+                phase === "detecting"
+                    ? "Reviewing format, contrast, and anatomy cues before deeper inspection."
+                    : phase === "analyzing"
+                        ? "Extracting image patterns and filtering for medically relevant structures."
+                        : phase === "inferring"
+                            ? "Comparing learned feature signatures across the diagnostic pipeline."
+                            : "Condensing the strongest signals into a readable clinical summary."
+            }
+        />
     );
 }
 
-// ✨ Beautiful Report Analysis Progress Bar Component
+// Report analysis progress bar
 function ReportAnalysisProgressBar({
     progress,
     phase,
@@ -326,10 +420,10 @@ function ReportAnalysisProgressBar({
     isVisible: boolean;
 }) {
     const phaseNames = {
-        extracting: { label: "📄 Extracting Text", time: "2-4s" },
-        analyzing: { label: "🧠 Analyzing Content", time: "4-7s" },
-        inferring: { label: "💡 Extracting Symptoms", time: "6-10s" },
-        results: { label: "📋 Compiling Report", time: "1-2s" }
+        extracting: { label: "Reading report text", time: "2-4s" },
+        analyzing: { label: "Interpreting medical content", time: "4-7s" },
+        inferring: { label: "Extracting findings and symptoms", time: "6-10s" },
+        results: { label: "Compiling report summary", time: "1-2s" }
     };
 
     const phaseInfo = phaseNames[phase];
@@ -338,65 +432,31 @@ function ReportAnalysisProgressBar({
     if (!isVisible) return null;
 
     return (
-        <div className="max-w-3xl mx-auto w-full px-2 md:px-0">
-            <div className="rounded-2xl border border-[#e5e5e5] bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#f8fafc] p-6 shadow-sm animate-in fade-in duration-300">
-                {/* Header with Phase Info */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-[#0f0f0f] animate-pulse" />
-                        <div>
-                            <div className="text-sm font-semibold text-[#0f0f0f]">{phaseInfo.label}</div>
-                            <div className="text-xs text-[#8e8e8e] mt-0.5">Estimated: ~{phaseInfo.time}</div>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-2xl font-bold text-[#0f0f0f]">{Math.round(progress)}%</div>
-                        <div className="text-xs text-[#8e8e8e] mt-0.5">Total: ~{totalEstimate}</div>
-                    </div>
-                </div>
-
-                {/* Main Progress Bar */}
-                <div className="w-full h-3 bg-[#e5e5e5] rounded-full overflow-hidden shadow-inner mb-4">
-                    <div
-                        className="h-full bg-gradient-to-r from-[#0f0f0f] via-[#404040] to-[#0f0f0f] rounded-full shadow-lg transition-all duration-300 ease-out relative overflow-hidden"
-                        style={{ width: `${progress}%` }}
-                    >
-                        <div className="absolute inset-0 bg-white/10 animate-pulse" />
-                    </div>
-                </div>
-
-                {/* Phase Indicators */}
-                <div className="flex justify-between text-xs font-medium">
-                    <div className={`flex items-center gap-1 ${phase === "extracting" || progress > 0 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "extracting" ? "bg-[#0f0f0f] scale-150" : progress > 0 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Extract
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "analyzing" || progress > 25 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "analyzing" ? "bg-[#0f0f0f] scale-150" : progress > 25 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Analyze
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "inferring" || progress > 50 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "inferring" ? "bg-[#0f0f0f] scale-150" : progress > 50 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Infer
-                    </div>
-                    <div className={`flex items-center gap-1 ${phase === "results" || progress > 75 ? "text-[#0f0f0f]" : "text-[#999999]"}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${phase === "results" ? "bg-[#0f0f0f] scale-150" : progress > 75 ? "bg-[#404040]" : "bg-[#d1d1d1]"}`} />
-                        Results
-                    </div>
-                </div>
-
-                {/* Info Text */}
-                <div className="mt-4 text-xs text-[#666666] text-center">
-                    {phase === "extracting" && "Extracting text from your medical report..."}
-                    {phase === "analyzing" && "Analyzing report content with AI..."}
-                    {phase === "inferring" && "Extracting symptoms and medical findings..."}
-                    {phase === "results" && "Compiling analysis results..."}
-                </div>
-            </div>
-        </div>
+        <AnalysisProgressPanel
+            progress={progress}
+            currentLabel={phaseInfo.label}
+            currentTime={phaseInfo.time}
+            totalEstimate={totalEstimate}
+            activeStep={phase}
+            accent="slate"
+            steps={[
+                { key: "extracting", short: "01", label: "Extract" },
+                { key: "analyzing", short: "02", label: "Analyze" },
+                { key: "inferring", short: "03", label: "Findings" },
+                { key: "results", short: "04", label: "Summary" }
+            ]}
+            details={
+                phase === "extracting"
+                    ? "Pulling text and structure from the uploaded report for parsing."
+                    : phase === "analyzing"
+                        ? "Reviewing terminology, abnormal markers, and diagnostic context."
+                        : phase === "inferring"
+                            ? "Linking the extracted content to symptoms and notable findings."
+                            : "Formatting the analysis into a concise report-ready response."
+            }
+        />
     );
 }
-
 // Generates ChatGPT style clean topic headings
 function generateChatTitle(prompt: string) {
     const cleaned = prompt.trim().replace(/\s+/g, " ").replace(/[?.!]+$/, "");
@@ -2348,4 +2408,5 @@ export default function ChatDashboard() {
         </div >
     );
 }
+
 
