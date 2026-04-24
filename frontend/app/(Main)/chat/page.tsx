@@ -429,16 +429,17 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
             .filter(Boolean);
         const primarySignal = normalized.match(/Primary image signal \(context-weighted\):\s*\*?\*?(.+?)\*?\*?(?:\n|$)/i)?.[1]?.trim();
         const rawSignal = normalized.match(/Raw highest-confidence dataset:\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
+        const followupQuestion = normalized.match(/\*\*Question\s+\d+:\*\*\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
 
         return (
             <div className="not-prose mt-1 max-w-2xl space-y-3">
-                <div className="rounded-3xl border border-sky-200 bg-gradient-to-br from-white via-sky-50 to-cyan-50 p-5 shadow-sm">
+                <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-zinc-100 p-5 shadow-[0_12px_40px_rgba(15,23,42,0.08)]">
                     <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm">
+                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
                             <Activity className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700">Image Analysis</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600">Image Analysis</div>
                             <h3 className="mt-1 text-[17px] font-semibold text-slate-900">Medical image review completed</h3>
                             <p className="mt-1 text-[13px] leading-relaxed text-slate-600">
                                 I analyzed your uploaded image using trained MedMNIST image models.
@@ -447,14 +448,14 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
                     </div>
 
                     {observations.length > 0 && (
-                        <div className="mt-4 rounded-2xl border border-sky-100 bg-white/80 p-4">
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4">
                             <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                                 Top image-model observations
                             </div>
                             <div className="space-y-2">
                                 {observations.map((item, idx) => (
-                                    <div key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700">
+                                    <div key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-gradient-to-r from-white to-slate-50 px-3 py-2.5">
+                                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-semibold text-white">
                                             {idx + 1}
                                         </div>
                                         <div className="text-[13px] leading-relaxed text-slate-700">{item}</div>
@@ -466,9 +467,9 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
 
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         {primarySignal && (
-                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Primary signal</div>
-                                <div className="mt-2 text-[13px] font-medium leading-relaxed text-slate-800">{primarySignal}</div>
+                            <div className="rounded-2xl border border-slate-900 bg-slate-900 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">Primary signal</div>
+                                <div className="mt-2 text-[13px] font-medium leading-relaxed text-white">{primarySignal}</div>
                             </div>
                         )}
                         {rawSignal && (
@@ -478,6 +479,13 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
                             </div>
                         )}
                     </div>
+
+                    {followupQuestion && (
+                        <div className="mt-4 rounded-2xl border border-slate-300 bg-gradient-to-r from-white to-slate-100 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">Next question</div>
+                            <div className="mt-2 text-[14px] font-medium leading-relaxed text-slate-800">{followupQuestion}</div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -498,12 +506,13 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
         const extractedSignals = sectionMatches
             .find(([, title]) => title.toLowerCase() === "symptoms/signals extracted for diagnosis")?.[2]
             ?.split(",").map((item) => item.trim()).filter(Boolean) || [];
+        const followupQuestion = normalized.match(/\*\*Question\s+\d+:\*\*\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
 
         const renderChips = (items: string[], tone: "red" | "amber" | "emerald") => {
             const tones = {
-                red: "border-red-200 bg-red-50 text-red-700",
-                amber: "border-amber-200 bg-amber-50 text-amber-700",
-                emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+                red: "border-slate-700 bg-slate-800 text-slate-100",
+                amber: "border-slate-300 bg-slate-100 text-slate-700",
+                emerald: "border-slate-200 bg-white text-slate-700",
             };
             return (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -518,13 +527,13 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
 
         return (
             <div className="not-prose mt-1 max-w-2xl space-y-3">
-                <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-white via-violet-50 to-fuchsia-50 p-5 shadow-sm">
+                <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-zinc-100 p-5 shadow-[0_12px_40px_rgba(15,23,42,0.08)]">
                     <div className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm">
+                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
                             <FileText className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-700">Report Analysis</div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-600">Report Analysis</div>
                             <h3 className="mt-1 text-[17px] font-semibold text-slate-900">Medical report findings extracted</h3>
                             <p className="mt-1 text-[13px] leading-relaxed text-slate-600">
                                 I analyzed your uploaded medical report and extracted the clinically useful details.
@@ -540,32 +549,39 @@ function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
                     )}
 
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700">Serious findings</div>
-                            {serious.length > 0 ? renderChips(serious, "red") : <div className="mt-2 text-[13px] text-slate-500">No serious markers highlighted.</div>}
+                        <div className="rounded-2xl border border-slate-900 bg-slate-900 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">Serious findings</div>
+                            {serious.length > 0 ? renderChips(serious, "red") : <div className="mt-2 text-[13px] text-slate-300">No serious markers highlighted.</div>}
                         </div>
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Abnormal findings</div>
+                        <div className="rounded-2xl border border-slate-300 bg-slate-100 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">Abnormal findings</div>
                             {abnormal.length > 0 ? renderChips(abnormal, "amber") : <div className="mt-2 text-[13px] text-slate-500">No abnormal markers highlighted.</div>}
                         </div>
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Normal or stable</div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">Normal or stable</div>
                             {normalFindings.length > 0 ? renderChips(normalFindings, "emerald") : <div className="mt-2 text-[13px] text-slate-500">No stable findings highlighted.</div>}
                         </div>
                     </div>
 
                     {extractedSignals.length > 0 && (
-                        <div className="mt-4 rounded-2xl border border-violet-100 bg-white/80 p-4">
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4">
                             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
                                 Symptoms and signals used for diagnosis
                             </div>
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {extractedSignals.map((item, idx) => (
-                                    <span key={`${item}-${idx}`} className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[12px] font-medium text-violet-700">
+                                    <span key={`${item}-${idx}`} className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[12px] font-medium text-slate-700">
                                         {item}
                                     </span>
                                 ))}
                             </div>
+                        </div>
+                    )}
+
+                    {followupQuestion && (
+                        <div className="mt-4 rounded-2xl border border-slate-300 bg-gradient-to-r from-white to-slate-100 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700">Next question</div>
+                            <div className="mt-2 text-[14px] font-medium leading-relaxed text-slate-800">{followupQuestion}</div>
                         </div>
                     )}
                 </div>
