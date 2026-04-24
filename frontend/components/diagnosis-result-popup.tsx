@@ -71,6 +71,25 @@ function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    const buffer = new ArrayBuffer(bytes.length);
+    new Uint8Array(buffer).set(bytes);
+    return buffer;
+}
+
+function triggerPdfDownload(pdfBytes: Uint8Array, filename: string) {
+    const blob = new Blob([toArrayBuffer(pdfBytes)], { type: "application/pdf" });
+    const downloadUrl = URL.createObjectURL(blob);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = downloadUrl;
+    downloadLink.download = filename;
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+}
+
 async function appendImageToPdf(pdfDoc: PDFDocument, imageUrl: string, label?: string) {
     const imageElement = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
@@ -304,31 +323,37 @@ export default function DiagnosisResultPopup({
                 isFirstPage = false;
             }
 
-            const finalPdf = await PDFDocument.create();
-            const popupPdfBytes = popupPdf.output("arraybuffer");
-            const popupDocument = await PDFDocument.load(popupPdfBytes);
-            const popupPages = await finalPdf.copyPages(popupDocument, popupDocument.getPageIndices());
-            popupPages.forEach((page) => finalPdf.addPage(page));
-
-            if (uploadedImage?.preview) {
-                await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
-            }
-
-            if (uploadedReport?.preview) {
-                await appendExistingPdf(finalPdf, uploadedReport.preview);
-            }
-
             const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
-            const finalPdfBytes = await finalPdf.save();
-            const pdfByteArray = new Uint8Array(finalPdfBytes.length);
-            pdfByteArray.set(finalPdfBytes);
-            const downloadBlob = new Blob([pdfByteArray], { type: "application/pdf" });
-            const downloadUrl = URL.createObjectURL(downloadBlob);
-            const downloadLink = document.createElement("a");
-            downloadLink.href = downloadUrl;
-            downloadLink.download = filename;
-            downloadLink.click();
-            URL.revokeObjectURL(downloadUrl);
+            let bytesToDownload = new Uint8Array(toArrayBuffer(new Uint8Array(popupPdf.output("arraybuffer"))));
+
+            try {
+                const finalPdf = await PDFDocument.create();
+                const popupDocument = await PDFDocument.load(bytesToDownload);
+                const popupPages = await finalPdf.copyPages(popupDocument, popupDocument.getPageIndices());
+                popupPages.forEach((page) => finalPdf.addPage(page));
+
+                if (uploadedImage?.preview) {
+                    try {
+                        await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
+                    } catch (attachmentError) {
+                        console.warn("Uploaded image could not be added to the PDF.", attachmentError);
+                    }
+                }
+
+                if (uploadedReport?.preview) {
+                    try {
+                        await appendExistingPdf(finalPdf, uploadedReport.preview);
+                    } catch (attachmentError) {
+                        console.warn("Uploaded report could not be merged into the PDF.", attachmentError);
+                    }
+                }
+
+                bytesToDownload = new Uint8Array(toArrayBuffer(await finalPdf.save()));
+            } catch (mergeError) {
+                console.warn("Merged PDF generation failed, downloading popup report only.", mergeError);
+            }
+
+            triggerPdfDownload(bytesToDownload, filename);
             setDownloadFeedback("success");
             setTimeout(() => setDownloadFeedback(null), 3600);
         } catch (error) {
