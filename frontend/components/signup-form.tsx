@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
 export function SignupForm({
   className,
@@ -135,7 +136,12 @@ export function SignupForm({
               <Field>
                 <Button type="submit" disabled={loading || verificationPending}>
                   {loading
-                    ? "Creating..."
+                    ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Creating account...
+                      </>
+                    )
                     : verificationPending
                       ? "Awaiting Verification"
                       : "Create Account"}
