@@ -440,6 +440,7 @@ export default function DiagnosisResultPopup({
 }: DiagnosisResultPopupProps) {
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadFeedback, setDownloadFeedback] = useState<"success" | "error" | null>(null);
+    const [isClosingSuccessCard, setIsClosingSuccessCard] = useState(false);
     const reportRef = useRef<HTMLDivElement>(null);
 
     if (!isOpen || !diagnosis) return null;
@@ -453,6 +454,16 @@ export default function DiagnosisResultPopup({
     const homeRemedies = diagnosis.guidance?.home_remedies || [];
     const lifestyleChanges = diagnosis.guidance?.lifestyle_changes || [];
     const dietAdjustments = diagnosis.guidance?.diet_adjustments || [];
+
+    const handleCloseSuccessCard = () => {
+        if (isClosingSuccessCard) return;
+
+        setIsClosingSuccessCard(true);
+        window.setTimeout(() => {
+            setDownloadFeedback(null);
+            setIsClosingSuccessCard(false);
+        }, 1050);
+    };
 
     const handleDownloadPDF = async () => {
         setIsDownloading(true);
@@ -492,9 +503,9 @@ export default function DiagnosisResultPopup({
                 }
             }
 
+            setIsClosingSuccessCard(false);
             await downloadPdfDocument(finalPdf, filename);
             setDownloadFeedback("success");
-            setTimeout(() => setDownloadFeedback(null), 3600);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
             console.error("Failed to generate PDF:", errorMessage);
@@ -518,9 +529,9 @@ export default function DiagnosisResultPopup({
                     }
                 }
 
+                setIsClosingSuccessCard(false);
                 await downloadPdfDocument(emergencyPdf, filename);
                 setDownloadFeedback("success");
-                setTimeout(() => setDownloadFeedback(null), 3600);
             } catch (fallbackError) {
                 console.error("Emergency PDF generation failed:", fallbackError);
                 setDownloadFeedback("error");
@@ -554,6 +565,31 @@ export default function DiagnosisResultPopup({
                     div {
                         -ms-overflow-style: none;
                         scrollbar-width: none;
+                    }
+                    @keyframes success-fly-1 {
+                        0% { transform: translate(0, 0) scale(0.7) rotate(0deg); opacity: 0; }
+                        20% { opacity: 1; }
+                        100% { transform: translate(-180px, -240px) scale(1.4) rotate(-16deg); opacity: 0; }
+                    }
+                    @keyframes success-fly-2 {
+                        0% { transform: translate(0, 0) scale(0.7) rotate(0deg); opacity: 0; }
+                        20% { opacity: 1; }
+                        100% { transform: translate(-260px, 190px) scale(1.35) rotate(24deg); opacity: 0; }
+                    }
+                    @keyframes success-fly-3 {
+                        0% { transform: translate(0, 0) scale(0.7) rotate(0deg); opacity: 0; }
+                        20% { opacity: 1; }
+                        100% { transform: translate(240px, -220px) scale(1.3) rotate(18deg); opacity: 0; }
+                    }
+                    @keyframes success-fly-4 {
+                        0% { transform: translate(0, 0) scale(0.7) rotate(0deg); opacity: 0; }
+                        20% { opacity: 1; }
+                        100% { transform: translate(230px, 200px) scale(1.35) rotate(-24deg); opacity: 0; }
+                    }
+                    @keyframes success-burst {
+                        0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+                        18% { opacity: 1; }
+                        100% { transform: translate(-50%, -50%) scale(5.5); opacity: 0; }
                     }
                 `}</style>
 
@@ -589,30 +625,53 @@ export default function DiagnosisResultPopup({
                 </div>
 
                 {downloadFeedback === "success" && (
-                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/12 backdrop-blur-[2px] rounded-3xl pointer-events-none">
-                        <div className="relative w-[340px] max-w-[90%] overflow-hidden rounded-[28px] border border-teal-200/80 bg-gradient-to-br from-white via-teal-50 to-cyan-50 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.18)] animate-in fade-in zoom-in-95 duration-500">
-                            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-teal-200/40 blur-2xl animate-pulse" />
-                            <div className="absolute -left-4 bottom-0 h-20 w-20 rounded-full bg-cyan-200/40 blur-2xl animate-pulse" />
+                    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-3xl bg-slate-950/12 backdrop-blur-[2px]">
+                        {isClosingSuccessCard && (
+                            <>
+                                <div className="pointer-events-none absolute left-[12%] top-[18%] text-4xl animate-[success-fly-1_1s_ease-in_forwards]">✨</div>
+                                <div className="pointer-events-none absolute left-[22%] bottom-[22%] text-5xl animate-[success-fly-2_1s_ease-in_forwards]">🕊️</div>
+                                <div className="pointer-events-none absolute right-[14%] top-[20%] text-4xl animate-[success-fly-3_1s_ease-in_forwards]">💙</div>
+                                <div className="pointer-events-none absolute right-[20%] bottom-[18%] text-5xl animate-[success-fly-4_1s_ease-in_forwards]">🌿</div>
+                                <div className="pointer-events-none absolute left-1/2 top-1/2 text-6xl animate-[success-burst_0.95s_ease-in_forwards]">🫶</div>
+                            </>
+                        )}
 
-                            <div className="mx-auto mb-4 relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 via-cyan-600 to-slate-700 shadow-lg">
-                                <div className="absolute inset-[-8px] rounded-full border-2 border-teal-300/70 animate-ping" />
-                                <ShieldPlus className="h-9 w-9 text-white" />
-                                <Sparkles className="absolute -right-1 top-1 h-4 w-4 text-cyan-100 animate-pulse" />
+                        <div className={`relative w-[460px] max-w-[94%] overflow-hidden rounded-[34px] border border-teal-200/80 bg-gradient-to-br from-white via-teal-50 to-cyan-50 p-8 shadow-[0_26px_90px_rgba(15,23,42,0.22)] transition-all duration-700 ${isClosingSuccessCard ? "scale-[0.82] opacity-0 blur-[1px]" : "scale-100 opacity-100 animate-in fade-in zoom-in-95 duration-500"}`}>
+                            <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-teal-200/40 blur-3xl animate-pulse" />
+                            <div className="absolute -left-5 bottom-0 h-24 w-24 rounded-full bg-cyan-200/40 blur-3xl animate-pulse" />
+                            <div className="absolute right-8 top-7 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700 shadow-sm">
+                                PDF READY
+                            </div>
+
+                            <div className="mx-auto mb-5 relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 via-cyan-600 to-slate-700 shadow-lg">
+                                <div className="absolute inset-[-10px] rounded-full border-2 border-teal-300/70 animate-ping" />
+                                <ShieldPlus className="h-11 w-11 text-white" />
+                                <Sparkles className="absolute -right-1 top-1 h-5 w-5 text-cyan-100 animate-pulse" />
                             </div>
 
                             <div className="text-center">
-                                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">
+                                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-teal-100 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">
                                     <CheckCircle2 className="h-4 w-4" />
                                     Report Prepared
                                 </div>
-                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Thank you for trusting MedCoreAI</h3>
-                                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                <h3 className="text-3xl font-bold tracking-tight text-slate-900">Thank you for trusting MedCoreAI</h3>
+                                <p className="mt-3 text-base leading-relaxed text-slate-600">
                                     Your complete medical report has been downloaded successfully and is ready for review.
                                 </p>
-                                <p className="mt-3 rounded-2xl border border-teal-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700">
+                                <p className="mt-4 rounded-3xl border border-teal-100 bg-white/80 px-5 py-4 text-[15px] leading-relaxed text-slate-700">
                                     Please remember: one careful step at a time matters. With the right guidance, support, and follow-up, positive progress is always possible.
                                 </p>
-                                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+                                <button
+                                    type="button"
+                                    onClick={handleCloseSuccessCard}
+                                    disabled={isClosingSuccessCard}
+                                    className="mt-5 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-teal-600 via-cyan-600 to-slate-700 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(8,145,178,0.28)] transition-all duration-300 hover:scale-105 hover:shadow-[0_20px_50px_rgba(8,145,178,0.34)] disabled:cursor-default disabled:opacity-90"
+                                >
+                                    <span className={`text-xl transition-transform duration-500 ${isClosingSuccessCard ? "translate-x-[280px] -translate-y-[180px] rotate-45 scale-125" : ""}`}>🕊️</span>
+                                    <span>{isClosingSuccessCard ? "Sending warm wishes..." : "Close with Blessing Flight"}</span>
+                                    <Sparkles className={`h-4 w-4 transition-transform duration-500 ${isClosingSuccessCard ? "-translate-x-[220px] translate-y-[140px] rotate-180 scale-125" : ""}`} />
+                                </button>
+                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-500">
                                     Wishing you steadiness, strength, and peace
                                 </p>
                             </div>
