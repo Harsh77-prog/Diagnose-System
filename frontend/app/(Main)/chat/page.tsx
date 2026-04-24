@@ -2312,16 +2312,6 @@ export default function ChatDashboard() {
                                         <div className="text-sm font-medium text-slate-800 truncate">{latestUploadedReport.name}</div>
                                         <div className="text-xs text-slate-500">PDF Document</div>
                                     </div>
-                                    {latestUploadedReport.preview && (
-                                        <a
-                                            href={latestUploadedReport.preview}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
-                                        >
-                                            View
-                                        </a>
-                                    )}
                                 </div>
                             </div>
                         ) : null}

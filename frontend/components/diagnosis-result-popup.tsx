@@ -160,6 +160,31 @@ async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer>
     return blob.arrayBuffer();
 }
 
+async function loadImageCanvas(imageUrl: string): Promise<HTMLCanvasElement> {
+    const imageElement = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Failed to load uploaded image"));
+        img.src = imageUrl;
+    });
+
+    const imageCanvas = document.createElement("canvas");
+    imageCanvas.width = imageElement.naturalWidth || imageElement.width;
+    imageCanvas.height = imageElement.naturalHeight || imageElement.height;
+
+    const imageContext = imageCanvas.getContext("2d");
+    if (!imageContext) {
+        throw new Error("Failed to process uploaded image");
+    }
+
+    imageContext.fillStyle = "#ffffff";
+    imageContext.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
+    imageContext.drawImage(imageElement, 0, 0, imageCanvas.width, imageCanvas.height);
+
+    return imageCanvas;
+}
+
 async function captureReportCanvas(element: HTMLDivElement): Promise<HTMLCanvasElement> {
     const rect = element.getBoundingClientRect();
     const renderWidth = Math.max(Math.ceil(rect.width), element.scrollWidth, 800);
@@ -298,6 +323,7 @@ function wrapPdfTextToWidth(
 async function appendStyledReportPdf(
     pdfDoc: PDFDocument,
     diagnosis: DiagnosisPayload,
+    uploadedImage: UploadedImage | null | undefined,
     imageIdentifiedSymptoms: string[],
     reportIdentifiedSymptoms: string[]
 ) {
@@ -308,24 +334,23 @@ async function appendStyledReportPdf(
     const margin = 34;
     const contentWidth = pageWidth - margin * 2;
     const palette = {
-        navy: rgb(0.06, 0.13, 0.22),
-        teal: rgb(0.0, 0.58, 0.62),
-        cyan: rgb(0.16, 0.66, 0.78),
-        slate: rgb(0.28, 0.33, 0.4),
+        black: rgb(0.08, 0.08, 0.09),
+        charcoal: rgb(0.16, 0.17, 0.19),
+        slate: rgb(0.31, 0.33, 0.36),
+        mid: rgb(0.54, 0.56, 0.6),
         text: rgb(0.15, 0.2, 0.27),
         muted: rgb(0.45, 0.51, 0.58),
-        border: rgb(0.84, 0.9, 0.94),
-        soft: rgb(0.95, 0.98, 0.99),
+        border: rgb(0.84, 0.85, 0.87),
+        soft: rgb(0.97, 0.97, 0.98),
+        softAlt: rgb(0.94, 0.95, 0.96),
+        softDark: rgb(0.91, 0.92, 0.93),
         white: rgb(1, 1, 1),
-        successSoft: rgb(0.92, 0.98, 0.97),
-        roseSoft: rgb(0.99, 0.96, 0.97),
-        amberSoft: rgb(1, 0.98, 0.93),
     };
 
     const today = new Date();
     const confidence = Number(diagnosis.confidence || 0);
     const diagnosisLabel = labelize(diagnosis.diagnosis);
-    const profileLabel = `${labelize(String(diagnosis.demographics?.gender || "unknown"))} • ${labelize(String(diagnosis.demographics?.age_group || "unknown"))}`;
+    const profileLabel = `${labelize(String(diagnosis.demographics?.gender || "unknown"))} | ${labelize(String(diagnosis.demographics?.age_group || "unknown"))}`;
     const symptomLines = (diagnosis.confirmed_symptoms || []).map((item) => `- ${labelize(item)}`);
     const predictionLines = (diagnosis.top_predictions || []).slice(0, 5).map((item) => `- ${labelize(item.disease)}: ${Number(item.probability || 0).toFixed(1)}%`);
     const precautionLines = (diagnosis.disease_info?.precautions || []).map((item) => `- ${item}`);
@@ -346,6 +371,25 @@ async function appendStyledReportPdf(
         ...(diagnosis.report_analysis?.abnormal_findings || []).map((item) => `- Abnormal: ${item}`),
         ...(diagnosis.report_analysis?.normal_findings || []).map((item) => `- Normal: ${item}`),
     ].slice(0, 8);
+    const overviewText = diagnosis.disease_info?.description || "A structured AI-generated summary of your current diagnostic result.";
+    let overviewImage: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
+    let brandLogo: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
+
+    if (uploadedImage?.preview) {
+        try {
+            const imageCanvas = await loadImageCanvas(uploadedImage.preview);
+            overviewImage = await pdfDoc.embedPng(await canvasToPngBytes(imageCanvas));
+        } catch (imageError) {
+            console.warn("Uploaded image could not be embedded into the main PDF overview.", imageError);
+        }
+    }
+
+    try {
+        const logoCanvas = await loadImageCanvas("/globe.svg");
+        brandLogo = await pdfDoc.embedPng(await canvasToPngBytes(logoCanvas));
+    } catch (logoError) {
+        console.warn("MedCoreAI logo could not be embedded into the PDF header.", logoError);
+    }
 
     let page: PDFPage;
     let cursorY = 0;
@@ -360,14 +404,14 @@ async function appendStyledReportPdf(
             y: pageHeight - 98,
             width: pageWidth,
             height: 98,
-            color: palette.navy,
+            color: palette.black,
         });
         page.drawRectangle({
             x: 0,
             y: pageHeight - 104,
             width: pageWidth,
             height: 6,
-            color: palette.cyan,
+            color: palette.slate,
         });
 
         page.drawRectangle({
@@ -377,13 +421,22 @@ async function appendStyledReportPdf(
             height: 40,
             color: palette.white,
         });
-        page.drawText("+", {
-            x: margin + 12,
-            y: pageHeight - 68,
-            size: 24,
-            font: boldFont,
-            color: palette.teal,
-        });
+        if (brandLogo) {
+            page.drawImage(brandLogo, {
+                x: margin + 8,
+                y: pageHeight - 70,
+                width: 24,
+                height: 24,
+            });
+        } else {
+            page.drawText("M", {
+                x: margin + 11,
+                y: pageHeight - 67,
+                size: 22,
+                font: boldFont,
+                color: palette.charcoal,
+            });
+        }
 
         page.drawText("MedCoreAI", {
             x: margin + 54,
@@ -397,7 +450,7 @@ async function appendStyledReportPdf(
             y: pageHeight - 76,
             size: 10,
             font: regularFont,
-            color: rgb(0.82, 0.9, 0.95),
+            color: rgb(0.84, 0.84, 0.86),
         });
 
         const dateLabel = today.toLocaleDateString("en-US", {
@@ -417,7 +470,7 @@ async function appendStyledReportPdf(
             y: pageHeight - 72,
             size: 9,
             font: regularFont,
-            color: rgb(0.82, 0.9, 0.95),
+            color: rgb(0.84, 0.84, 0.86),
         });
 
         page.drawLine({
@@ -426,7 +479,7 @@ async function appendStyledReportPdf(
             thickness: 1,
             color: palette.border,
         });
-        page.drawText("Informational medical support summary • Review with a qualified healthcare provider", {
+        page.drawText("Informational medical support summary | Review with a qualified healthcare provider", {
             x: margin,
             y: 28,
             size: 8.5,
@@ -450,7 +503,8 @@ async function appendStyledReportPdf(
         maxWidth: number,
         font: PDFFont,
         size: number,
-        color: ReturnType<typeof rgb>
+        color: ReturnType<typeof rgb>,
+        lineGap = 4
     ) => {
         let y = yStart;
         lines.forEach((line) => {
@@ -463,14 +517,14 @@ async function appendStyledReportPdf(
                     font,
                     color,
                 });
-                y -= size + 4;
+                y -= size + lineGap;
             });
         });
         return y;
     };
 
-    const measureLinesHeight = (lines: string[], font: PDFFont, size: number, maxWidth: number) =>
-        lines.reduce((total, line) => total + wrapPdfTextToWidth(line, font, size, maxWidth).length * (size + 4), 0);
+    const measureLinesHeight = (lines: string[], font: PDFFont, size: number, maxWidth: number, lineGap = 4) =>
+        lines.reduce((total, line) => total + wrapPdfTextToWidth(line, font, size, maxWidth).length * (size + lineGap), 0);
 
     const drawSectionCard = (
         title: string,
@@ -531,7 +585,7 @@ async function appendStyledReportPdf(
     };
 
     const drawOverviewHero = () => {
-        const heroHeight = 162;
+        const heroHeight = 244;
         ensureSpace(heroHeight + 22, "Diagnostic Report");
 
         const bottomY = cursorY - heroHeight;
@@ -540,45 +594,85 @@ async function appendStyledReportPdf(
             y: bottomY,
             width: contentWidth,
             height: heroHeight,
-            color: palette.navy,
+            color: palette.black,
         });
         page.drawRectangle({
             x: margin,
-            y: bottomY,
+            y: bottomY + heroHeight - 8,
             width: contentWidth,
-            height: 9,
-            color: palette.cyan,
+            height: 8,
+            color: palette.slate,
         });
 
+        const heroPadding = 20;
+        const imageBoxWidth = overviewImage ? 148 : 0;
+        const imageGap = overviewImage ? 18 : 0;
+        const textWidth = contentWidth - heroPadding * 2 - imageBoxWidth - imageGap;
+        const textX = margin + heroPadding;
+        const descriptionLines = wrapPdfTextToWidth(overviewText, regularFont, 10.5, textWidth);
+
         page.drawText("Likely Condition", {
-            x: margin + 20,
+            x: textX,
             y: cursorY - 28,
             size: 10,
             font: regularFont,
-            color: rgb(0.76, 0.88, 0.94),
+            color: rgb(0.84, 0.84, 0.86),
         });
         page.drawText(diagnosisLabel, {
-            x: margin + 20,
-            y: cursorY - 52,
+            x: textX,
+            y: cursorY - 54,
             size: 24,
             font: boldFont,
             color: palette.white,
         });
-        page.drawText(
-            diagnosis.disease_info?.description || "A structured AI-generated summary of your current diagnostic result.",
-            {
-                x: margin + 20,
-                y: cursorY - 76,
-                size: 10.5,
-                font: regularFont,
-                color: rgb(0.86, 0.93, 0.97),
-                maxWidth: contentWidth - 170,
-                lineHeight: 14,
-            }
+        drawWrappedText(
+            descriptionLines,
+            textX,
+            cursorY - 76,
+            textWidth,
+            regularFont,
+            10.5,
+            rgb(0.91, 0.91, 0.92),
+            3.5
         );
 
-        const statY = bottomY + 24;
-        const statWidth = 146;
+        if (overviewImage) {
+            const imageAreaX = margin + contentWidth - heroPadding - imageBoxWidth;
+            const imageAreaY = bottomY + 86;
+            const imageAreaHeight = 110;
+
+            page.drawRectangle({
+                x: imageAreaX,
+                y: imageAreaY,
+                width: imageBoxWidth,
+                height: imageAreaHeight,
+                color: palette.white,
+                borderColor: palette.border,
+                borderWidth: 1,
+            });
+
+            const scaled = overviewImage.scale(
+                Math.min((imageBoxWidth - 10) / overviewImage.width, (imageAreaHeight - 10) / overviewImage.height)
+            );
+
+            page.drawImage(overviewImage, {
+                x: imageAreaX + (imageBoxWidth - scaled.width) / 2,
+                y: imageAreaY + (imageAreaHeight - scaled.height) / 2,
+                width: scaled.width,
+                height: scaled.height,
+            });
+
+            page.drawText("Uploaded Image", {
+                x: imageAreaX,
+                y: imageAreaY + imageAreaHeight + 8,
+                size: 8.5,
+                font: regularFont,
+                color: rgb(0.84, 0.84, 0.86),
+            });
+        }
+
+        const statY = bottomY + 22;
+        const statWidth = (contentWidth - 40) / 3;
         const statGap = 10;
         const stats = [
             { label: "Confidence", value: `${confidence.toFixed(1)}%` },
@@ -592,24 +686,26 @@ async function appendStyledReportPdf(
                 x,
                 y: statY,
                 width: statWidth,
-                height: 42,
-                color: rgb(0.12, 0.2, 0.31),
+                height: 52,
+                color: palette.charcoal,
             });
             page.drawText(stat.label, {
                 x: x + 10,
-                y: statY + 26,
+                y: statY + 33,
                 size: 8.5,
                 font: regularFont,
-                color: rgb(0.72, 0.84, 0.9),
+                color: rgb(0.78, 0.79, 0.82),
             });
-            page.drawText(stat.value, {
-                x: x + 10,
-                y: statY + 11,
-                size: 10,
-                font: boldFont,
-                color: palette.white,
-                maxWidth: statWidth - 18,
-            });
+            drawWrappedText(
+                wrapPdfTextToWidth(stat.value, boldFont, 10, statWidth - 20),
+                x + 10,
+                statY + 18,
+                statWidth - 20,
+                boldFont,
+                10,
+                palette.white,
+                2
+            );
         });
 
         cursorY = bottomY - 18;
@@ -621,59 +717,65 @@ async function appendStyledReportPdf(
     drawSectionCard(
         "Symptoms Snapshot",
         symptomLines,
-        palette.teal,
+        palette.slate,
         "Signals gathered from the current diagnostic session.",
-        palette.successSoft
+        palette.soft
     );
 
     drawSectionCard(
         "Top Prediction Matches",
         predictionLines,
-        palette.cyan,
-        "The strongest prediction candidates from the current result."
+        palette.charcoal,
+        "The strongest prediction candidates from the current result.",
+        palette.softAlt
     );
 
     drawSectionCard(
         "Condition Overview",
-        [diagnosis.disease_info?.description || "No additional condition overview was generated for this result."],
+        [overviewText],
         palette.slate,
-        "A plain-language explanation of the likely condition."
+        "A plain-language explanation of the likely condition.",
+        palette.soft
     );
 
     drawSectionCard(
         "Home Remedies",
         homeRemedyLines,
-        palette.teal,
+        palette.charcoal,
         "Supportive at-home steps suggested by the guidance module.",
-        palette.successSoft
+        palette.softAlt
     );
 
     drawSectionCard(
         "Lifestyle Changes",
         lifestyleLines,
-        palette.cyan,
-        "Daily habit adjustments that may support recovery."
+        palette.slate,
+        "Daily habit adjustments that may support recovery.",
+        palette.soft
     );
 
     drawSectionCard(
         "Diet Adjustments",
         dietLines,
-        palette.slate,
-        "Nutrition-focused suggestions included in this report."
+        palette.charcoal,
+        "Nutrition-focused suggestions included in this report.",
+        palette.softAlt
     );
 
     drawSectionCard(
         "Image Analysis Signals",
         imageSignalLines,
-        palette.cyan,
-        "Symptoms and cues identified from uploaded medical imagery."
+        palette.slate,
+        "Symptoms and cues identified from uploaded medical imagery.",
+        palette.soft
     );
 
     drawSectionCard(
         "Report Analysis Signals",
         reportSignalLines,
-        palette.teal,
-        "Symptoms and cues identified from the uploaded medical report."
+        palette.charcoal,
+        "Symptoms and cues identified from the uploaded medical report.",
+        palette.softAlt
     );
 
     drawSectionCard(
@@ -683,17 +785,17 @@ async function appendStyledReportPdf(
             ...findingsLines,
             ...reportHighlights,
         ],
-        rgb(0.78, 0.56, 0.12),
+        palette.slate,
         "Condensed findings from report extraction and interpretation.",
-        palette.amberSoft
+        palette.softDark
     );
 
     drawSectionCard(
         "Precautions",
         precautionLines,
-        rgb(0.82, 0.36, 0.42),
+        palette.charcoal,
         "Important care reminders and safety-minded next steps.",
-        palette.roseSoft
+        palette.soft
     );
 }
 
@@ -746,27 +848,7 @@ async function appendCanvasToPdf(pdfDoc: PDFDocument, canvas: HTMLCanvasElement)
 }
 
 async function appendImageToPdf(pdfDoc: PDFDocument, imageUrl: string, label?: string) {
-    const imageElement = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error("Failed to load uploaded image"));
-        img.src = imageUrl;
-    });
-
-    const imageCanvas = document.createElement("canvas");
-    imageCanvas.width = imageElement.naturalWidth || imageElement.width;
-    imageCanvas.height = imageElement.naturalHeight || imageElement.height;
-
-    const imageContext = imageCanvas.getContext("2d");
-    if (!imageContext) {
-        throw new Error("Failed to process uploaded image");
-    }
-
-    imageContext.fillStyle = "#ffffff";
-    imageContext.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
-    imageContext.drawImage(imageElement, 0, 0, imageCanvas.width, imageCanvas.height);
-
+    const imageCanvas = await loadImageCanvas(imageUrl);
     const embeddedImage = await pdfDoc.embedPng(await canvasToPngBytes(imageCanvas));
 
     const page = pdfDoc.addPage();
@@ -857,7 +939,7 @@ export default function DiagnosisResultPopup({
 
         try {
             const finalPdf = await PDFDocument.create();
-            await appendStyledReportPdf(finalPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
+            await appendStyledReportPdf(finalPdf, diagnosis, uploadedImage, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
 
             if (uploadedImage?.preview) {
                 try {
@@ -883,7 +965,7 @@ export default function DiagnosisResultPopup({
             console.error("Failed to generate PDF:", errorMessage);
             try {
                 const emergencyPdf = await PDFDocument.create();
-                await appendStyledReportPdf(emergencyPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
+                await appendStyledReportPdf(emergencyPdf, diagnosis, uploadedImage, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
 
                 if (uploadedImage?.preview) {
                     try {
