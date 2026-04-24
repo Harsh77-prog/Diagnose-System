@@ -414,6 +414,10 @@ function fileToBase64(file: File): Promise<string> {
     });
 }
 
+function fileToPreviewUrl(file: File): string {
+    return URL.createObjectURL(file);
+}
+
 const DIAGNOSIS_TRIGGER_HELP =
     "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have fever`.";
 
@@ -486,6 +490,7 @@ export default function ChatDashboard() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const reportInputRef = useRef<HTMLInputElement>(null);
+    const reportPreviewUrlsRef = useRef<string[]>([]);
     const inFlightHindiRequestsRef = useRef<Record<string, Promise<boolean>>>({});
     const failedHindiPrefetchRef = useRef<Record<string, boolean>>({});
 
@@ -583,6 +588,13 @@ export default function ChatDashboard() {
         }
         setLatestUploadedReport(null);
     }, [messages]);
+
+    useEffect(() => {
+        return () => {
+            reportPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+            reportPreviewUrlsRef.current = [];
+        };
+    }, []);
 
     async function fetchSessions() {
         try {
@@ -721,16 +733,20 @@ export default function ChatDashboard() {
         const firstReport = pendingAttachments.find((f) => !f.type.startsWith("image/")) || null;
         const imageDataUrl = firstImage ? await fileToBase64(firstImage) : null;
         const reportDataUrl = firstReport ? await fileToBase64(firstReport) : null;
+        const reportPreviewUrl = firstReport ? fileToPreviewUrl(firstReport) : null;
+        if (reportPreviewUrl) {
+            reportPreviewUrlsRef.current.push(reportPreviewUrl);
+        }
         const optimisticUserMessage: Message = {
             id: Date.now().toString(),
             role: "user",
             content: sentText,
-            jsonPayload: (imageDataUrl || reportDataUrl)
+            jsonPayload: (imageDataUrl || reportPreviewUrl)
                 ? JSON.stringify({ 
                     image_preview: imageDataUrl || undefined, 
                     image_name: firstImage?.name, 
                     report_name: firstReport?.name,
-                    report_preview: reportDataUrl || undefined
+                    report_preview: reportPreviewUrl || undefined
                 } as UserMessagePayload)
                 : null,
         };

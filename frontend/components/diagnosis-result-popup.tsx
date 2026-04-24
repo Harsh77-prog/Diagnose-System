@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2 } from "lucide-react";
+import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2, Sparkles, ShieldPlus, AlertTriangle } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 type DiagnosisPayload = {
     diagnosis: string;
@@ -70,6 +71,72 @@ function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+async function appendImageToPdf(pdfDoc: PDFDocument, imageUrl: string, label?: string) {
+    const imageElement = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Failed to load uploaded image"));
+        img.src = imageUrl;
+    });
+
+    const imageCanvas = document.createElement("canvas");
+    imageCanvas.width = imageElement.naturalWidth || imageElement.width;
+    imageCanvas.height = imageElement.naturalHeight || imageElement.height;
+
+    const imageContext = imageCanvas.getContext("2d");
+    if (!imageContext) {
+        throw new Error("Failed to process uploaded image");
+    }
+
+    imageContext.fillStyle = "#ffffff";
+    imageContext.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
+    imageContext.drawImage(imageElement, 0, 0, imageCanvas.width, imageCanvas.height);
+
+    const pngDataUrl = imageCanvas.toDataURL("image/png", 1.0);
+    const pngBytes = await fetch(pngDataUrl).then((response) => response.arrayBuffer());
+    const embeddedImage = await pdfDoc.embedPng(pngBytes);
+
+    const page = pdfDoc.addPage();
+    const { width: pageWidth, height: pageHeight } = page.getSize();
+    const margin = 36;
+    const titleSize = 16;
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const labelText = label?.trim() ? label : "Uploaded Medical Image";
+
+    page.drawText(labelText, {
+        x: margin,
+        y: pageHeight - margin,
+        size: titleSize,
+        font,
+    });
+
+    const availableWidth = pageWidth - margin * 2;
+    const availableHeight = pageHeight - margin * 3 - titleSize;
+    const scaled = embeddedImage.scale(
+        Math.min(availableWidth / embeddedImage.width, availableHeight / embeddedImage.height)
+    );
+
+    page.drawImage(embeddedImage, {
+        x: (pageWidth - scaled.width) / 2,
+        y: margin,
+        width: scaled.width,
+        height: scaled.height,
+    });
+}
+
+async function appendExistingPdf(pdfDoc: PDFDocument, pdfUrl: string) {
+    const reportResponse = await fetch(pdfUrl);
+    if (!reportResponse.ok) {
+        throw new Error("Failed to load uploaded report");
+    }
+
+    const reportBytes = await reportResponse.arrayBuffer();
+    const reportPdf = await PDFDocument.load(reportBytes);
+    const copiedPages = await pdfDoc.copyPages(reportPdf, reportPdf.getPageIndices());
+    copiedPages.forEach((page) => pdfDoc.addPage(page));
+}
+
 export default function DiagnosisResultPopup({
     isOpen,
     onClose,
@@ -80,7 +147,7 @@ export default function DiagnosisResultPopup({
     reportIdentifiedSymptoms = [],
 }: DiagnosisResultPopupProps) {
     const [isDownloading, setIsDownloading] = useState(false);
-    const [showSuccess, setShowSuccess] = useState(false);
+    const [downloadFeedback, setDownloadFeedback] = useState<"success" | "error" | null>(null);
     const reportRef = useRef<HTMLDivElement>(null);
 
     if (!isOpen || !diagnosis) return null;
@@ -100,117 +167,175 @@ export default function DiagnosisResultPopup({
         try {
             const element = reportRef.current;
             if (!element) {
-                console.error("Report element not found");
-                setIsDownloading(false);
                 alert("Error: Report content not available. Please try again.");
                 return;
             }
 
-            console.log("Starting PDF generation...");
-            console.log("Element dimensions:", element.scrollWidth, element.scrollHeight);
+            await document.fonts.ready;
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-            // Wait a moment for any animations to complete
-            await new Promise(resolve => setTimeout(resolve, 500));
+            const rect = element.getBoundingClientRect();
+            const renderWidth = Math.max(Math.ceil(rect.width), element.scrollWidth);
+            const renderHeight = Math.max(element.scrollHeight, element.offsetHeight);
 
-            // Create a canvas with higher quality
-            console.log("Creating canvas...");
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                logging: false,
-                backgroundColor: "#ffffff",
-                imageTimeout: 30000,
-                allowTaint: true,
-                windowWidth: element.scrollWidth,
-                width: element.scrollWidth,
-                height: element.scrollHeight,
-                x: 0,
-                y: 0,
-                scrollX: 0,
-                scrollY: 0,
-                foreignObjectRendering: false,
-                removeContainer: true,
-                ignoreElements: (el) => {
-                    // Ignore elements that might cause issues
-                    if (el.tagName === 'BUTTON' && el.closest('[data-ignore-in-pdf]')) {
-                        return true;
-                    }
-                    return false;
-                },
-                // Fix for unsupported color functions like lab()
-                onclone: (clonedDoc) => {
-                    // Replace unsupported lab() color function with a fallback
-                    const allElements = clonedDoc.querySelectorAll<HTMLElement>('*');
-                    allElements.forEach((el) => {
-                        const style = el.style;
-                        if (style) {
-                            // Fix background-color with lab()
-                            const bgColor = style.backgroundColor;
-                            if (bgColor && bgColor.includes('lab(')) {
-                                style.backgroundColor = '#ffffff';
-                            }
-                            // Fix color with lab()
-                            const color = style.color;
-                            if (color && color.includes('lab(')) {
-                                style.color = '#000000';
-                            }
-                            // Fix border-color with lab()
-                            const borderColor = style.borderColor;
-                            if (borderColor && borderColor.includes('lab(')) {
-                                style.borderColor = '#e5e5e5';
-                            }
+            const captureRoot = document.createElement("div");
+            captureRoot.style.position = "fixed";
+            captureRoot.style.left = "-10000px";
+            captureRoot.style.top = "0";
+            captureRoot.style.width = `${renderWidth}px`;
+            captureRoot.style.padding = "0";
+            captureRoot.style.margin = "0";
+            captureRoot.style.background = "#ffffff";
+            captureRoot.style.zIndex = "-1";
+
+            const clonedElement = element.cloneNode(true) as HTMLDivElement;
+            clonedElement.style.width = `${renderWidth}px`;
+            clonedElement.style.maxHeight = "none";
+            clonedElement.style.height = "auto";
+            clonedElement.style.overflow = "visible";
+            clonedElement.style.padding = getComputedStyle(element).padding;
+            captureRoot.appendChild(clonedElement);
+            document.body.appendChild(captureRoot);
+
+            let canvas: HTMLCanvasElement;
+            try {
+                canvas = await html2canvas(clonedElement, {
+                    scale: 2,
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: "#ffffff",
+                    imageTimeout: 30000,
+                    allowTaint: false,
+                    windowWidth: renderWidth,
+                    windowHeight: renderHeight,
+                    width: renderWidth,
+                    height: renderHeight,
+                    x: 0,
+                    y: 0,
+                    scrollX: 0,
+                    scrollY: 0,
+                    foreignObjectRendering: false,
+                    removeContainer: true,
+                    ignoreElements: (el) => {
+                        if (el.tagName === "BUTTON" && el.closest("[data-ignore-in-pdf]")) {
+                            return true;
                         }
-                    });
-                }
-            });
+                        return false;
+                    },
+                    onclone: (clonedDoc) => {
+                        const allElements = clonedDoc.querySelectorAll<HTMLElement>("*");
+                        allElements.forEach((el) => {
+                            const computed = clonedDoc.defaultView?.getComputedStyle(el);
+                            if (!computed) {
+                                return;
+                            }
+
+                            if (computed.backgroundColor.includes("lab(")) {
+                                el.style.backgroundColor = "#ffffff";
+                            }
+                            if (computed.color.includes("lab(")) {
+                                el.style.color = "#0f172a";
+                            }
+                            if (computed.borderColor.includes("lab(")) {
+                                el.style.borderColor = "#e2e8f0";
+                            }
+                        });
+                    }
+                });
+            } finally {
+                document.body.removeChild(captureRoot);
+            }
 
             if (!canvas) {
                 throw new Error("Failed to create canvas from report content");
             }
 
-            console.log("Canvas created:", canvas.width, canvas.height);
-
-            const imgData = canvas.toDataURL("image/png", 1.0);
-            
-            if (!imgData) {
-                throw new Error("Failed to convert canvas to image data");
-            }
-
-            console.log("Image data created, length:", imgData.length);
-
-            // Create PDF
-            console.log("Creating PDF...");
-            const pdf = new jsPDF({
+            const popupPdf = new jsPDF({
                 orientation: "portrait",
                 unit: "mm",
                 format: "a4",
                 compress: true,
             });
 
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = pdf.internal.pageSize.getHeight();
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
-            const ratio = Math.min(pdfWidth / imgWidth, (pdfHeight - 20) / imgHeight);
-            const imgX = (pdfWidth - imgWidth * ratio) / 2;
-            const imgY = 10;
+            const pdfWidth = popupPdf.internal.pageSize.getWidth();
+            const pdfHeight = popupPdf.internal.pageSize.getHeight();
+            const margin = 8;
+            const usableWidth = pdfWidth - margin * 2;
+            const usableHeight = pdfHeight - margin * 2;
+            const pageCanvasHeight = Math.floor((usableHeight * canvas.width) / usableWidth);
 
-            console.log("Adding image to PDF...");
-            pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, imgHeight * ratio);
-            
-            // Generate filename
+            let offsetY = 0;
+            let isFirstPage = true;
+
+            while (offsetY < canvas.height) {
+                const sliceHeight = Math.min(pageCanvasHeight, canvas.height - offsetY);
+                const pageCanvas = document.createElement("canvas");
+                pageCanvas.width = canvas.width;
+                pageCanvas.height = sliceHeight;
+
+                const pageContext = pageCanvas.getContext("2d");
+                if (!pageContext) {
+                    throw new Error("Failed to prepare PDF page");
+                }
+
+                pageContext.fillStyle = "#ffffff";
+                pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+                pageContext.drawImage(
+                    canvas,
+                    0,
+                    offsetY,
+                    canvas.width,
+                    sliceHeight,
+                    0,
+                    0,
+                    canvas.width,
+                    sliceHeight
+                );
+
+                const pageHeight = (sliceHeight * usableWidth) / canvas.width;
+                const pageImage = pageCanvas.toDataURL("image/png", 1.0);
+
+                if (!isFirstPage) {
+                    popupPdf.addPage();
+                }
+
+                popupPdf.addImage(pageImage, "PNG", margin, margin, usableWidth, pageHeight, undefined, "FAST");
+                offsetY += sliceHeight;
+                isFirstPage = false;
+            }
+
+            const finalPdf = await PDFDocument.create();
+            const popupPdfBytes = popupPdf.output("arraybuffer");
+            const popupDocument = await PDFDocument.load(popupPdfBytes);
+            const popupPages = await finalPdf.copyPages(popupDocument, popupDocument.getPageIndices());
+            popupPages.forEach((page) => finalPdf.addPage(page));
+
+            if (uploadedImage?.preview) {
+                await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
+            }
+
+            if (uploadedReport?.preview) {
+                await appendExistingPdf(finalPdf, uploadedReport.preview);
+            }
+
             const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
-            
-            console.log("Saving PDF as:", filename);
-            pdf.save(filename);
-
-            console.log("PDF saved successfully!");
-            setShowSuccess(true);
-            setTimeout(() => setShowSuccess(false), 3000);
+            const finalPdfBytes = await finalPdf.save();
+            const pdfByteArray = new Uint8Array(finalPdfBytes.length);
+            pdfByteArray.set(finalPdfBytes);
+            const downloadBlob = new Blob([pdfByteArray], { type: "application/pdf" });
+            const downloadUrl = URL.createObjectURL(downloadBlob);
+            const downloadLink = document.createElement("a");
+            downloadLink.href = downloadUrl;
+            downloadLink.download = filename;
+            downloadLink.click();
+            URL.revokeObjectURL(downloadUrl);
+            setDownloadFeedback("success");
+            setTimeout(() => setDownloadFeedback(null), 3600);
         } catch (error) {
-            console.error("Failed to generate PDF:", error);
             const errorMessage = error instanceof Error ? error.message : "Unknown error";
-            alert(`Failed to generate PDF: ${errorMessage}\n\nPlease try again or take a screenshot instead.`);
+            console.error("Failed to generate PDF:", errorMessage);
+            setDownloadFeedback("error");
+            setTimeout(() => setDownloadFeedback(null), 4200);
         } finally {
             setIsDownloading(false);
         }
@@ -273,11 +398,51 @@ export default function DiagnosisResultPopup({
                     </button>
                 </div>
 
-                {/* Success toast */}
-                {showSuccess && (
-                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-4 py-2 rounded-full bg-green-600 text-white text-sm font-medium animate-in fade-in slide-in-from-top-4 duration-300">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>PDF downloaded successfully!</span>
+                {downloadFeedback === "success" && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/12 backdrop-blur-[2px] rounded-3xl pointer-events-none">
+                        <div className="relative w-[340px] max-w-[90%] overflow-hidden rounded-[28px] border border-teal-200/80 bg-gradient-to-br from-white via-teal-50 to-cyan-50 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.18)] animate-in fade-in zoom-in-95 duration-500">
+                            <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-teal-200/40 blur-2xl animate-pulse" />
+                            <div className="absolute -left-4 bottom-0 h-20 w-20 rounded-full bg-cyan-200/40 blur-2xl animate-pulse" />
+
+                            <div className="mx-auto mb-4 relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 via-cyan-600 to-slate-700 shadow-lg">
+                                <div className="absolute inset-[-8px] rounded-full border-2 border-teal-300/70 animate-ping" />
+                                <ShieldPlus className="h-9 w-9 text-white" />
+                                <Sparkles className="absolute -right-1 top-1 h-4 w-4 text-cyan-100 animate-pulse" />
+                            </div>
+
+                            <div className="text-center">
+                                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-teal-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">
+                                    <CheckCircle2 className="h-4 w-4" />
+                                    Report Prepared
+                                </div>
+                                <h3 className="text-xl font-bold tracking-tight text-slate-900">Thank you for trusting MedCoreAI</h3>
+                                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                                    Your complete medical report has been downloaded successfully and is ready for review.
+                                </p>
+                                <p className="mt-3 rounded-2xl border border-teal-100 bg-white/80 px-4 py-3 text-sm leading-relaxed text-slate-700">
+                                    Please remember: one careful step at a time matters. With the right guidance, support, and follow-up, positive progress is always possible.
+                                </p>
+                                <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+                                    Wishing you steadiness, strength, and peace
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {downloadFeedback === "error" && (
+                    <div className="absolute top-20 left-1/2 z-30 w-[min(92%,420px)] -translate-x-1/2 animate-in fade-in slide-in-from-top-4 duration-300">
+                        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 shadow-lg">
+                            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                                <AlertTriangle className="h-4 w-4" />
+                            </div>
+                            <div>
+                                <p className="text-sm font-semibold">PDF report is not working right now</p>
+                                <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                                    Please try again, or take a screenshot of the result popup for now.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 )}
 
