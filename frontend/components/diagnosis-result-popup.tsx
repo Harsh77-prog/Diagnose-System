@@ -334,10 +334,10 @@ async function appendStyledReportPdf(
     const margin = 34;
     const contentWidth = pageWidth - margin * 2;
     const palette = {
-        black: rgb(0.08, 0.08, 0.09),
-        charcoal: rgb(0.16, 0.17, 0.19),
-        slate: rgb(0.31, 0.33, 0.36),
-        mid: rgb(0.54, 0.56, 0.6),
+        black: rgb(0.14, 0.14, 0.15),
+        charcoal: rgb(0.22, 0.23, 0.25),
+        slate: rgb(0.38, 0.39, 0.42),
+        mid: rgb(0.6, 0.62, 0.65),
         text: rgb(0.15, 0.2, 0.27),
         muted: rgb(0.45, 0.51, 0.58),
         border: rgb(0.84, 0.85, 0.87),
@@ -584,6 +584,76 @@ async function appendStyledReportPdf(
         cursorY = bottomY - 18;
     };
 
+    const drawImageShowcase = () => {
+        if (!overviewImage) {
+            return;
+        }
+
+        const cardHeight = 250;
+        ensureSpace(cardHeight + 18, "Uploaded Image");
+        const bottomY = cursorY - cardHeight;
+
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: contentWidth,
+            height: cardHeight,
+            color: palette.soft,
+            borderColor: palette.border,
+            borderWidth: 1,
+        });
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: 7,
+            height: cardHeight,
+            color: palette.charcoal,
+        });
+
+        page.drawText("Uploaded Medical Image", {
+            x: margin + 18,
+            y: cursorY - 22,
+            size: 14,
+            font: boldFont,
+            color: palette.text,
+        });
+        page.drawText("Primary visual used during the current analysis flow.", {
+            x: margin + 18,
+            y: cursorY - 40,
+            size: 9.5,
+            font: regularFont,
+            color: palette.muted,
+        });
+
+        const imageAreaX = margin + 18;
+        const imageAreaY = bottomY + 18;
+        const imageAreaWidth = contentWidth - 36;
+        const imageAreaHeight = 170;
+
+        page.drawRectangle({
+            x: imageAreaX,
+            y: imageAreaY,
+            width: imageAreaWidth,
+            height: imageAreaHeight,
+            color: palette.white,
+            borderColor: palette.border,
+            borderWidth: 1,
+        });
+
+        const scaled = overviewImage.scale(
+            Math.min((imageAreaWidth - 12) / overviewImage.width, (imageAreaHeight - 12) / overviewImage.height)
+        );
+
+        page.drawImage(overviewImage, {
+            x: imageAreaX + (imageAreaWidth - scaled.width) / 2,
+            y: imageAreaY + (imageAreaHeight - scaled.height) / 2,
+            width: scaled.width,
+            height: scaled.height,
+        });
+
+        cursorY = bottomY - 18;
+    };
+
     const drawOverviewHero = () => {
         const heroHeight = 244;
         ensureSpace(heroHeight + 22, "Diagnostic Report");
@@ -713,6 +783,7 @@ async function appendStyledReportPdf(
 
     drawPageShell("AI Diagnostic Report");
     drawOverviewHero();
+    drawImageShowcase();
 
     drawSectionCard(
         "Symptoms Snapshot",

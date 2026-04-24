@@ -149,6 +149,8 @@ function extractContextForDiagnosis(
     }
 
     let boundaryIndex = -1;
+    let uploadedImage: { preview: string; name?: string } | null = null;
+    let uploadedReport: { preview: string; name: string; type: string } | null = null;
     for (let i = diagnosisIndex - 1; i >= 0; i -= 1) {
         const msg = messages[i];
         if (msg.role !== "assistant" || !msg.jsonPayload) continue;
@@ -169,10 +171,10 @@ function extractContextForDiagnosis(
 
         try {
             const parsed = JSON.parse(msg.jsonPayload) as UserMessagePayload;
-            const uploadedImage = parsed.image_preview
+            const nextImage = parsed.image_preview
                 ? { preview: parsed.image_preview, name: parsed.image_name }
                 : null;
-            const uploadedReport = (parsed.report_preview || parsed.report_name)
+            const nextReport = (parsed.report_preview || parsed.report_name)
                 ? {
                     preview: parsed.report_preview || "",
                     name: parsed.report_name || "Uploaded Report",
@@ -180,13 +182,16 @@ function extractContextForDiagnosis(
                 }
                 : null;
 
-            if (uploadedImage || uploadedReport) {
-                return {
-                    uploadedImage,
-                    uploadedReport,
-                    imageSymptoms,
-                    reportSymptoms,
-                };
+            if (nextImage && !uploadedImage) {
+                uploadedImage = nextImage;
+            }
+
+            if (nextReport && !uploadedReport) {
+                uploadedReport = nextReport;
+            }
+
+            if (uploadedImage && uploadedReport) {
+                break;
             }
         } catch {
             continue;
@@ -194,8 +199,8 @@ function extractContextForDiagnosis(
     }
 
     return {
-        uploadedImage: null,
-        uploadedReport: null,
+        uploadedImage,
+        uploadedReport,
         imageSymptoms,
         reportSymptoms,
     };
@@ -234,6 +239,65 @@ function PremiumHindiLoader() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
             <span className="text-[10px] animate-pulse">Translate...</span>
+        </div>
+    );
+}
+
+function ScanPreviewCard({
+    type,
+    imageUrl,
+    title,
+    subtitle,
+}: {
+    type: "image" | "report";
+    imageUrl?: string | null;
+    title: string;
+    subtitle: string;
+}) {
+    return (
+        <div className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+            <div className="mb-3 flex items-center justify-between">
+                <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</div>
+                    <div className="mt-1 text-sm font-medium text-slate-800">{subtitle}</div>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Live Scan
+                </div>
+            </div>
+
+            <div className="relative overflow-hidden rounded-[20px] border border-slate-200 bg-slate-950">
+                {type === "image" && imageUrl ? (
+                    <>
+                        <img
+                            src={imageUrl}
+                            alt={subtitle}
+                            className="h-56 w-full object-contain opacity-90"
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.03),rgba(255,255,255,0))]" />
+                        <div className="pointer-events-none absolute inset-y-0 left-4 w-px bg-white/25" />
+                        <div className="pointer-events-none absolute inset-y-0 right-4 w-px bg-white/20" />
+                        <div className="pointer-events-none absolute left-0 right-0 top-0 h-14 bg-gradient-to-b from-emerald-300/12 to-transparent animate-[scan-sweep_2.2s_ease-in-out_infinite]" />
+                        <div className="pointer-events-none absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-300 to-transparent shadow-[0_0_18px_rgba(110,231,183,0.9)] animate-[scan-sweep_2.2s_ease-in-out_infinite]" />
+                        <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-emerald-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                            Pattern Mapping
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <div className="flex h-56 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(135deg,#18181b,#27272a,#3f3f46)]">
+                            <div className="relative flex h-24 w-24 items-center justify-center rounded-[28px] border border-white/10 bg-white/6 backdrop-blur-sm">
+                                <FileText className="h-10 w-10 text-white/90" />
+                                <div className="absolute -right-2 -top-2 rounded-full border border-emerald-300/30 bg-emerald-300/15 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
+                                    OCR
+                                </div>
+                            </div>
+                        </div>
+                        <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-emerald-300/8 to-transparent animate-[report-scan_2.4s_ease-in-out_infinite]" />
+                        <div className="pointer-events-none absolute inset-y-5 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-emerald-300/85 to-transparent shadow-[0_0_16px_rgba(110,231,183,0.75)] animate-[report-lines_2.4s_ease-in-out_infinite]" />
+                    </>
+                )}
+            </div>
         </div>
     );
 }
@@ -433,11 +497,15 @@ function AnalysisProgressPanel({
 function ImageAnalysisProgressBar({
     progress,
     phase,
-    isVisible
+    isVisible,
+    imagePreview,
+    imageName,
 }: {
     progress: number;
     phase: "detecting" | "analyzing" | "inferring" | "results";
     isVisible: boolean;
+    imagePreview?: string | null;
+    imageName?: string;
 }) {
     const phaseNames = {
         detecting: { label: "Scanning image structure", time: "2-3s" },
@@ -452,29 +520,39 @@ function ImageAnalysisProgressBar({
     if (!isVisible) return null;
 
     return (
-        <AnalysisProgressPanel
-            progress={progress}
-            currentLabel={phaseInfo.label}
-            currentTime={phaseInfo.time}
-            totalEstimate={totalEstimate}
-            activeStep={phase}
-            accent="teal"
-            steps={[
-                { key: "detecting", short: "01", label: "Detect" },
-                { key: "analyzing", short: "02", label: "Analyze" },
-                { key: "inferring", short: "03", label: "Infer" },
-                { key: "results", short: "04", label: "Results" }
-            ]}
-            details={
-                phase === "detecting"
-                    ? "Reviewing format, contrast, and anatomy cues before deeper inspection."
-                    : phase === "analyzing"
-                        ? "Extracting image patterns and filtering for medically relevant structures."
-                        : phase === "inferring"
-                            ? "Comparing learned feature signatures across the diagnostic pipeline."
-                            : "Condensing the strongest signals into a readable clinical summary."
-            }
-        />
+        <div className="space-y-4">
+            {imagePreview ? (
+                <ScanPreviewCard
+                    type="image"
+                    imageUrl={imagePreview}
+                    title="Image Scanner"
+                    subtitle={imageName || "Uploaded medical image"}
+                />
+            ) : null}
+            <AnalysisProgressPanel
+                progress={progress}
+                currentLabel={phaseInfo.label}
+                currentTime={phaseInfo.time}
+                totalEstimate={totalEstimate}
+                activeStep={phase}
+                accent="teal"
+                steps={[
+                    { key: "detecting", short: "01", label: "Detect" },
+                    { key: "analyzing", short: "02", label: "Analyze" },
+                    { key: "inferring", short: "03", label: "Infer" },
+                    { key: "results", short: "04", label: "Results" }
+                ]}
+                details={
+                    phase === "detecting"
+                        ? "Reviewing format, contrast, and anatomy cues before deeper inspection."
+                        : phase === "analyzing"
+                            ? "Extracting image patterns and filtering for medically relevant structures."
+                            : phase === "inferring"
+                                ? "Comparing learned feature signatures across the diagnostic pipeline."
+                                : "Condensing the strongest signals into a readable clinical summary."
+                }
+            />
+        </div>
     );
 }
 
@@ -482,11 +560,13 @@ function ImageAnalysisProgressBar({
 function ReportAnalysisProgressBar({
     progress,
     phase,
-    isVisible
+    isVisible,
+    reportName,
 }: {
     progress: number;
     phase: "extracting" | "analyzing" | "inferring" | "results";
     isVisible: boolean;
+    reportName?: string;
 }) {
     const phaseNames = {
         extracting: { label: "Reading report text", time: "2-4s" },
@@ -501,29 +581,36 @@ function ReportAnalysisProgressBar({
     if (!isVisible) return null;
 
     return (
-        <AnalysisProgressPanel
-            progress={progress}
-            currentLabel={phaseInfo.label}
-            currentTime={phaseInfo.time}
-            totalEstimate={totalEstimate}
-            activeStep={phase}
-            accent="slate"
-            steps={[
-                { key: "extracting", short: "01", label: "Extract" },
-                { key: "analyzing", short: "02", label: "Analyze" },
-                { key: "inferring", short: "03", label: "Findings" },
-                { key: "results", short: "04", label: "Summary" }
-            ]}
-            details={
-                phase === "extracting"
-                    ? "Pulling text and structure from the uploaded report for parsing."
-                    : phase === "analyzing"
-                        ? "Reviewing terminology, abnormal markers, and diagnostic context."
-                        : phase === "inferring"
-                            ? "Linking the extracted content to symptoms and notable findings."
-                            : "Formatting the analysis into a concise report-ready response."
-            }
-        />
+        <div className="space-y-4">
+            <ScanPreviewCard
+                type="report"
+                title="Report Scanner"
+                subtitle={reportName || "Uploaded report"}
+            />
+            <AnalysisProgressPanel
+                progress={progress}
+                currentLabel={phaseInfo.label}
+                currentTime={phaseInfo.time}
+                totalEstimate={totalEstimate}
+                activeStep={phase}
+                accent="slate"
+                steps={[
+                    { key: "extracting", short: "01", label: "Extract" },
+                    { key: "analyzing", short: "02", label: "Analyze" },
+                    { key: "inferring", short: "03", label: "Findings" },
+                    { key: "results", short: "04", label: "Summary" }
+                ]}
+                details={
+                    phase === "extracting"
+                        ? "Pulling text and structure from the uploaded report for parsing."
+                        : phase === "analyzing"
+                            ? "Reviewing terminology, abnormal markers, and diagnostic context."
+                            : phase === "inferring"
+                                ? "Linking the extracted content to symptoms and notable findings."
+                                : "Formatting the analysis into a concise report-ready response."
+                }
+            />
+        </div>
     );
 }
 // Generates ChatGPT style clean topic headings
@@ -1489,6 +1576,26 @@ export default function ChatDashboard() {
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
+            <style jsx global>{`
+                @keyframes scan-sweep {
+                    0% { transform: translateY(-28px); opacity: 0; }
+                    12% { opacity: 1; }
+                    50% { opacity: 1; }
+                    100% { transform: translateY(240px); opacity: 0; }
+                }
+                @keyframes report-scan {
+                    0% { transform: translateX(-20px); opacity: 0; }
+                    15% { opacity: 1; }
+                    50% { opacity: 1; }
+                    100% { transform: translateX(420px); opacity: 0; }
+                }
+                @keyframes report-lines {
+                    0% { transform: translateY(0); opacity: 0; }
+                    18% { opacity: 1; }
+                    50% { opacity: 1; }
+                    100% { transform: translateY(180px); opacity: 0; }
+                }
+            `}</style>
 
             {/* Sidebar ChatGPT Style */}
             <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-0'} transition-all duration-300 flex-shrink-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex flex-col overflow-hidden hidden md:flex relative group`}>
@@ -2034,6 +2141,8 @@ export default function ChatDashboard() {
                                                 progress={imageAnalysisProgress}
                                                 phase={analysisPhase}
                                                 isVisible={isAnalyzingImage}
+                                                imagePreview={latestUploadedImage?.preview}
+                                                imageName={latestUploadedImage?.name}
                                             />
                                         </div>
                                     )}
@@ -2045,6 +2154,7 @@ export default function ChatDashboard() {
                                                 progress={reportAnalysisProgress}
                                                 phase={reportAnalysisPhase}
                                                 isVisible={isAnalyzingReport}
+                                                reportName={latestUploadedReport?.name}
                                             />
                                         </div>
                                     )}
