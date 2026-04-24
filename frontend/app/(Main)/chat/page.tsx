@@ -2429,8 +2429,8 @@ export default function ChatDashboard() {
                         {(imageIdentifiedSymptoms.length > 0 || reportIdentifiedSymptoms.length > 0) ? (
                             <div className="rounded-2xl border border-slate-200 bg-white p-4 med-lift med-fade-up">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center">
-                                        <Activity className="w-3.5 h-3.5 text-green-600" />
+                                    <div className="w-6 h-6 rounded-lg bg-slate-900 flex items-center justify-center">
+                                        <Activity className="w-3.5 h-3.5 text-white" />
                                     </div>
                                     <div className="text-xs font-semibold uppercase tracking-wider text-slate-700">Symptoms Identified So Far</div>
                                 </div>
@@ -2440,7 +2440,7 @@ export default function ChatDashboard() {
                                             <div className="text-[10px] text-slate-500 mb-1.5 uppercase tracking-wide">From Image Analysis</div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {imageIdentifiedSymptoms.map((symptom, idx) => (
-                                                    <span key={`img-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                                                    <span key={`img-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-900 text-white border border-slate-800">
                                                         {labelize(symptom)}
                                                     </span>
                                                 ))}
@@ -2452,7 +2452,7 @@ export default function ChatDashboard() {
                                             <div className="text-[10px] text-slate-500 mb-1.5 uppercase tracking-wide">From Report Analysis</div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {reportIdentifiedSymptoms.map((symptom, idx) => (
-                                                    <span key={`rep-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                                    <span key={`rep-${idx}`} className="text-[11px] px-2.5 py-1 rounded-full bg-slate-200 text-slate-800 border border-slate-300">
                                                         {labelize(symptom)}
                                                     </span>
                                                 ))}

@@ -374,6 +374,7 @@ async function appendStyledReportPdf(
     const overviewText = diagnosis.disease_info?.description || "A structured AI-generated summary of your current diagnostic result.";
     let overviewImage: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
     let brandLogo: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
+    let approvalStamp: Awaited<ReturnType<PDFDocument["embedPng"]>> | null = null;
 
     if (uploadedImage?.preview) {
         try {
@@ -389,6 +390,13 @@ async function appendStyledReportPdf(
         brandLogo = await pdfDoc.embedPng(await canvasToPngBytes(logoCanvas));
     } catch (logoError) {
         console.warn("MedCoreAI logo could not be embedded into the PDF header.", logoError);
+    }
+
+    try {
+        const stampCanvas = await loadImageCanvas("/medcoreai-stamp.png");
+        approvalStamp = await pdfDoc.embedPng(await canvasToPngBytes(stampCanvas));
+    } catch (stampError) {
+        console.warn("MedCoreAI approval stamp could not be embedded into the PDF.", stampError);
     }
 
     let page: PDFPage;
@@ -654,6 +662,67 @@ async function appendStyledReportPdf(
         cursorY = bottomY - 18;
     };
 
+    const drawApprovalStamp = () => {
+        if (!approvalStamp) {
+            return;
+        }
+
+        const cardHeight = 310;
+        ensureSpace(cardHeight + 18, "Verification Seal");
+        const bottomY = cursorY - cardHeight;
+
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: contentWidth,
+            height: cardHeight,
+            color: palette.softAlt,
+            borderColor: palette.border,
+            borderWidth: 1,
+        });
+
+        page.drawText("Diagnostic Verification Seal", {
+            x: margin + 18,
+            y: cursorY - 22,
+            size: 14,
+            font: boldFont,
+            color: palette.text,
+        });
+        page.drawText("Prepared and exported through the MedCoreAI diagnostic workflow.", {
+            x: margin + 18,
+            y: cursorY - 40,
+            size: 9.5,
+            font: regularFont,
+            color: palette.muted,
+        });
+
+        const stampAreaWidth = 220;
+        const stampAreaHeight = 220;
+        const stampX = margin + (contentWidth - stampAreaWidth) / 2;
+        const stampY = bottomY + 36;
+        const scaled = approvalStamp.scale(
+            Math.min(stampAreaWidth / approvalStamp.width, stampAreaHeight / approvalStamp.height)
+        );
+
+        page.drawImage(approvalStamp, {
+            x: stampX + (stampAreaWidth - scaled.width) / 2,
+            y: stampY + (stampAreaHeight - scaled.height) / 2,
+            width: scaled.width,
+            height: scaled.height,
+            opacity: 0.92,
+        });
+
+        page.drawText("MedCoreAI Diagnostic System", {
+            x: margin + (contentWidth - boldFont.widthOfTextAtSize("MedCoreAI Diagnostic System", 12)) / 2,
+            y: bottomY + 22,
+            size: 12,
+            font: boldFont,
+            color: palette.charcoal,
+        });
+
+        cursorY = bottomY - 18;
+    };
+
     const drawOverviewHero = () => {
         const heroHeight = 244;
         ensureSpace(heroHeight + 22, "Diagnostic Report");
@@ -868,6 +937,8 @@ async function appendStyledReportPdf(
         "Important care reminders and safety-minded next steps.",
         palette.soft
     );
+
+    drawApprovalStamp();
 }
 
 async function appendCanvasToPdf(pdfDoc: PDFDocument, canvas: HTMLCanvasElement) {
@@ -1363,7 +1434,7 @@ export default function DiagnosisResultPopup({
                                             {imageIdentifiedSymptoms.map((symptom, idx) => (
                                                 <span
                                                     key={`img-${idx}`}
-                                                    className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-200"
+                                                    className="px-3 py-1 rounded-full bg-slate-900 text-white text-xs font-medium border border-slate-800"
                                                 >
                                                     {labelize(symptom)}
                                                 </span>
@@ -1378,7 +1449,7 @@ export default function DiagnosisResultPopup({
                                             {reportIdentifiedSymptoms.map((symptom, idx) => (
                                                 <span
                                                     key={`rep-${idx}`}
-                                                    className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-medium border border-purple-200"
+                                                    className="px-3 py-1 rounded-full bg-slate-200 text-slate-800 text-xs font-medium border border-slate-300"
                                                 >
                                                     {labelize(symptom)}
                                                 </span>
