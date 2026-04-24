@@ -3,7 +3,7 @@
 import React, { useRef, useState } from "react";
 import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2, Sparkles, ShieldPlus, AlertTriangle } from "lucide-react";
 import html2canvas from "html2canvas";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 type DiagnosisPayload = {
     diagnosis: string;
@@ -257,7 +257,45 @@ function wrapPdfText(text: string, maxChars = 92): string[] {
         });
 }
 
-async function appendTextFallbackPdf(
+function wrapPdfTextToWidth(
+    text: string,
+    font: PDFFont,
+    fontSize: number,
+    maxWidth: number
+): string[] {
+    return text
+        .split("\n")
+        .flatMap((paragraph) => {
+            const trimmed = paragraph.trim();
+            if (!trimmed) {
+                return [""];
+            }
+
+            const words = trimmed.split(/\s+/);
+            const lines: string[] = [];
+            let current = "";
+
+            for (const word of words) {
+                const next = current ? `${current} ${word}` : word;
+                if (font.widthOfTextAtSize(next, fontSize) > maxWidth) {
+                    if (current) {
+                        lines.push(current);
+                    }
+                    current = word;
+                } else {
+                    current = next;
+                }
+            }
+
+            if (current) {
+                lines.push(current);
+            }
+
+            return lines;
+        });
+}
+
+async function appendStyledReportPdf(
     pdfDoc: PDFDocument,
     diagnosis: DiagnosisPayload,
     imageIdentifiedSymptoms: string[],
@@ -267,49 +305,396 @@ async function appendTextFallbackPdf(
     const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const pageWidth = 595.28;
     const pageHeight = 841.89;
-    const margin = 42;
-    const lineHeight = 18;
+    const margin = 34;
+    const contentWidth = pageWidth - margin * 2;
+    const palette = {
+        navy: rgb(0.06, 0.13, 0.22),
+        teal: rgb(0.0, 0.58, 0.62),
+        cyan: rgb(0.16, 0.66, 0.78),
+        slate: rgb(0.28, 0.33, 0.4),
+        text: rgb(0.15, 0.2, 0.27),
+        muted: rgb(0.45, 0.51, 0.58),
+        border: rgb(0.84, 0.9, 0.94),
+        soft: rgb(0.95, 0.98, 0.99),
+        white: rgb(1, 1, 1),
+        successSoft: rgb(0.92, 0.98, 0.97),
+        roseSoft: rgb(0.99, 0.96, 0.97),
+        amberSoft: rgb(1, 0.98, 0.93),
+    };
 
-    const sections = [
-        `MedCoreAI Diagnostic Report`,
-        "",
-        `Likely condition: ${labelize(diagnosis.diagnosis)}`,
-        `Confidence: ${Number(diagnosis.confidence || 0).toFixed(1)}%`,
-        `Profile: ${labelize(String(diagnosis.demographics?.gender || "unknown"))}, ${labelize(String(diagnosis.demographics?.age_group || "unknown"))}`,
-        "",
-        `Symptoms: ${(diagnosis.confirmed_symptoms || []).map(labelize).join(", ") || "No symptoms captured"}`,
-        "",
-        `What this means: ${diagnosis.disease_info?.description || "No additional description available."}`,
-        "",
-        `Home remedies: ${(diagnosis.guidance?.home_remedies || []).join("; ") || "None listed."}`,
-        `Lifestyle changes: ${(diagnosis.guidance?.lifestyle_changes || []).join("; ") || "None listed."}`,
-        `Diet adjustments: ${(diagnosis.guidance?.diet_adjustments || []).join("; ") || "None listed."}`,
-        "",
-        `Image analysis signals: ${imageIdentifiedSymptoms.map(labelize).join(", ") || "None captured."}`,
-        `Report analysis signals: ${reportIdentifiedSymptoms.map(labelize).join(", ") || "None captured."}`,
-        "",
-        `This report is informational and not a final medical diagnosis. Please consult a qualified healthcare provider.`,
-    ];
+    const today = new Date();
+    const confidence = Number(diagnosis.confidence || 0);
+    const diagnosisLabel = labelize(diagnosis.diagnosis);
+    const profileLabel = `${labelize(String(diagnosis.demographics?.gender || "unknown"))} • ${labelize(String(diagnosis.demographics?.age_group || "unknown"))}`;
+    const symptomLines = (diagnosis.confirmed_symptoms || []).map((item) => `- ${labelize(item)}`);
+    const predictionLines = (diagnosis.top_predictions || []).slice(0, 5).map((item) => `- ${labelize(item.disease)}: ${Number(item.probability || 0).toFixed(1)}%`);
+    const precautionLines = (diagnosis.disease_info?.precautions || []).map((item) => `- ${item}`);
+    const homeRemedyLines = (diagnosis.guidance?.home_remedies || []).map((item) => `- ${item}`);
+    const lifestyleLines = (diagnosis.guidance?.lifestyle_changes || []).map((item) => `- ${item}`);
+    const dietLines = (diagnosis.guidance?.diet_adjustments || []).map((item) => `- ${item}`);
+    const imageSignalLines = imageIdentifiedSymptoms.map((item) => `- ${labelize(item)}`);
+    const reportSignalLines = reportIdentifiedSymptoms.map((item) => `- ${labelize(item)}`);
+    const findingsLines = (diagnosis.report_analysis?.findings || [])
+        .slice(0, 6)
+        .map((item) => {
+            const finding = item.finding || item.symptom || "Clinical finding";
+            const severity = item.severity ? ` (${labelize(item.severity)})` : "";
+            return `- ${finding}${severity}`;
+        });
+    const reportHighlights = [
+        ...(diagnosis.report_analysis?.serious_findings || []).map((item) => `- Serious: ${item}`),
+        ...(diagnosis.report_analysis?.abnormal_findings || []).map((item) => `- Abnormal: ${item}`),
+        ...(diagnosis.report_analysis?.normal_findings || []).map((item) => `- Normal: ${item}`),
+    ].slice(0, 8);
 
-    const lines = wrapPdfText(sections.join("\n"));
-    let page = pdfDoc.addPage([pageWidth, pageHeight]);
-    let cursorY = pageHeight - margin;
+    let page: PDFPage;
+    let cursorY = 0;
+    let pageNumber = 0;
 
-    for (const [index, line] of lines.entries()) {
-        if (cursorY < margin) {
-            page = pdfDoc.addPage([pageWidth, pageHeight]);
-            cursorY = pageHeight - margin;
+    const drawPageShell = (subtitle: string) => {
+        page = pdfDoc.addPage([pageWidth, pageHeight]);
+        pageNumber += 1;
+
+        page.drawRectangle({
+            x: 0,
+            y: pageHeight - 98,
+            width: pageWidth,
+            height: 98,
+            color: palette.navy,
+        });
+        page.drawRectangle({
+            x: 0,
+            y: pageHeight - 104,
+            width: pageWidth,
+            height: 6,
+            color: palette.cyan,
+        });
+
+        page.drawRectangle({
+            x: margin,
+            y: pageHeight - 78,
+            width: 40,
+            height: 40,
+            color: palette.white,
+        });
+        page.drawText("+", {
+            x: margin + 12,
+            y: pageHeight - 68,
+            size: 24,
+            font: boldFont,
+            color: palette.teal,
+        });
+
+        page.drawText("MedCoreAI", {
+            x: margin + 54,
+            y: pageHeight - 56,
+            size: 22,
+            font: boldFont,
+            color: palette.white,
+        });
+        page.drawText(subtitle, {
+            x: margin + 54,
+            y: pageHeight - 76,
+            size: 10,
+            font: regularFont,
+            color: rgb(0.82, 0.9, 0.95),
+        });
+
+        const dateLabel = today.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        });
+        page.drawText(dateLabel, {
+            x: pageWidth - margin - boldFont.widthOfTextAtSize(dateLabel, 10),
+            y: pageHeight - 54,
+            size: 10,
+            font: boldFont,
+            color: palette.white,
+        });
+        page.drawText(`Page ${pageNumber}`, {
+            x: pageWidth - margin - regularFont.widthOfTextAtSize(`Page ${pageNumber}`, 9),
+            y: pageHeight - 72,
+            size: 9,
+            font: regularFont,
+            color: rgb(0.82, 0.9, 0.95),
+        });
+
+        page.drawLine({
+            start: { x: margin, y: 42 },
+            end: { x: pageWidth - margin, y: 42 },
+            thickness: 1,
+            color: palette.border,
+        });
+        page.drawText("Informational medical support summary • Review with a qualified healthcare provider", {
+            x: margin,
+            y: 28,
+            size: 8.5,
+            font: regularFont,
+            color: palette.muted,
+        });
+
+        cursorY = pageHeight - 126;
+    };
+
+    const ensureSpace = (heightNeeded: number, subtitle = "Diagnostic Report") => {
+        if (!page || cursorY - heightNeeded < 62) {
+            drawPageShell(subtitle);
+        }
+    };
+
+    const drawWrappedText = (
+        lines: string[],
+        x: number,
+        yStart: number,
+        maxWidth: number,
+        font: PDFFont,
+        size: number,
+        color: ReturnType<typeof rgb>
+    ) => {
+        let y = yStart;
+        lines.forEach((line) => {
+            const wrapped = wrapPdfTextToWidth(line, font, size, maxWidth);
+            wrapped.forEach((wrappedLine) => {
+                page.drawText(wrappedLine, {
+                    x,
+                    y,
+                    size,
+                    font,
+                    color,
+                });
+                y -= size + 4;
+            });
+        });
+        return y;
+    };
+
+    const measureLinesHeight = (lines: string[], font: PDFFont, size: number, maxWidth: number) =>
+        lines.reduce((total, line) => total + wrapPdfTextToWidth(line, font, size, maxWidth).length * (size + 4), 0);
+
+    const drawSectionCard = (
+        title: string,
+        lines: string[],
+        accent: ReturnType<typeof rgb>,
+        subtitle?: string,
+        background = palette.soft
+    ) => {
+        const bodyLines = lines.length > 0 ? lines : ["No additional information available."];
+        const innerWidth = contentWidth - 30;
+        const titleHeight = 18;
+        const subtitleHeight = subtitle ? 18 : 0;
+        const bodyHeight = measureLinesHeight(bodyLines, regularFont, 10.5, innerWidth);
+        const cardHeight = 28 + titleHeight + subtitleHeight + bodyHeight + 16;
+
+        ensureSpace(cardHeight + 18, title);
+
+        const bottomY = cursorY - cardHeight;
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: contentWidth,
+            height: cardHeight,
+            color: background,
+            borderColor: palette.border,
+            borderWidth: 1,
+        });
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: 7,
+            height: cardHeight,
+            color: accent,
+        });
+
+        page.drawText(title, {
+            x: margin + 18,
+            y: cursorY - 22,
+            size: 14,
+            font: boldFont,
+            color: palette.text,
+        });
+
+        let textY = cursorY - 40;
+        if (subtitle) {
+            page.drawText(subtitle, {
+                x: margin + 18,
+                y: textY,
+                size: 9.5,
+                font: regularFont,
+                color: palette.muted,
+            });
+            textY -= 18;
         }
 
-        const isHeading = index === 0;
-        page.drawText(line, {
+        drawWrappedText(bodyLines, margin + 18, textY, innerWidth, regularFont, 10.5, palette.text);
+        cursorY = bottomY - 18;
+    };
+
+    const drawOverviewHero = () => {
+        const heroHeight = 162;
+        ensureSpace(heroHeight + 22, "Diagnostic Report");
+
+        const bottomY = cursorY - heroHeight;
+        page.drawRectangle({
             x: margin,
-            y: cursorY,
-            size: isHeading ? 18 : 11,
-            font: isHeading ? boldFont : regularFont,
+            y: bottomY,
+            width: contentWidth,
+            height: heroHeight,
+            color: palette.navy,
         });
-        cursorY -= isHeading ? 28 : lineHeight;
-    }
+        page.drawRectangle({
+            x: margin,
+            y: bottomY,
+            width: contentWidth,
+            height: 9,
+            color: palette.cyan,
+        });
+
+        page.drawText("Likely Condition", {
+            x: margin + 20,
+            y: cursorY - 28,
+            size: 10,
+            font: regularFont,
+            color: rgb(0.76, 0.88, 0.94),
+        });
+        page.drawText(diagnosisLabel, {
+            x: margin + 20,
+            y: cursorY - 52,
+            size: 24,
+            font: boldFont,
+            color: palette.white,
+        });
+        page.drawText(
+            diagnosis.disease_info?.description || "A structured AI-generated summary of your current diagnostic result.",
+            {
+                x: margin + 20,
+                y: cursorY - 76,
+                size: 10.5,
+                font: regularFont,
+                color: rgb(0.86, 0.93, 0.97),
+                maxWidth: contentWidth - 170,
+                lineHeight: 14,
+            }
+        );
+
+        const statY = bottomY + 24;
+        const statWidth = 146;
+        const statGap = 10;
+        const stats = [
+            { label: "Confidence", value: `${confidence.toFixed(1)}%` },
+            { label: "Profile", value: profileLabel },
+            { label: "Signals", value: `${symptomLines.length || 0} symptoms captured` },
+        ];
+
+        stats.forEach((stat, index) => {
+            const x = margin + 20 + index * (statWidth + statGap);
+            page.drawRectangle({
+                x,
+                y: statY,
+                width: statWidth,
+                height: 42,
+                color: rgb(0.12, 0.2, 0.31),
+            });
+            page.drawText(stat.label, {
+                x: x + 10,
+                y: statY + 26,
+                size: 8.5,
+                font: regularFont,
+                color: rgb(0.72, 0.84, 0.9),
+            });
+            page.drawText(stat.value, {
+                x: x + 10,
+                y: statY + 11,
+                size: 10,
+                font: boldFont,
+                color: palette.white,
+                maxWidth: statWidth - 18,
+            });
+        });
+
+        cursorY = bottomY - 18;
+    };
+
+    drawPageShell("AI Diagnostic Report");
+    drawOverviewHero();
+
+    drawSectionCard(
+        "Symptoms Snapshot",
+        symptomLines,
+        palette.teal,
+        "Signals gathered from the current diagnostic session.",
+        palette.successSoft
+    );
+
+    drawSectionCard(
+        "Top Prediction Matches",
+        predictionLines,
+        palette.cyan,
+        "The strongest prediction candidates from the current result."
+    );
+
+    drawSectionCard(
+        "Condition Overview",
+        [diagnosis.disease_info?.description || "No additional condition overview was generated for this result."],
+        palette.slate,
+        "A plain-language explanation of the likely condition."
+    );
+
+    drawSectionCard(
+        "Home Remedies",
+        homeRemedyLines,
+        palette.teal,
+        "Supportive at-home steps suggested by the guidance module.",
+        palette.successSoft
+    );
+
+    drawSectionCard(
+        "Lifestyle Changes",
+        lifestyleLines,
+        palette.cyan,
+        "Daily habit adjustments that may support recovery."
+    );
+
+    drawSectionCard(
+        "Diet Adjustments",
+        dietLines,
+        palette.slate,
+        "Nutrition-focused suggestions included in this report."
+    );
+
+    drawSectionCard(
+        "Image Analysis Signals",
+        imageSignalLines,
+        palette.cyan,
+        "Symptoms and cues identified from uploaded medical imagery."
+    );
+
+    drawSectionCard(
+        "Report Analysis Signals",
+        reportSignalLines,
+        palette.teal,
+        "Symptoms and cues identified from the uploaded medical report."
+    );
+
+    drawSectionCard(
+        "Report Summary",
+        [
+            diagnosis.report_analysis?.summary || "No detailed clinical summary was provided from uploaded report analysis.",
+            ...findingsLines,
+            ...reportHighlights,
+        ],
+        rgb(0.78, 0.56, 0.12),
+        "Condensed findings from report extraction and interpretation.",
+        palette.amberSoft
+    );
+
+    drawSectionCard(
+        "Precautions",
+        precautionLines,
+        rgb(0.82, 0.36, 0.42),
+        "Important care reminders and safety-minded next steps.",
+        palette.roseSoft
+    );
 }
 
 async function appendCanvasToPdf(pdfDoc: PDFDocument, canvas: HTMLCanvasElement) {
@@ -471,21 +856,8 @@ export default function DiagnosisResultPopup({
         const filename = `MedCoreAI_Report_${safeDiagnosisName}_${new Date().toISOString().slice(0, 10)}.pdf`;
 
         try {
-            const element = reportRef.current;
-            if (!element) {
-                throw new Error("Report content not available");
-            }
-
-            await document.fonts.ready;
-            await new Promise((resolve) => setTimeout(resolve, 200));
-            const canvas = await captureReportCanvas(element);
-
-            if (!canvas) {
-                throw new Error("Failed to create canvas from report content");
-            }
-
             const finalPdf = await PDFDocument.create();
-            await appendCanvasToPdf(finalPdf, canvas);
+            await appendStyledReportPdf(finalPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
 
             if (uploadedImage?.preview) {
                 try {
@@ -511,7 +883,7 @@ export default function DiagnosisResultPopup({
             console.error("Failed to generate PDF:", errorMessage);
             try {
                 const emergencyPdf = await PDFDocument.create();
-                await appendTextFallbackPdf(emergencyPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
+                await appendStyledReportPdf(emergencyPdf, diagnosis, imageIdentifiedSymptoms, reportIdentifiedSymptoms);
 
                 if (uploadedImage?.preview) {
                     try {
