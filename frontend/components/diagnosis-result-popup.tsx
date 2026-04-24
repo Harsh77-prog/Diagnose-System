@@ -3,7 +3,6 @@
 import React, { useRef, useState } from "react";
 import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2, Sparkles, ShieldPlus, AlertTriangle } from "lucide-react";
 import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 
 type DiagnosisPayload = {
@@ -90,6 +89,136 @@ function triggerPdfDownload(pdfBytes: Uint8Array, filename: string) {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
 }
 
+function sanitizeClonedDocument(clonedDoc: Document) {
+    const allElements = clonedDoc.querySelectorAll<HTMLElement>("*");
+    allElements.forEach((el) => {
+        const computed = clonedDoc.defaultView?.getComputedStyle(el);
+        if (!computed) {
+            return;
+        }
+
+        if (computed.backgroundColor.includes("lab(")) {
+            el.style.backgroundColor = "#ffffff";
+        }
+        if (computed.color.includes("lab(")) {
+            el.style.color = "#0f172a";
+        }
+        if (computed.borderColor.includes("lab(")) {
+            el.style.borderColor = "#e2e8f0";
+        }
+    });
+}
+
+async function canvasToPngBytes(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
+    const pngDataUrl = canvas.toDataURL("image/png", 1.0);
+    return fetch(pngDataUrl).then((response) => response.arrayBuffer());
+}
+
+async function captureReportCanvas(element: HTMLDivElement): Promise<HTMLCanvasElement> {
+    const rect = element.getBoundingClientRect();
+    const renderWidth = Math.max(Math.ceil(rect.width), element.scrollWidth, 800);
+    const renderHeight = Math.max(element.scrollHeight, element.offsetHeight);
+
+    const baseOptions = {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+        imageTimeout: 30000,
+        allowTaint: false,
+        windowWidth: renderWidth,
+        windowHeight: renderHeight,
+        width: renderWidth,
+        height: renderHeight,
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        foreignObjectRendering: false,
+        removeContainer: true,
+        ignoreElements: (el: Element) => {
+            if (el.tagName === "BUTTON" && el.closest("[data-ignore-in-pdf]")) {
+                return true;
+            }
+            return false;
+        },
+        onclone: sanitizeClonedDocument,
+    } satisfies Parameters<typeof html2canvas>[1];
+
+    const captureRoot = document.createElement("div");
+    captureRoot.style.position = "fixed";
+    captureRoot.style.left = "-10000px";
+    captureRoot.style.top = "0";
+    captureRoot.style.width = `${renderWidth}px`;
+    captureRoot.style.padding = "0";
+    captureRoot.style.margin = "0";
+    captureRoot.style.background = "#ffffff";
+    captureRoot.style.zIndex = "-1";
+
+    const clonedElement = element.cloneNode(true) as HTMLDivElement;
+    clonedElement.style.width = `${renderWidth}px`;
+    clonedElement.style.maxHeight = "none";
+    clonedElement.style.height = "auto";
+    clonedElement.style.overflow = "visible";
+    clonedElement.style.padding = getComputedStyle(element).padding;
+    captureRoot.appendChild(clonedElement);
+    document.body.appendChild(captureRoot);
+
+    try {
+        return await html2canvas(clonedElement, baseOptions);
+    } finally {
+        document.body.removeChild(captureRoot);
+    }
+}
+
+async function appendCanvasToPdf(pdfDoc: PDFDocument, canvas: HTMLCanvasElement) {
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = 24;
+    const usableWidth = pageWidth - margin * 2;
+    const usableHeight = pageHeight - margin * 2;
+    const pageCanvasHeight = Math.floor((usableHeight * canvas.width) / usableWidth);
+
+    let offsetY = 0;
+    while (offsetY < canvas.height) {
+        const sliceHeight = Math.min(pageCanvasHeight, canvas.height - offsetY);
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+
+        const pageContext = pageCanvas.getContext("2d");
+        if (!pageContext) {
+            throw new Error("Failed to prepare PDF page");
+        }
+
+        pageContext.fillStyle = "#ffffff";
+        pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        pageContext.drawImage(
+            canvas,
+            0,
+            offsetY,
+            canvas.width,
+            sliceHeight,
+            0,
+            0,
+            canvas.width,
+            sliceHeight
+        );
+
+        const embeddedImage = await pdfDoc.embedPng(await canvasToPngBytes(pageCanvas));
+        const renderedHeight = (sliceHeight * usableWidth) / canvas.width;
+        const page = pdfDoc.addPage([pageWidth, pageHeight]);
+        page.drawImage(embeddedImage, {
+            x: margin,
+            y: pageHeight - margin - renderedHeight,
+            width: usableWidth,
+            height: renderedHeight,
+        });
+
+        offsetY += sliceHeight;
+    }
+}
+
 async function appendImageToPdf(pdfDoc: PDFDocument, imageUrl: string, label?: string) {
     const imageElement = await new Promise<HTMLImageElement>((resolve, reject) => {
         const img = new Image();
@@ -112,9 +241,7 @@ async function appendImageToPdf(pdfDoc: PDFDocument, imageUrl: string, label?: s
     imageContext.fillRect(0, 0, imageCanvas.width, imageCanvas.height);
     imageContext.drawImage(imageElement, 0, 0, imageCanvas.width, imageCanvas.height);
 
-    const pngDataUrl = imageCanvas.toDataURL("image/png", 1.0);
-    const pngBytes = await fetch(pngDataUrl).then((response) => response.arrayBuffer());
-    const embeddedImage = await pdfDoc.embedPng(pngBytes);
+    const embeddedImage = await pdfDoc.embedPng(await canvasToPngBytes(imageCanvas));
 
     const page = pdfDoc.addPage();
     const { width: pageWidth, height: pageHeight } = page.getSize();
@@ -192,168 +319,25 @@ export default function DiagnosisResultPopup({
 
             await document.fonts.ready;
             await new Promise((resolve) => setTimeout(resolve, 200));
-
-            const rect = element.getBoundingClientRect();
-            const renderWidth = Math.max(Math.ceil(rect.width), element.scrollWidth);
-            const renderHeight = Math.max(element.scrollHeight, element.offsetHeight);
-
-            const captureRoot = document.createElement("div");
-            captureRoot.style.position = "fixed";
-            captureRoot.style.left = "-10000px";
-            captureRoot.style.top = "0";
-            captureRoot.style.width = `${renderWidth}px`;
-            captureRoot.style.padding = "0";
-            captureRoot.style.margin = "0";
-            captureRoot.style.background = "#ffffff";
-            captureRoot.style.zIndex = "-1";
-
-            const clonedElement = element.cloneNode(true) as HTMLDivElement;
-            clonedElement.style.width = `${renderWidth}px`;
-            clonedElement.style.maxHeight = "none";
-            clonedElement.style.height = "auto";
-            clonedElement.style.overflow = "visible";
-            clonedElement.style.padding = getComputedStyle(element).padding;
-            captureRoot.appendChild(clonedElement);
-            document.body.appendChild(captureRoot);
-
-            let canvas: HTMLCanvasElement;
-            try {
-                canvas = await html2canvas(clonedElement, {
-                    scale: 2,
-                    useCORS: true,
-                    logging: false,
-                    backgroundColor: "#ffffff",
-                    imageTimeout: 30000,
-                    allowTaint: false,
-                    windowWidth: renderWidth,
-                    windowHeight: renderHeight,
-                    width: renderWidth,
-                    height: renderHeight,
-                    x: 0,
-                    y: 0,
-                    scrollX: 0,
-                    scrollY: 0,
-                    foreignObjectRendering: false,
-                    removeContainer: true,
-                    ignoreElements: (el) => {
-                        if (el.tagName === "BUTTON" && el.closest("[data-ignore-in-pdf]")) {
-                            return true;
-                        }
-                        return false;
-                    },
-                    onclone: (clonedDoc) => {
-                        const allElements = clonedDoc.querySelectorAll<HTMLElement>("*");
-                        allElements.forEach((el) => {
-                            const computed = clonedDoc.defaultView?.getComputedStyle(el);
-                            if (!computed) {
-                                return;
-                            }
-
-                            if (computed.backgroundColor.includes("lab(")) {
-                                el.style.backgroundColor = "#ffffff";
-                            }
-                            if (computed.color.includes("lab(")) {
-                                el.style.color = "#0f172a";
-                            }
-                            if (computed.borderColor.includes("lab(")) {
-                                el.style.borderColor = "#e2e8f0";
-                            }
-                        });
-                    }
-                });
-            } finally {
-                document.body.removeChild(captureRoot);
-            }
+            const canvas = await captureReportCanvas(element);
 
             if (!canvas) {
                 throw new Error("Failed to create canvas from report content");
             }
 
-            const popupPdf = new jsPDF({
-                orientation: "portrait",
-                unit: "mm",
-                format: "a4",
-                compress: true,
-            });
-
-            const pdfWidth = popupPdf.internal.pageSize.getWidth();
-            const pdfHeight = popupPdf.internal.pageSize.getHeight();
-            const margin = 8;
-            const usableWidth = pdfWidth - margin * 2;
-            const usableHeight = pdfHeight - margin * 2;
-            const pageCanvasHeight = Math.floor((usableHeight * canvas.width) / usableWidth);
-
-            let offsetY = 0;
-            let isFirstPage = true;
-
-            while (offsetY < canvas.height) {
-                const sliceHeight = Math.min(pageCanvasHeight, canvas.height - offsetY);
-                const pageCanvas = document.createElement("canvas");
-                pageCanvas.width = canvas.width;
-                pageCanvas.height = sliceHeight;
-
-                const pageContext = pageCanvas.getContext("2d");
-                if (!pageContext) {
-                    throw new Error("Failed to prepare PDF page");
-                }
-
-                pageContext.fillStyle = "#ffffff";
-                pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-                pageContext.drawImage(
-                    canvas,
-                    0,
-                    offsetY,
-                    canvas.width,
-                    sliceHeight,
-                    0,
-                    0,
-                    canvas.width,
-                    sliceHeight
-                );
-
-                const pageHeight = (sliceHeight * usableWidth) / canvas.width;
-                const pageImage = pageCanvas.toDataURL("image/png", 1.0);
-
-                if (!isFirstPage) {
-                    popupPdf.addPage();
-                }
-
-                popupPdf.addImage(pageImage, "PNG", margin, margin, usableWidth, pageHeight, undefined, "FAST");
-                offsetY += sliceHeight;
-                isFirstPage = false;
-            }
-
             const filename = `MedCoreAI_Report_${diagnosis.diagnosis.replace(/\s+/g, "_").slice(0, 30)}_${new Date().toISOString().slice(0, 10)}.pdf`;
-            let bytesToDownload = new Uint8Array(toArrayBuffer(new Uint8Array(popupPdf.output("arraybuffer"))));
+            const finalPdf = await PDFDocument.create();
+            await appendCanvasToPdf(finalPdf, canvas);
 
-            try {
-                const finalPdf = await PDFDocument.create();
-                const popupDocument = await PDFDocument.load(bytesToDownload);
-                const popupPages = await finalPdf.copyPages(popupDocument, popupDocument.getPageIndices());
-                popupPages.forEach((page) => finalPdf.addPage(page));
-
-                if (uploadedImage?.preview) {
-                    try {
-                        await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
-                    } catch (attachmentError) {
-                        console.warn("Uploaded image could not be added to the PDF.", attachmentError);
-                    }
-                }
-
-                if (uploadedReport?.preview) {
-                    try {
-                        await appendExistingPdf(finalPdf, uploadedReport.preview);
-                    } catch (attachmentError) {
-                        console.warn("Uploaded report could not be merged into the PDF.", attachmentError);
-                    }
-                }
-
-                bytesToDownload = new Uint8Array(toArrayBuffer(await finalPdf.save()));
-            } catch (mergeError) {
-                console.warn("Merged PDF generation failed, downloading popup report only.", mergeError);
+            if (uploadedImage?.preview) {
+                await appendImageToPdf(finalPdf, uploadedImage.preview, uploadedImage.name);
             }
 
-            triggerPdfDownload(bytesToDownload, filename);
+            if (uploadedReport?.preview) {
+                await appendExistingPdf(finalPdf, uploadedReport.preview);
+            }
+
+            triggerPdfDownload(new Uint8Array(toArrayBuffer(await finalPdf.save())), filename);
             setDownloadFeedback("success");
             setTimeout(() => setDownloadFeedback(null), 3600);
         } catch (error) {

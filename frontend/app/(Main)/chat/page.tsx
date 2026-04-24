@@ -418,6 +418,164 @@ function fileToPreviewUrl(file: File): string {
     return URL.createObjectURL(file);
 }
 
+function renderStructuredAnalysisMessage(text: string): React.ReactNode | null {
+    const normalized = text.trim();
+
+    if (normalized.includes("I analyzed your uploaded image using trained MedMNIST image models.")) {
+        const observationBlock = normalized.match(/Top image-model observations:\n([\s\S]*?)\n\nPrimary image signal/i)?.[1] || "";
+        const observations = observationBlock
+            .split("\n")
+            .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+            .filter(Boolean);
+        const primarySignal = normalized.match(/Primary image signal \(context-weighted\):\s*\*?\*?(.+?)\*?\*?(?:\n|$)/i)?.[1]?.trim();
+        const rawSignal = normalized.match(/Raw highest-confidence dataset:\s*(.+?)(?:\n|$)/i)?.[1]?.trim();
+
+        return (
+            <div className="not-prose mt-1 max-w-2xl space-y-3">
+                <div className="rounded-3xl border border-sky-200 bg-gradient-to-br from-white via-sky-50 to-cyan-50 p-5 shadow-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-600 text-white shadow-sm">
+                            <Activity className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700">Image Analysis</div>
+                            <h3 className="mt-1 text-[17px] font-semibold text-slate-900">Medical image review completed</h3>
+                            <p className="mt-1 text-[13px] leading-relaxed text-slate-600">
+                                I analyzed your uploaded image using trained MedMNIST image models.
+                            </p>
+                        </div>
+                    </div>
+
+                    {observations.length > 0 && (
+                        <div className="mt-4 rounded-2xl border border-sky-100 bg-white/80 p-4">
+                            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                                Top image-model observations
+                            </div>
+                            <div className="space-y-2">
+                                {observations.map((item, idx) => (
+                                    <div key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                                        <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700">
+                                            {idx + 1}
+                                        </div>
+                                        <div className="text-[13px] leading-relaxed text-slate-700">{item}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {primarySignal && (
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Primary signal</div>
+                                <div className="mt-2 text-[13px] font-medium leading-relaxed text-slate-800">{primarySignal}</div>
+                            </div>
+                        )}
+                        {rawSignal && (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">Highest raw confidence</div>
+                                <div className="mt-2 text-[13px] leading-relaxed text-slate-700">{rawSignal}</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (normalized.includes("I analyzed your uploaded medical report and extracted the clinically useful details.")) {
+        const sectionMatches = [...normalized.matchAll(/\*\*(.+?)\*\*\n([\s\S]*?)(?=\n\*\*|$)/g)];
+        const summary = sectionMatches.find(([, title]) => title.toLowerCase() === "report summary")?.[2]?.trim();
+        const serious = sectionMatches
+            .find(([, title]) => title.toLowerCase() === "serious findings")?.[2]
+            ?.split("\n").map((line) => line.replace(/^- /, "").trim()).filter(Boolean) || [];
+        const abnormal = sectionMatches
+            .find(([, title]) => title.toLowerCase() === "abnormal findings")?.[2]
+            ?.split("\n").map((line) => line.replace(/^- /, "").trim()).filter(Boolean) || [];
+        const normalFindings = sectionMatches
+            .find(([, title]) => title.toLowerCase() === "normal or stable findings")?.[2]
+            ?.split("\n").map((line) => line.replace(/^- /, "").trim()).filter(Boolean) || [];
+        const extractedSignals = sectionMatches
+            .find(([, title]) => title.toLowerCase() === "symptoms/signals extracted for diagnosis")?.[2]
+            ?.split(",").map((item) => item.trim()).filter(Boolean) || [];
+
+        const renderChips = (items: string[], tone: "red" | "amber" | "emerald") => {
+            const tones = {
+                red: "border-red-200 bg-red-50 text-red-700",
+                amber: "border-amber-200 bg-amber-50 text-amber-700",
+                emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            };
+            return (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {items.map((item, idx) => (
+                        <span key={`${item}-${idx}`} className={`rounded-full border px-3 py-1 text-[12px] font-medium ${tones[tone]}`}>
+                            {item}
+                        </span>
+                    ))}
+                </div>
+            );
+        };
+
+        return (
+            <div className="not-prose mt-1 max-w-2xl space-y-3">
+                <div className="rounded-3xl border border-violet-200 bg-gradient-to-br from-white via-violet-50 to-fuchsia-50 p-5 shadow-sm">
+                    <div className="flex items-start gap-3">
+                        <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white shadow-sm">
+                            <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-violet-700">Report Analysis</div>
+                            <h3 className="mt-1 text-[17px] font-semibold text-slate-900">Medical report findings extracted</h3>
+                            <p className="mt-1 text-[13px] leading-relaxed text-slate-600">
+                                I analyzed your uploaded medical report and extracted the clinically useful details.
+                            </p>
+                        </div>
+                    </div>
+
+                    {summary && (
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">Report summary</div>
+                            <div className="mt-2 text-[13px] leading-relaxed text-slate-700">{summary}</div>
+                        </div>
+                    )}
+
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700">Serious findings</div>
+                            {serious.length > 0 ? renderChips(serious, "red") : <div className="mt-2 text-[13px] text-slate-500">No serious markers highlighted.</div>}
+                        </div>
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">Abnormal findings</div>
+                            {abnormal.length > 0 ? renderChips(abnormal, "amber") : <div className="mt-2 text-[13px] text-slate-500">No abnormal markers highlighted.</div>}
+                        </div>
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Normal or stable</div>
+                            {normalFindings.length > 0 ? renderChips(normalFindings, "emerald") : <div className="mt-2 text-[13px] text-slate-500">No stable findings highlighted.</div>}
+                        </div>
+                    </div>
+
+                    {extractedSignals.length > 0 && (
+                        <div className="mt-4 rounded-2xl border border-violet-100 bg-white/80 p-4">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+                                Symptoms and signals used for diagnosis
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {extractedSignals.map((item, idx) => (
+                                    <span key={`${item}-${idx}`} className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[12px] font-medium text-violet-700">
+                                        {item}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    return null;
+}
+
 const DIAGNOSIS_TRIGGER_HELP =
     "Tip: Start diagnosis mode with `diagnose:` or `predict:`. Example: `diagnose: I have fever`.";
 
@@ -1635,6 +1793,10 @@ export default function ChatDashboard() {
                                                     }
 
                                                     if (!diagnosisPayload) {
+                                                        const structuredAnalysis = !isHindi ? renderStructuredAnalysisMessage(renderedText) : null;
+                                                        if (structuredAnalysis) {
+                                                            return structuredAnalysis;
+                                                        }
                                                         return renderedText.split("**").map((text: string, i: number) => (
                                                             i % 2 === 1 ? <strong key={i} className="font-semibold text-black">{text}</strong> : text
                                                         ));

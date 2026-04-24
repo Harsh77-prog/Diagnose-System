@@ -2383,8 +2383,6 @@ export async function POST(req: NextRequest) {
         ).toFixed(1)}%)**`,
         `Raw highest-confidence dataset: ${rawTop.dataset} -> ${rawTop.top_label_name} (${Number(rawTop.top_confidence).toFixed(1)}%)`,
         "",
-        "This image result is generated from your local image datasets/models, not a fake placeholder.",
-        "",
         `**Question ${turns + 1}:** Do you have any medical report?`,
       ].join("\n");
 

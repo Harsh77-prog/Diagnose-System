@@ -285,7 +285,8 @@ async def image_predict(request: Request) -> dict[str, Any]:
     if max(img.size) > max_dim:
         ratio = max_dim / max(img.size)
         new_size = (int(img.width * ratio), int(img.height * ratio))
-        img = img.resize(new_size, Image.ANTIALIAS)
+        resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+        img = img.resize(new_size, resample_filter)
         buf = io.BytesIO()
         img.save(buf, format=fmt)
         image_bytes = buf.getvalue()
