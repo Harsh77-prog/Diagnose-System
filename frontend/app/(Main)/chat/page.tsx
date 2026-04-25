@@ -136,6 +136,35 @@ function labelizeImageType(imageType?: string | null): string {
     return match?.label || labelize(imageType);
 }
 
+function stripLatestRejectedImageFromMessages(messages: Message[]): Message[] {
+    const next = [...messages];
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+        const msg = next[i];
+        if (msg.role !== "user" || !msg.jsonPayload) continue;
+        const payload = parseUserMessagePayload(msg.jsonPayload);
+        if (!payload?.image_preview) continue;
+
+        const cleanedPayload: UserMessagePayload = {
+            ...payload,
+            image_preview: undefined,
+            image_name: undefined,
+            image_type: undefined,
+        };
+        const hasRemainingPayload = Boolean(
+            cleanedPayload.report_preview ||
+            cleanedPayload.report_name ||
+            cleanedPayload.report_type
+        );
+
+        next[i] = {
+            ...msg,
+            jsonPayload: hasRemainingPayload ? JSON.stringify(cleanedPayload) : null,
+        };
+        break;
+    }
+    return next;
+}
+
 function suggestImageType(
     file: File | null,
     followUpQuestion: string,
@@ -296,6 +325,9 @@ async function parseResponseJson<T>(res: Response): Promise<T> {
         return JSON.parse(raw) as T;
     } catch {
         const textOnly = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+        if (res.status === 413) {
+            throw new Error("Uploaded file is too large for processing. Please retry with a smaller or clearer image.");
+        }
         if (res.status === 504) {
             throw new Error("Request timed out (504). Image analysis backend is taking too long. Please retry.");
         }
@@ -618,6 +650,61 @@ function fileToBase64(file: File): Promise<string> {
         reader.onerror = () => reject(new Error("Failed to read file"));
         reader.readAsDataURL(file);
     });
+}
+
+type PreparedImagePayload = {
+    analysisDataUrl: string;
+    previewDataUrl: string;
+};
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(img);
+        };
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("Failed to load image"));
+        };
+        img.src = objectUrl;
+    });
+}
+
+function renderCompressedImageDataUrl(
+    image: HTMLImageElement,
+    maxDimension: number,
+    quality: number
+): string {
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) {
+        throw new Error("Canvas is not available for image compression");
+    }
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", quality);
+}
+
+async function prepareImagePayload(file: File): Promise<PreparedImagePayload> {
+    const image = await loadImageFromFile(file);
+    let analysisDataUrl = renderCompressedImageDataUrl(image, 896, 0.82);
+    if (analysisDataUrl.length > 1_600_000) {
+        analysisDataUrl = renderCompressedImageDataUrl(image, 768, 0.72);
+    }
+    if (analysisDataUrl.length > 1_200_000) {
+        analysisDataUrl = renderCompressedImageDataUrl(image, 640, 0.68);
+    }
+    const previewDataUrl = renderCompressedImageDataUrl(image, 420, 0.62);
+    return { analysisDataUrl, previewDataUrl };
 }
 
 function fileToPreviewUrl(file: File): string {
@@ -1120,7 +1207,9 @@ export default function ChatDashboard() {
         const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : (text.trim() || fallbackText);
         if (!sentText.trim() && !action) return;
 
-        const imageDataUrl = firstImage ? await fileToBase64(firstImage) : null;
+        const preparedImage = firstImage ? await prepareImagePayload(firstImage) : null;
+        const imageDataUrl = preparedImage?.analysisDataUrl || null;
+        const imagePreviewDataUrl = preparedImage?.previewDataUrl || null;
         const reportDataUrl = firstReport ? await fileToBase64(firstReport) : null;
         const reportPreviewUrl = firstReport ? fileToPreviewUrl(firstReport) : null;
         if (reportPreviewUrl) {
@@ -1130,9 +1219,9 @@ export default function ChatDashboard() {
             id: Date.now().toString(),
             role: "user",
             content: sentText,
-            jsonPayload: (imageDataUrl || reportPreviewUrl)
+            jsonPayload: (imagePreviewDataUrl || reportPreviewUrl)
                 ? JSON.stringify({ 
-                    image_preview: imageDataUrl || undefined, 
+                    image_preview: imagePreviewDataUrl || undefined, 
                     image_name: firstImage?.name, 
                     image_type: selectedImageType || undefined,
                     report_name: firstReport?.name,
@@ -1179,8 +1268,8 @@ export default function ChatDashboard() {
                     body: JSON.stringify({
                         role: "user",
                         content: sentText,
-                        jsonPayload: imageDataUrl || firstReport ? {
-                            image_preview: imageDataUrl || undefined,
+                        jsonPayload: imagePreviewDataUrl || firstReport ? {
+                            image_preview: imagePreviewDataUrl || undefined,
                             image_name: firstImage?.name,
                             image_type: selectedImageType || undefined,
                             report_name: firstReport?.name,
@@ -1283,6 +1372,10 @@ export default function ChatDashboard() {
                         follow_up_suggested?: boolean;
                         follow_up_question?: string;
                         follow_up_choices?: string[] | null;
+                        image_analysis?: {
+                            status?: string;
+                            note?: string;
+                        } | null;
                     }>(res);
 
                     if (!res.ok) throw new Error(data.error || "Failed to fetch ML response");
@@ -1365,7 +1458,12 @@ export default function ChatDashboard() {
                 const syncRes = await fetch(`/api/chat/sessions/${activeSessionId}/messages`);
                 const syncData = await parseResponseJson<{ messages?: Message[] }>(syncRes);
                 if (syncData.messages && syncData.messages.length > 0) {
-                    setMessages(syncData.messages);
+                    const imageRejected = shouldDiagnose && data.image_analysis?.status === "rejected";
+                    setMessages(imageRejected ? stripLatestRejectedImageFromMessages(syncData.messages) : syncData.messages);
+                    if (imageRejected) {
+                        setLatestUploadedImage(null);
+                        setImageIdentifiedSymptoms([]);
+                    }
                 }
 
                 if (shouldDiagnose && data.follow_up_suggested) {
