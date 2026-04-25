@@ -530,7 +530,7 @@ export default function Page() {
               >
                 Terms of Service
               </button>
-              <a href="#" className="hover:text-neutral-900 transition-colors">Built by @Team</a>
+              <a href="#" className="hover:text-neutral-900 transition-colors">Built by @ MedCoreAI Team 🔱🕉️ </a>
             </div>
           </div>
         </div>
