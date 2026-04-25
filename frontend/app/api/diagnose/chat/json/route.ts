@@ -80,6 +80,15 @@ type ImagePredictionFetchResult = {
   status: number | null;
 };
 
+type ImageUploadValidationResult = {
+  ok: boolean;
+  isMedical: boolean;
+  matchedType: "chest" | "skin" | "retina" | "blood" | "pathology" | "other" | "unknown";
+  confidence: number;
+  reason: string;
+  userMessage: string;
+};
+
 type ReportFinding = {
   finding?: string;
   symptom?: string;
@@ -1431,6 +1440,164 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function imageTypeDisplayLabel(imageType?: string | null): string {
+  const normalized = normalizeToken(imageType || "");
+  const labels: Record<string, string> = {
+    chest: "Chest X-ray",
+    skin: "Skin Photo",
+    retina: "Eye Scan",
+    eye: "Eye Scan",
+    blood: "Blood Slide",
+    pathology: "Tissue Slide",
+    tissue: "Tissue Slide",
+    unsure: "medical image",
+    unknown: "medical image",
+  };
+  return labels[normalized] || "medical image";
+}
+
+function datasetToImageType(dataset?: string | null): "chest" | "skin" | "retina" | "blood" | "pathology" | "unknown" {
+  const normalized = normalizeToken(dataset || "");
+  if (normalized === "chestmnist") return "chest";
+  if (normalized === "dermamnist") return "skin";
+  if (normalized === "retinamnist") return "retina";
+  if (normalized === "bloodmnist") return "blood";
+  if (normalized === "pathmnist") return "pathology";
+  return "unknown";
+}
+
+async function validateMedicalImageUpload(params: {
+  imageBase64: string;
+  imageFilename?: string | null;
+  imageMime?: string | null;
+  selectedImageType?: string | null;
+  preferredDatasets?: string[];
+}): Promise<ImageUploadValidationResult | null> {
+  const apiKey = (process.env.OPENAI_API_KEY || "").trim().replace(/^['"]|['"]$/g, "");
+  if (!apiKey) return null;
+
+  const configuredModel = (process.env.OPENAI_MODEL || "").trim().replace(/^['"]|['"]$/g, "");
+  const model = configuredModel || "gpt-4o-mini";
+  const selectedType = normalizeToken(params.selectedImageType || "");
+  const inferredType = datasetToImageType(params.preferredDatasets?.[0]);
+  const filename = (params.imageFilename || "").trim();
+  const mime = (params.imageMime || "image/png").trim() || "image/png";
+  const dataUrl = `data:${mime};base64,${cleanBase64Payload(params.imageBase64)}`;
+
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You validate uploaded images for a medical diagnosis app. Return strict JSON only with keys: is_medical (boolean), matched_type (one of chest, skin, retina, blood, pathology, other, unknown), selected_type_match (boolean), confidence (number 0..1), brief_reason (string). Mark is_medical=false for ordinary everyday photos like bikes, people, rooms, food, pets, landscapes, screenshots, documents, or non-medical objects. Use matched_type=other when the image is medical-looking but not one of the listed supported categories.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  filename,
+                  selected_image_type: selectedType || null,
+                  inferred_image_type_from_conversation: inferredType !== "unknown" ? inferredType : null,
+                  supported_types: ["chest", "skin", "retina", "blood", "pathology"],
+                  instruction:
+                    "Check whether the image is a real medical image and whether it matches the selected/inferred category closely enough for safe analysis.",
+                }),
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: dataUrl,
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: 200,
+      }),
+    });
+
+    if (!res.ok) return null;
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content || "";
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      is_medical?: boolean;
+      matched_type?: string;
+      selected_type_match?: boolean;
+      confidence?: number;
+      brief_reason?: string;
+    };
+
+    const matchedTypeRaw = normalizeToken(parsed.matched_type || "unknown");
+    const matchedType =
+      matchedTypeRaw === "chest" || matchedTypeRaw === "skin" || matchedTypeRaw === "retina" || matchedTypeRaw === "blood" || matchedTypeRaw === "pathology" || matchedTypeRaw === "other"
+        ? matchedTypeRaw
+        : "unknown";
+    const confidence = Math.max(0, Math.min(1, Number(parsed.confidence || 0)));
+    const reason = String(parsed.brief_reason || "The upload does not look like a supported medical image.").trim();
+    const selectedLabel = imageTypeDisplayLabel(selectedType || inferredType);
+    const matchedLabel = imageTypeDisplayLabel(matchedType);
+
+    if (parsed.is_medical === false) {
+      return {
+        ok: false,
+        isMedical: false,
+        matchedType,
+        confidence,
+        reason,
+        userMessage: `This upload does not appear to be a valid medical image. Please upload a real ${selectedLabel} instead.`,
+      };
+    }
+
+    if (matchedType === "other" && confidence >= 0.6) {
+      return {
+        ok: false,
+        isMedical: true,
+        matchedType,
+        confidence,
+        reason,
+        userMessage: `This looks medical, but not like a supported ${selectedLabel}. Please upload a supported image type such as Chest X-ray, Skin Photo, Eye Scan, Blood Slide, or Tissue Slide.`,
+      };
+    }
+
+    const selectedTypeMatch = parsed.selected_type_match === true;
+    if (selectedType && selectedType !== "unsure" && !selectedTypeMatch && confidence >= 0.6) {
+      return {
+        ok: false,
+        isMedical: true,
+        matchedType,
+        confidence,
+        reason,
+        userMessage: `This image does not look like the selected type (${imageTypeDisplayLabel(selectedType)}). It looks closer to ${matchedLabel}. Please choose the correct type or upload the correct image.`,
+      };
+    }
+
+    return {
+      ok: true,
+      isMedical: Boolean(parsed.is_medical ?? true),
+      matchedType,
+      confidence,
+      reason,
+      userMessage: "",
+    };
+  } catch (err) {
+    console.error("[diagnose:image] validation failed", err);
+    return null;
+  }
+}
+
 async function fetchImagePrediction(
   imageBase64: string,
   userId: string,
@@ -2272,6 +2439,47 @@ export async function POST(req: NextRequest) {
         body.image_mime,
         body.image_type
       );
+      const imageValidation = await validateMedicalImageUpload({
+        imageBase64,
+        imageFilename: body.image_filename,
+        imageMime: body.image_mime,
+        selectedImageType: body.image_type,
+        preferredDatasets,
+      });
+      if (imageValidation && !imageValidation.ok) {
+        slots.imageProvided = false;
+        imagePrediction = null;
+        imageAnalysisNote = imageValidation.reason;
+        const retryQuestion = "Please upload one medical image now and send a short message (for example: 'uploaded image').";
+        const retryState = makeState({
+          turns,
+          maxTurns,
+          confirmedSymptoms: Array.from(confirmed),
+          deniedSymptoms: Array.from(denied),
+          askedSymptoms: Array.from(asked),
+          topCandidates: parsedState?.topCandidates || [],
+          currentQuestionId: "image_upload",
+          currentQuestionText: retryQuestion,
+          currentQuestionChoices: ["upload"],
+          imagePrediction: null,
+          reportAnalysis,
+          slots,
+        });
+
+        return NextResponse.json({
+          reply: `${imageValidation.userMessage}\n\nPlease upload the correct medical image and try again.`,
+          follow_up_suggested: true,
+          follow_up_question: retryQuestion,
+          follow_up_choices: ["upload"],
+          follow_up_state: retryState,
+          image_analysis: {
+            used: false,
+            source: "pre_validation",
+            status: "rejected",
+            note: imageValidation.reason,
+          },
+        });
+      }
       const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
         const sanitized = sanitizeImagePrediction(imageFetch.prediction);
