@@ -97,6 +97,27 @@ function labelize(text: string): string {
     return text.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function isAttachmentOnlyMessage(text: string): boolean {
+    const normalized = text.trim().toLowerCase();
+    return [
+        "uploaded image",
+        "upload image",
+        "uploaded medical image",
+        "uploaded report",
+        "uploaded medical report",
+        "upload report",
+    ].includes(normalized);
+}
+
+function parseUserMessagePayload(jsonPayload?: string | null): UserMessagePayload | null {
+    if (!jsonPayload) return null;
+    try {
+        return JSON.parse(jsonPayload) as UserMessagePayload;
+    } catch {
+        return null;
+    }
+}
+
 function normalizeBrandName(text: string): string {
     return text.replace(/\bMediCoreAI\b/g, "MedCoreAI").replace(/\bMediCore\b/g, "MedCoreAI");
 }
@@ -525,6 +546,33 @@ function generateChatTitle(prompt: string) {
     if (!cleaned) return "New Diagnosis";
     if (cleaned.length <= 30) return cleaned;
     return `${cleaned.slice(0, 30)}...`;
+}
+
+function shouldUseDiagnosisFlow(message: string, hasActiveFollowup: boolean, hasImage: boolean, hasReport: boolean) {
+    if (hasActiveFollowup || hasImage || hasReport) {
+        return true;
+    }
+
+    const normalized = message.toLowerCase().trim();
+    if (!normalized) {
+        return false;
+    }
+
+    if (/^\s*(diagnose|predict|triage|symptom|symptoms)\s*[:\-]/i.test(message)) {
+        return true;
+    }
+
+    const educationalMedicalQuery =
+        /\b(what is|what are|tell me about|explain|define|meaning of|causes of|treatment of|symptoms of|signs of)\b/.test(normalized);
+    if (educationalMedicalQuery) {
+        return false;
+    }
+
+    const firstPerson = /\b(i|i'm|im|i am|my|me)\b/.test(normalized);
+    const selfReportVerb = /\b(have|having|feel|feeling|suffer|suffering|experiencing|got|started|hurts|hurting)\b/.test(normalized);
+    const symptomWords = /\b(pain|ache|fever|cough|cold|vomit|vomiting|nausea|headache|rash|itching|breathlessness|dizziness|swelling|infection)\b/.test(normalized);
+
+    return firstPerson && (selfReportVerb || symptomWords);
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -1135,15 +1183,12 @@ export default function ChatDashboard() {
                 // Check if this should trigger diagnosis flow
                 // Always use diagnosis API if there's an active follow-up state
                 const hasActiveFollowup = followUpActive;
-                const messageLower = sentText.toLowerCase().trim();
-                const diagnosisPrefixes = ["diagnose:", "predict:", "symptoms:", "symptom:"];
-                const diagnosisKeywords = ["diagnose", "predict", "symptom", "symptoms", "ill", "sick", "pain", "ache", "fever", "cough", "cold"];
-                const shouldDiagnose =
-                    hasActiveFollowup ||
-                    Boolean(imageDataUrl) ||
-                    Boolean(reportDataUrl) ||
-                    diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
-                    diagnosisKeywords.some(keyword => messageLower.includes(keyword));
+                const shouldDiagnose = shouldUseDiagnosisFlow(
+                    sentText,
+                    hasActiveFollowup,
+                    Boolean(imageDataUrl),
+                    Boolean(reportDataUrl)
+                );
 
                 let data: any;
 
@@ -1851,42 +1896,67 @@ export default function ChatDashboard() {
                                         )}
 
                                         {msg.role === "user" ? (
-                                            <div className="bg-slate-100 text-[15px] leading-relaxed text-[#0f0f0f] px-5 py-2.5 rounded-2xl rounded-tr-md border border-slate-200">
-                                                <div className="whitespace-pre-wrap">{msg.content}</div>
-                                                {msg.jsonPayload && (() => {
-                                                    try {
-                                                        const payload = JSON.parse(msg.jsonPayload) as UserMessagePayload;
-                                                        let hasAttachment = false;
-                                                        
-                                                        // Show image preview if available
-                                                        if (payload.image_preview) {
-                                                            hasAttachment = true;
-                                                            return (
-                                                                <div className="mt-2">
-                                                                    <img
-                                                                        src={payload.image_preview}
-                                                                        alt={payload.image_name || "Uploaded medical image"}
-                                                                        className="max-h-56 w-auto rounded-xl border border-slate-300"
-                                                                    />
+                                            (() => {
+                                                const payload = parseUserMessagePayload(msg.jsonPayload);
+                                                const hidePlainText = isAttachmentOnlyMessage(msg.content);
+                                                const hasImage = Boolean(payload?.image_preview);
+                                                const hasReport = Boolean(payload?.report_preview || payload?.report_name);
+
+                                                if (hasImage) {
+                                                    return (
+                                                        <div className="w-full max-w-[360px] overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+                                                            <div className="relative">
+                                                                <img
+                                                                    src={payload?.image_preview}
+                                                                    alt={payload?.image_name || "Uploaded medical image"}
+                                                                    className="h-auto max-h-[360px] w-full object-cover"
+                                                                />
+                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-slate-950/16 via-slate-900/5 to-transparent" />
+                                                                <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/88 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 shadow-sm backdrop-blur">
+                                                                    <ImageIcon className="h-3.5 w-3.5" />
+                                                                    Medical Image
                                                                 </div>
-                                                            );
-                                                        }
-                                                        
-                                                        // Show report preview link if available
-                                                        if (payload.report_preview || payload.report_name) {
-                                                            hasAttachment = true;
-                                                            return (
-                                                                <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-300">
+                                                            </div>
+                                                            <div className="space-y-2 px-4 py-3">
+                                                                <div className="flex items-start justify-between gap-3">
+                                                                    <div className="min-w-0">
+                                                                        <div className="text-sm font-semibold text-slate-900 truncate">
+                                                                            {payload?.image_name || "Uploaded medical image"}
+                                                                        </div>
+                                                                        <div className="mt-1 text-xs text-slate-500">
+                                                                            Ready for visual analysis
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900 shadow-[0_0_0_6px_rgba(15,23,42,0.08)]" />
+                                                                </div>
+                                                                {!hidePlainText && msg.content.trim() ? (
+                                                                    <div className="rounded-2xl bg-slate-100/90 px-3 py-2 text-[13px] leading-relaxed text-slate-700">
+                                                                        {msg.content}
+                                                                    </div>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                return (
+                                                    <div className="bg-slate-100 text-[15px] leading-relaxed text-[#0f0f0f] px-5 py-2.5 rounded-2xl rounded-tr-md border border-slate-200">
+                                                        {!hidePlainText || !hasReport ? (
+                                                            <div className="whitespace-pre-wrap">{msg.content}</div>
+                                                        ) : null}
+                                                        {hasReport ? (
+                                                            <div className={hidePlainText ? "" : "mt-2"}>
+                                                                <div className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-300">
                                                                     <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
                                                                         <FileText className="w-5 h-5 text-white" />
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="text-sm font-medium text-slate-800 truncate">
-                                                                            {payload.report_name || "Uploaded Report"}
+                                                                            {payload?.report_name || "Uploaded Report"}
                                                                         </div>
                                                                         <div className="text-xs text-slate-500">PDF Document</div>
                                                                     </div>
-                                                                    {payload.report_preview && (
+                                                                    {payload?.report_preview && (
                                                                         <a
                                                                             href={payload.report_preview}
                                                                             target="_blank"
@@ -1897,15 +1967,11 @@ export default function ChatDashboard() {
                                                                         </a>
                                                                     )}
                                                                 </div>
-                                                            );
-                                                        }
-                                                        
-                                                        return null;
-                                                    } catch {
-                                                        return null;
-                                                    }
-                                                })()}
-                                            </div>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })()
                                         ) : (
                                             <div className="text-[15px] leading-relaxed text-[#0f0f0f] whitespace-pre-wrap prose prose-slate prose-sm max-w-none w-full border-none shadow-none">
                                                 {(() => {

@@ -113,6 +113,11 @@ const IMAGE_WARMUP_TTL_MS = 10 * 60 * 1000;
 let imageWarmupInFlight: Promise<void> | null = null;
 let imageWarmupLastAt = 0;
 
+function imageWarmupEnabled(): boolean {
+  const raw = (process.env.ENABLE_IMAGE_WARMUP || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 function resolveImageTimeoutMs(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_TIMEOUT_MS || "").trim();
   const parsed = Number(raw);
@@ -843,13 +848,19 @@ function hasMedicalIntent(text: string, datasets: DatasetCache): boolean {
   // Explicit triage trigger for users who want diagnosis mode.
   if (/^\s*(diagnose|predict|triage)\s*[:\-]/i.test(text)) return true;
 
-  const directSymptoms = extractSymptoms(text, datasets);
-  if (directSymptoms.length > 0) return true;
-
   // Informational health queries should be answered directly, not routed into triage.
-  if (/\b(what|which|tell|explain|list)\b/.test(normalized) && /\b(symptom|symptoms|sign|signs)\b/.test(normalized)) {
+  if (
+    /\b(what|which|tell|explain|list|define)\b/.test(normalized) &&
+    /\b(symptom|symptoms|sign|signs)\b/.test(normalized)
+  ) {
     return false;
   }
+  if (/\b(what is|what are|tell me about|explain|define|meaning of|causes of|treatment of)\b/.test(normalized)) {
+    return false;
+  }
+
+  const directSymptoms = extractSymptoms(text, datasets);
+  if (directSymptoms.length > 0) return true;
 
   const medicalKeywords = [
     "symptom",
@@ -1580,6 +1591,7 @@ async function ensureImageWarmup(
   preferredDatasets: string[] = [],
   force = false
 ): Promise<void> {
+  if (!imageWarmupEnabled()) return;
   const now = Date.now();
   if (!force && now - imageWarmupLastAt < IMAGE_WARMUP_TTL_MS) return;
   if (imageWarmupInFlight) {

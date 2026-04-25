@@ -11,6 +11,13 @@ CHROMA_PERSIST_DIR = Path(os.getenv("CHROMA_PERSIST_DIR", "./chroma_data")).reso
 BACKEND_HOST = os.getenv("BACKEND_HOST", "0.0.0.0")
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
 
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
 # Performance & Timeout Configuration
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "300"))
 ML_INFERENCE_TIMEOUT_SECONDS = int(os.getenv("ML_INFERENCE_TIMEOUT_SECONDS", "60"))
@@ -35,6 +42,10 @@ MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "1000"))
 # Image Processing
 IMAGE_CACHE_TTL_SEC = int(os.getenv("IMAGE_CACHE_TTL_SEC", "1200"))  # 20 min
 IMAGE_CACHE_MAX_ITEMS = int(os.getenv("IMAGE_CACHE_MAX_ITEMS", "256"))
+IMAGE_INFERENCE_MAX_WORKERS = int(os.getenv("IMAGE_INFERENCE_MAX_WORKERS", "1"))
+IMAGE_MODEL_WARMUP_ON_STARTUP = _env_flag("IMAGE_MODEL_WARMUP_ON_STARTUP", False)
+IMAGE_MODEL_PERIODIC_WARMUP = _env_flag("IMAGE_MODEL_PERIODIC_WARMUP", False)
+IMAGE_MODEL_MAX_RESIDENT = int(os.getenv("IMAGE_MODEL_MAX_RESIDENT", "1"))
 
 # Ensure ChromaDB persist dir exists
 CHROMA_PERSIST_DIR.mkdir(parents=True, exist_ok=True)

@@ -1,35 +1,34 @@
 from __future__ import annotations
 
 import base64
+import gc
 import hashlib
 import io
 import logging
 import os
 import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Iterable, cast
-from collections import OrderedDict
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import torch
 import torch.nn as nn
 from medmnist import INFO
 from PIL import Image
-from torchvision import transforms, models
+from torchvision import models, transforms
 
-# allow moderate multi-threading for parallel model execution
+from config import IMAGE_INFERENCE_MAX_WORKERS, IMAGE_MODEL_MAX_RESIDENT
+
 torch.set_num_threads(2)
 
-# Input sizes for each model architecture
 SIMPLECNN_IMAGE_SIZE = 28
 RESNET_IMAGE_SIZE = 64
 
-# ImageNet normalization (for ResNet models)
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
-
+IMAGENET_STD = [0.229, 0.224, 0.225]
 
 DATASETS = ["chestmnist", "dermamnist", "retinamnist", "pathmnist", "bloodmnist"]
 LOGGER = logging.getLogger("medcore.image_predictor")
@@ -54,17 +53,14 @@ class SimpleCNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        return self.classifier(x)
+        return self.classifier(self.features(x))
 
 
-def _is_resnet_state(state_dict: dict) -> bool:
-    """Return True if state dict looks like a ResNet (has 'layer1.0.conv1.weight')."""
+def _is_resnet_state(state_dict: dict[str, Any]) -> bool:
     return any(k.startswith("layer1.") for k in state_dict.keys())
 
 
 def _build_resnet18(num_classes: int, device: torch.device) -> nn.Module:
-    """Build ResNet-18 with correct final layer; no pretrained weights at inference."""
     model = models.resnet18(weights=None)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     return model.to(device)
@@ -75,27 +71,29 @@ class ImagePredictor:
         self.model_dir = Path(model_dir).resolve()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._models: dict[str, nn.Module] = {}
-        self._model_uses_resnet: dict[str, bool] = {}  # tracks architecture per dataset
+        self._model_uses_resnet: dict[str, bool] = {}
         self._available_model_files: dict[str, Path] = {}
         self._model_locks: dict[str, threading.Lock] = {name: threading.Lock() for name in DATASETS}
-        # Use OrderedDict for efficient LRU eviction
+        self._loaded_model_order: OrderedDict[str, float] = OrderedDict()
+        self._max_resident_models = max(1, IMAGE_MODEL_MAX_RESIDENT)
         self._predict_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
         self._predict_cache_lock = threading.Lock()
         self._predict_cache_ttl_sec = 20 * 60
         self._predict_cache_max_items = 256
-        self._executor = ThreadPoolExecutor(max_workers=len(DATASETS))
+        self._executor = ThreadPoolExecutor(max_workers=max(1, IMAGE_INFERENCE_MAX_WORKERS))
         LOGGER.info(
-            "ImagePredictor init | cwd=%s | model_dir=%s | device=%s",
+            "ImagePredictor init | cwd=%s | model_dir=%s | device=%s | max_resident=%s | workers=%s",
             os.getcwd(),
             self.model_dir,
             self.device,
+            self._max_resident_models,
+            max(1, IMAGE_INFERENCE_MAX_WORKERS),
         )
         self._discover_model_files()
 
     def _discover_model_files(self) -> None:
         missing_files: list[str] = []
         for dataset_name in DATASETS:
-            # prefer TorchScript (.pt) if present, otherwise fall back to state dict (.pth)
             found = False
             for ext in ("pt", "pth"):
                 candidate = self.model_dir / f"{dataset_name}_model.{ext}"
@@ -105,7 +103,6 @@ class ImagePredictor:
                     break
             if not found:
                 missing_files.append(str(self.model_dir / f"{dataset_name}_model.(pt|pth)"))
-                continue
 
         LOGGER.info(
             "Model file discovery | available=%s | missing_count=%d",
@@ -115,24 +112,48 @@ class ImagePredictor:
         if missing_files:
             LOGGER.warning("Missing model files: %s", missing_files)
 
-    def _ensure_model_loaded(self, dataset_name: str) -> bool:
+    def _evict_if_needed(self, protected: set[str] | None = None) -> None:
+        protected = protected or set()
+        while len(self._models) > self._max_resident_models:
+            victim = next((name for name in self._loaded_model_order.keys() if name not in protected), None)
+            if not victim:
+                return
+            self._unload_model(victim)
+
+    def _unload_model(self, dataset_name: str) -> None:
+        model = self._models.pop(dataset_name, None)
+        self._loaded_model_order.pop(dataset_name, None)
+        self._model_uses_resnet.pop(dataset_name, None)
+        if model is not None:
+            del model
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            LOGGER.info("Unloaded model | dataset=%s", dataset_name)
+
+    def _mark_model_used(self, dataset_name: str) -> None:
+        self._loaded_model_order.pop(dataset_name, None)
+        self._loaded_model_order[dataset_name] = time.time()
+
+    def _ensure_model_loaded(self, dataset_name: str, protected: set[str] | None = None) -> bool:
         if dataset_name in self._models:
+            self._mark_model_used(dataset_name)
             return True
+
         model_path = self._available_model_files.get(dataset_name)
         if not model_path:
             return False
+
         lock = self._model_locks.setdefault(dataset_name, threading.Lock())
         with lock:
             if dataset_name in self._models:
+                self._mark_model_used(dataset_name)
                 return True
             try:
-                # TorchScript (.pt) — architecture-agnostic, load directly
                 if model_path.suffix == ".pt":
                     model = torch.jit.load(str(model_path), map_location=self.device)
-                    # Detect input size from file name vs TorchScript — default to 64 for new models
                     self._model_uses_resnet[dataset_name] = True
                 else:
-                    # State dict (.pth) — detect architecture from keys
                     num_classes = len(INFO[dataset_name]["label"])
                     state = torch.load(model_path, map_location=self.device, weights_only=True)
                     if _is_resnet_state(state):
@@ -147,10 +168,16 @@ class ImagePredictor:
 
                 model.eval()
                 self._models[dataset_name] = model
-                LOGGER.info("Loaded model | dataset=%s | resnet=%s | path=%s",
-                            dataset_name, self._model_uses_resnet.get(dataset_name), model_path)
+                self._mark_model_used(dataset_name)
+                self._evict_if_needed(protected=(protected or set()) | {dataset_name})
+                LOGGER.info(
+                    "Loaded model | dataset=%s | resnet=%s | path=%s",
+                    dataset_name,
+                    self._model_uses_resnet.get(dataset_name),
+                    model_path,
+                )
                 return True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 LOGGER.exception("Failed loading model | dataset=%s | path=%s", dataset_name, model_path)
                 return False
 
@@ -169,6 +196,7 @@ class ImagePredictor:
             "models_in_memory": sorted(self._models.keys()),
             "missing_datasets": sorted([d for d in DATASETS if d not in self._available_model_files]),
             "device": str(self.device),
+            "max_resident_models": self._max_resident_models,
         }
 
     def _normalize_requested_datasets(self, requested: Iterable[str] | None) -> list[str]:
@@ -183,40 +211,32 @@ class ImagePredictor:
 
     def predict_selected(self, image_base64: str, requested_datasets: Iterable[str] | None = None) -> dict[str, Any]:
         selected = self._normalize_requested_datasets(requested_datasets)
-        
-        # Parallel load models
-        load_tasks = [self._executor.submit(self._ensure_model_loaded, d) for d in selected]
-        for future in as_completed(load_tasks):
-            future.result()
-            
-        ready: list[str] = [d for d in selected if d in self._models]
-
-        if not ready:
-            LOGGER.error("No image models available at inference time | diagnostics=%s", self.diagnostics())
-            raise RuntimeError(
-                "No image models found. Train models first with backend/train_model.py."
-            )
-
         image_bytes = self._decode_base64(image_base64)
-        cache_key = self._cache_key(image_bytes=image_bytes, datasets=ready)
+        cache_key = self._cache_key(image_bytes=image_bytes, datasets=selected)
         cached = self._get_cached_prediction(cache_key)
         if cached is not None:
             return cached
 
-        image = Image.open(io.BytesIO(image_bytes))
-        
-        # Parallel inference logic to improve speed
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        predictions: list[dict[str, Any]] = []
         inference_start = time.perf_counter()
-        predictions = self._parallel_predict(image, ready)
-        inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
 
-        LOGGER.info("Parallel inference completed | datasets=%d | duration_ms=%s", len(ready), inference_duration)
-        
+        for dataset_name in selected:
+            if not self._ensure_model_loaded(dataset_name, protected={dataset_name}):
+                continue
+            single_prediction = self._predict_single(image, dataset_name)
+            if single_prediction:
+                predictions.append(single_prediction)
+            self._evict_if_needed()
+
+        inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
+        LOGGER.info("Sequential inference completed | datasets=%d | duration_ms=%s", len(predictions), inference_duration)
+
         if not predictions:
+            LOGGER.error("No image models available at inference time | diagnostics=%s", self.diagnostics())
             raise RuntimeError("No predictions generated")
 
         best = max(predictions, key=lambda p: p["top_confidence"])
-
         result = {
             "best_dataset": best["dataset"],
             "best_label_index": best["top_label_index"],
@@ -236,22 +256,20 @@ class ImagePredictor:
         return self.predict_selected(image_base64=image_base64, requested_datasets=DATASETS)
 
     def warmup(self, requested_datasets: Iterable[str] | None = None) -> list[str]:
-        """Ensure selected datasets are loaded and perform a dummy forward pass.
-
-        Returns the list of datasets that were successfully warmed.
-        """
-        warmed = []
-        for d in self._normalize_requested_datasets(requested_datasets):
-            if self._ensure_model_loaded(d):
-                warmed.append(d)
-                try:
-                    # run a dummy tensor to force weight allocation/compilation
-                    model = self._models[d]
-                    dummy = torch.randn(1, 3, 28, 28, device=self.device)
-                    with torch.no_grad():
-                        _ = model.forward(dummy)
-                except Exception:  # noqa: BLE001
-                    LOGGER.exception("Warmup forward pass failed for %s", d)
+        warmed: list[str] = []
+        for dataset_name in self._normalize_requested_datasets(requested_datasets):
+            if not self._ensure_model_loaded(dataset_name, protected={dataset_name}):
+                continue
+            warmed.append(dataset_name)
+            try:
+                model = self._models[dataset_name]
+                image_size = RESNET_IMAGE_SIZE if self._model_uses_resnet.get(dataset_name) else SIMPLECNN_IMAGE_SIZE
+                dummy = torch.randn(1, 3, image_size, image_size, device=self.device)
+                with torch.no_grad():
+                    _ = model.forward(dummy)
+            except Exception:
+                LOGGER.exception("Warmup forward pass failed for %s", dataset_name)
+            self._evict_if_needed()
         return warmed
 
     def _cache_key(self, image_bytes: bytes, datasets: list[str]) -> str:
@@ -259,7 +277,6 @@ class ImagePredictor:
         return f"{','.join(sorted(datasets))}:{digest}"
 
     def _get_cached_prediction(self, key: str) -> dict[str, Any] | None:
-        """Get cached prediction with TTL check."""
         now = time.time()
         with self._predict_cache_lock:
             item = self._predict_cache.get(key)
@@ -269,21 +286,17 @@ class ImagePredictor:
             if now - ts > self._predict_cache_ttl_sec:
                 self._predict_cache.pop(key, None)
                 return None
-            # Move to end to mark as recently used (LRU)
             self._predict_cache.move_to_end(key)
             return payload.copy()
 
     def _set_cached_prediction(self, key: str, payload: dict[str, Any]) -> None:
-        """Set cached prediction with LRU eviction."""
         now = time.time()
         with self._predict_cache_lock:
-            # Move to end if exists, otherwise add
             if key in self._predict_cache:
                 self._predict_cache.move_to_end(key)
             else:
-                # Evict oldest entry if cache is full
                 if len(self._predict_cache) >= self._predict_cache_max_items:
-                    self._predict_cache.popitem(last=False)  # Remove first (oldest) item
+                    self._predict_cache.popitem(last=False)
                 self._predict_cache[key] = (now, payload.copy())
 
     @staticmethod
@@ -293,88 +306,65 @@ class ImagePredictor:
             payload = payload.split(",", 1)[1]
         try:
             return base64.b64decode(payload, validate=True)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ValueError("Invalid image_base64 payload") from exc
 
+    def _build_tensor(self, image: Image.Image, dataset_name: str) -> torch.Tensor:
+        if self._model_uses_resnet.get(dataset_name, False):
+            tf = transforms.Compose([
+                transforms.Resize((RESNET_IMAGE_SIZE, RESNET_IMAGE_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            ])
+        else:
+            tf = transforms.Compose([
+                transforms.Resize((SIMPLECNN_IMAGE_SIZE, SIMPLECNN_IMAGE_SIZE)),
+                transforms.ToTensor(),
+            ])
+        return tf(image).unsqueeze(0).to(self.device).detach()
 
-    def _parallel_predict(self, image: Image.Image, dataset_names: list[str]) -> list[dict[str, Any]]:
-        """
-        Run multiple dataset inferences in parallel using ThreadPoolExecutor.
-        Each dataset may use a different model architecture (ResNet-18 or SimpleCNN)
-        and corresponding input transform.
-        """
-        def _build_tensor(dataset_name: str) -> torch.Tensor:
-            """Build correctly sized and normalized tensor for this dataset's model."""
-            if self._model_uses_resnet.get(dataset_name, False):
-                # ResNet-18: 64x64 with ImageNet normalization
-                tf = transforms.Compose([
-                    transforms.Resize((RESNET_IMAGE_SIZE, RESNET_IMAGE_SIZE)),
-                    transforms.Lambda(lambda img: img.convert("RGB")),
-                    transforms.ToTensor(),
-                    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-                ])
-            else:
-                # SimpleCNN: 28x28, no normalization
-                tf = transforms.Compose([
-                    transforms.Resize((SIMPLECNN_IMAGE_SIZE, SIMPLECNN_IMAGE_SIZE)),
-                    transforms.Lambda(lambda img: img.convert("RGB")),
-                    transforms.ToTensor(),
-                ])
-            return tf(image).unsqueeze(0).to(self.device).detach()
+    def _predict_single(self, image: Image.Image, dataset_name: str) -> dict[str, Any] | None:
+        model = self._models.get(dataset_name)
+        if model is None:
+            return None
 
-        def _predict_single(dataset_name: str) -> dict[str, Any] | None:
-            if dataset_name not in self._models:
-                return None
+        try:
+            info = INFO[dataset_name]
+            labels = cast(dict[str, str], info["label"])
+            tensor = self._build_tensor(image, dataset_name)
+            start_time = time.perf_counter()
 
-            try:
-                model = self._models[dataset_name]
-                info = INFO[dataset_name]
-                labels = cast(dict[str, str], info["label"])
+            with torch.inference_mode():
+                logits = model.forward(tensor)
+                if dataset_name == "chestmnist":
+                    probs = torch.sigmoid(logits).squeeze(0)
+                else:
+                    probs = torch.softmax(logits, dim=1).squeeze(0)
 
-                tensor = _build_tensor(dataset_name)
-                start_time = time.perf_counter()
+            probs_np = probs.cpu().numpy()
+            top_idx = int(np.argmax(probs_np))
+            top_conf = float(probs_np[top_idx] * 100.0)
 
-                with torch.inference_mode():
-                    logits = model.forward(tensor)
-                    if dataset_name == "chestmnist":
-                        probs = torch.sigmoid(logits).squeeze(0)
-                    else:
-                        probs = torch.softmax(logits, dim=1).squeeze(0)
+            all_scores: list[dict[str, Any]] = []
+            for idx in range(len(probs_np)):
+                all_scores.append({
+                    "label_index": idx,
+                    "label_name": labels[str(idx)],
+                    "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
+                })
 
-                    probs_np = probs.cpu().numpy()
-                    top_idx = int(np.argmax(probs_np))
-                    top_conf = float(probs_np[top_idx] * 100.0)
+            scores_sorted = sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)
+            duration = (time.perf_counter() - start_time) * 1000
+            arch = "resnet18" if self._model_uses_resnet.get(dataset_name) else "simplecnn"
+            LOGGER.info("Inference dataset=%s | arch=%s | duration=%.2fms", dataset_name, arch, duration)
 
-                    all_scores: list[dict[str, Any]] = []
-                    for idx in range(len(probs_np)):
-                        all_scores.append({
-                            "label_index": idx,
-                            "label_name": labels[str(idx)],
-                            "confidence": float(f"{probs_np[idx] * 100.0:.2f}"),
-                        })
-
-                    scores_sorted = sorted(all_scores, key=lambda s: float(s.get("confidence", 0)), reverse=True)
-                    duration = (time.perf_counter() - start_time) * 1000
-                    arch = "resnet18" if self._model_uses_resnet.get(dataset_name) else "simplecnn"
-                    LOGGER.info("Inference dataset=%s | arch=%s | duration=%.2fms", dataset_name, arch, duration)
-
-                    return {
-                        "dataset": dataset_name,
-                        "top_label_index": top_idx,
-                        "top_label_name": labels[str(top_idx)],
-                        "top_confidence": float(f"{top_conf:.2f}"),
-                        "scores": scores_sorted[:5]
-                    }
-            except Exception:
-                LOGGER.exception("Inference failed for dataset=%s", dataset_name)
-                return None
-
-        results = []
-        futures = {self._executor.submit(_predict_single, d): d for d in dataset_names}
-        for future in as_completed(futures):
-            res = future.result()
-            if res:
-                results.append(res)
-
-        return results
-
+            return {
+                "dataset": dataset_name,
+                "top_label_index": top_idx,
+                "top_label_name": labels[str(top_idx)],
+                "top_confidence": float(f"{top_conf:.2f}"),
+                "scores": scores_sorted[:5],
+            }
+        except Exception:
+            LOGGER.exception("Inference failed for dataset=%s", dataset_name)
+            return None
