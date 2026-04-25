@@ -2121,7 +2121,8 @@ export async function POST(req: NextRequest) {
     }
 
     const parsedState = parseState(currentMessages);
-    const directInfoReply = !parsedState && !hasMedicalIntent(userMessage, datasets) ? informationalDiseaseReply(userMessage, datasets) : null;
+    const hasMedicalAttachment = hasImagePayload || hasReportPayload;
+    const directInfoReply = !parsedState && !hasMedicalAttachment && !hasMedicalIntent(userMessage, datasets) ? informationalDiseaseReply(userMessage, datasets) : null;
     if (directInfoReply) {
       return NextResponse.json({
         reply: directInfoReply,
@@ -2130,7 +2131,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existingFinalDiagnosis = parseExistingFinalDiagnosis(currentMessages);
-    const shouldStartMedicalFlow = Boolean(parsedState) || hasMedicalIntent(userMessage, datasets);
+    const shouldStartMedicalFlow = Boolean(parsedState) || hasMedicalAttachment || hasMedicalIntent(userMessage, datasets);
     if (!shouldStartMedicalFlow) {
       return NextResponse.json({
         reply: friendlyReplyForGeneralChat(userMessage),

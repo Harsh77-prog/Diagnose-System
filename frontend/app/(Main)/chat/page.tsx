@@ -1138,7 +1138,11 @@ export default function ChatDashboard() {
                 const messageLower = sentText.toLowerCase().trim();
                 const diagnosisPrefixes = ["diagnose:", "predict:", "symptoms:", "symptom:"];
                 const diagnosisKeywords = ["diagnose", "predict", "symptom", "symptoms", "ill", "sick", "pain", "ache", "fever", "cough", "cold"];
-                const shouldDiagnose = hasActiveFollowup || diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
+                const shouldDiagnose =
+                    hasActiveFollowup ||
+                    Boolean(imageDataUrl) ||
+                    Boolean(reportDataUrl) ||
+                    diagnosisPrefixes.some(prefix => messageLower.startsWith(prefix)) ||
                     diagnosisKeywords.some(keyword => messageLower.includes(keyword));
 
                 let data: any;
