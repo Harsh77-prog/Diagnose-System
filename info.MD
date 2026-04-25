@@ -1,4 +1,4 @@
-# MedCoreAI Project Documentation
+# MedCoreAI Complete Project Documentation 
 
 ## 1. Project Overview
 
