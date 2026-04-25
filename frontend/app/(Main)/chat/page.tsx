@@ -553,26 +553,7 @@ function shouldUseDiagnosisFlow(message: string, hasActiveFollowup: boolean, has
         return true;
     }
 
-    const normalized = message.toLowerCase().trim();
-    if (!normalized) {
-        return false;
-    }
-
-    if (/^\s*(diagnose|predict|triage|symptom|symptoms)\s*[:\-]/i.test(message)) {
-        return true;
-    }
-
-    const educationalMedicalQuery =
-        /\b(what is|what are|tell me about|explain|define|meaning of|causes of|treatment of|symptoms of|signs of)\b/.test(normalized);
-    if (educationalMedicalQuery) {
-        return false;
-    }
-
-    const firstPerson = /\b(i|i'm|im|i am|my|me)\b/.test(normalized);
-    const selfReportVerb = /\b(have|having|feel|feeling|suffer|suffering|experiencing|got|started|hurts|hurting)\b/.test(normalized);
-    const symptomWords = /\b(pain|ache|fever|cough|cold|vomit|vomiting|nausea|headache|rash|itching|breathlessness|dizziness|swelling|infection)\b/.test(normalized);
-
-    return firstPerson && (selfReportVerb || symptomWords);
+    return /^\s*(diagnose|predict|triage)\s*[:\-]/i.test(message);
 }
 
 function fileToBase64(file: File): Promise<string> {
