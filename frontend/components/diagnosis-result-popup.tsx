@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2, Sparkles, ShieldPlus, AlertTriangle } from "lucide-react";
+import { X, Activity, ShieldCheck, HeartPulse, Apple, FileText, Download, Circle, Square, CheckCircle2, ShieldPlus, AlertTriangle, Plus, Stethoscope } from "lucide-react";
 import html2canvas from "html2canvas";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
@@ -1221,53 +1221,62 @@ export default function DiagnosisResultPopup({
                 </div>
 
                 {downloadFeedback === "success" && (
-                    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-3xl bg-slate-950/12 backdrop-blur-[2px]">
+                    <div className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-3xl bg-slate-950/20 backdrop-blur-[3px]">
                         {isClosingSuccessCard && (
                             <>
-                                <div className="pointer-events-none absolute left-[12%] top-[18%] text-4xl animate-[success-fly-1_1s_ease-in_forwards]">✨</div>
-                                <div className="pointer-events-none absolute left-[22%] bottom-[22%] text-5xl animate-[success-fly-2_1s_ease-in_forwards]">🕊️</div>
-                                <div className="pointer-events-none absolute right-[14%] top-[20%] text-4xl animate-[success-fly-3_1s_ease-in_forwards]">💙</div>
-                                <div className="pointer-events-none absolute right-[20%] bottom-[18%] text-5xl animate-[success-fly-4_1s_ease-in_forwards]">🌿</div>
-                                <div className="pointer-events-none absolute left-1/2 top-1/2 text-6xl animate-[success-burst_0.95s_ease-in_forwards]">🫶</div>
+                                <div className="pointer-events-none absolute left-[12%] top-[18%] animate-[success-fly-1_1s_ease-in_forwards] text-slate-200">
+                                    <HeartPulse className="h-10 w-10" />
+                                </div>
+                                <div className="pointer-events-none absolute left-[22%] bottom-[22%] animate-[success-fly-2_1s_ease-in_forwards] text-slate-400">
+                                    <Stethoscope className="h-11 w-11" />
+                                </div>
+                                <div className="pointer-events-none absolute right-[14%] top-[20%] animate-[success-fly-3_1s_ease-in_forwards] text-white">
+                                    <Plus className="h-10 w-10" />
+                                </div>
+                                <div className="pointer-events-none absolute right-[20%] bottom-[18%] animate-[success-fly-4_1s_ease-in_forwards] text-slate-500">
+                                    <ShieldCheck className="h-11 w-11" />
+                                </div>
+                                <div className="pointer-events-none absolute left-1/2 top-1/2 animate-[success-burst_0.95s_ease-in_forwards] text-slate-100">
+                                    <Activity className="h-14 w-14" />
+                                </div>
                             </>
                         )}
 
-                        <div className={`relative w-[460px] max-w-[94%] overflow-hidden rounded-[34px] border border-teal-200/80 bg-gradient-to-br from-white via-teal-50 to-cyan-50 p-8 shadow-[0_26px_90px_rgba(15,23,42,0.22)] transition-all duration-700 ${isClosingSuccessCard ? "scale-[0.82] opacity-0 blur-[1px]" : "scale-100 opacity-100 animate-in fade-in zoom-in-95 duration-500"}`}>
-                            <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-teal-200/40 blur-3xl animate-pulse" />
-                            <div className="absolute -left-5 bottom-0 h-24 w-24 rounded-full bg-cyan-200/40 blur-3xl animate-pulse" />
-                            <div className="absolute right-8 top-7 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700 shadow-sm">
+                        <div className={`relative w-[460px] max-w-[94%] overflow-hidden rounded-[34px] border border-slate-700/80 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_38%),linear-gradient(145deg,#0f1115_0%,#1b1f27_48%,#2b313c_100%)] p-8 shadow-[0_26px_90px_rgba(2,6,23,0.5)] transition-all duration-700 ${isClosingSuccessCard ? "scale-[0.82] opacity-0 blur-[1px]" : "scale-100 opacity-100 animate-in fade-in zoom-in-95 duration-500"}`}>
+                            <div className="absolute -right-8 -top-8 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
+                            <div className="absolute -left-6 bottom-0 h-28 w-28 rounded-full bg-slate-400/10 blur-3xl" />
+                            <div className="absolute right-8 top-7 rounded-full border border-slate-500/60 bg-white/10 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-slate-100 shadow-sm">
                                 PDF READY
                             </div>
 
-                            <div className="mx-auto mb-5 relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-teal-600 via-cyan-600 to-slate-700 shadow-lg">
-                                <div className="absolute inset-[-10px] rounded-full border-2 border-teal-300/70 animate-ping" />
+                            <div className="mx-auto mb-5 relative flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 via-green-500 to-emerald-700 shadow-[0_18px_40px_rgba(34,197,94,0.34)]">
+                                <div className="absolute inset-[-10px] rounded-full border-2 border-emerald-300/70 animate-ping" />
                                 <ShieldPlus className="h-11 w-11 text-white" />
-                                <Sparkles className="absolute -right-1 top-1 h-5 w-5 text-cyan-100 animate-pulse" />
                             </div>
 
                             <div className="text-center">
-                                <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-teal-100 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-teal-700">
+                                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-500/60 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-slate-100">
                                     <CheckCircle2 className="h-4 w-4" />
                                     Report Prepared
                                 </div>
-                                <h3 className="text-3xl font-bold tracking-tight text-slate-900">Thank you for trusting MedCoreAI</h3>
-                                <p className="mt-3 text-base leading-relaxed text-slate-600">
+                                <h3 className="text-3xl font-bold tracking-tight text-white">Thank you for trusting MedCoreAI</h3>
+                                <p className="mt-3 text-base leading-relaxed text-slate-300">
                                     Your complete medical report has been downloaded successfully and is ready for review.
                                 </p>
-                                <p className="mt-4 rounded-3xl border border-teal-100 bg-white/80 px-5 py-4 text-[15px] leading-relaxed text-slate-700">
+                                <p className="mt-4 rounded-3xl border border-slate-600/70 bg-white/8 px-5 py-4 text-[15px] leading-relaxed text-slate-200">
                                     Please remember: one careful step at a time matters. With the right guidance, support, and follow-up, positive progress is always possible.
                                 </p>
                                 <button
                                     type="button"
                                     onClick={handleCloseSuccessCard}
                                     disabled={isClosingSuccessCard}
-                                    className="mt-5 inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-teal-600 via-cyan-600 to-slate-700 px-6 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(8,145,178,0.28)] transition-all duration-300 hover:scale-105 hover:shadow-[0_20px_50px_rgba(8,145,178,0.34)] disabled:cursor-default disabled:opacity-90"
+                                    className="mt-5 inline-flex items-center gap-3 rounded-full border border-slate-500 bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.24)] transition-all duration-300 hover:scale-105 hover:bg-slate-100 hover:shadow-[0_20px_50px_rgba(15,23,42,0.28)] disabled:cursor-default disabled:opacity-90"
                                 >
-                                    <span className={`text-xl transition-transform duration-500 ${isClosingSuccessCard ? "translate-x-[280px] -translate-y-[180px] rotate-45 scale-125" : ""}`}>🕊️</span>
-                                    <span>{isClosingSuccessCard ? "Sending warm wishes..." : "Close with Blessing Flight"}</span>
-                                    <Sparkles className={`h-4 w-4 transition-transform duration-500 ${isClosingSuccessCard ? "-translate-x-[220px] translate-y-[140px] rotate-180 scale-125" : ""}`} />
+                                    <Stethoscope className={`h-5 w-5 transition-transform duration-500 ${isClosingSuccessCard ? "translate-x-[280px] -translate-y-[180px] rotate-45 scale-125" : ""}`} />
+                                    <span>{isClosingSuccessCard ? "Sending warm wishes..." : "Close with Care Flight"}</span>
+                                    <HeartPulse className={`h-4 w-4 transition-transform duration-500 ${isClosingSuccessCard ? "-translate-x-[220px] translate-y-[140px] rotate-180 scale-125" : ""}`} />
                                 </button>
-                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-500">
+                                <p className="mt-4 text-xs uppercase tracking-[0.2em] text-slate-400">
                                     Wishing you steadiness, strength, and peace
                                 </p>
                             </div>
@@ -1404,8 +1413,8 @@ export default function DiagnosisResultPopup({
                                 )}
                                 {uploadedReport && (
                                     <div className="rounded-xl border border-slate-200 p-4 flex items-center gap-4">
-                                        <div className="w-12 h-12 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                                            <FileText className="w-6 h-6 text-red-600" />
+                                        <div className="w-12 h-12 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
+                                            <FileText className="w-6 h-6 text-white" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="text-xs font-semibold text-slate-500 mb-1">Medical Report</p>

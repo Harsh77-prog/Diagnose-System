@@ -243,65 +243,6 @@ function PremiumHindiLoader() {
     );
 }
 
-function ScanPreviewCard({
-    type,
-    imageUrl,
-    title,
-    subtitle,
-}: {
-    type: "image" | "report";
-    imageUrl?: string | null;
-    title: string;
-    subtitle: string;
-}) {
-    return (
-        <div className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-slate-100 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <div className="mb-3 flex items-center justify-between">
-                <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</div>
-                    <div className="mt-1 text-sm font-medium text-slate-800">{subtitle}</div>
-                </div>
-                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    Live Scan
-                </div>
-            </div>
-
-            <div className="relative overflow-hidden rounded-[20px] border border-slate-200 bg-slate-950">
-                {type === "image" && imageUrl ? (
-                    <>
-                        <img
-                            src={imageUrl}
-                            alt={subtitle}
-                            className="h-56 w-full object-contain opacity-90"
-                        />
-                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.03),rgba(255,255,255,0))]" />
-                        <div className="pointer-events-none absolute inset-y-0 left-4 w-px bg-white/25" />
-                        <div className="pointer-events-none absolute inset-y-0 right-4 w-px bg-white/20" />
-                        <div className="pointer-events-none absolute left-0 right-0 top-0 h-14 bg-gradient-to-b from-emerald-300/12 to-transparent animate-[scan-sweep_2.2s_ease-in-out_infinite]" />
-                        <div className="pointer-events-none absolute left-0 right-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-300 to-transparent shadow-[0_0_18px_rgba(110,231,183,0.9)] animate-[scan-sweep_2.2s_ease-in-out_infinite]" />
-                        <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-emerald-300/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
-                            Pattern Mapping
-                        </div>
-                    </>
-                ) : (
-                    <>
-                        <div className="flex h-56 items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_45%),linear-gradient(135deg,#18181b,#27272a,#3f3f46)]">
-                            <div className="relative flex h-24 w-24 items-center justify-center rounded-[28px] border border-white/10 bg-white/6 backdrop-blur-sm">
-                                <FileText className="h-10 w-10 text-white/90" />
-                                <div className="absolute -right-2 -top-2 rounded-full border border-emerald-300/30 bg-emerald-300/15 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] text-emerald-100">
-                                    OCR
-                                </div>
-                            </div>
-                        </div>
-                        <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-emerald-300/8 to-transparent animate-[report-scan_2.4s_ease-in-out_infinite]" />
-                        <div className="pointer-events-none absolute inset-y-5 left-0 h-[2px] w-full bg-gradient-to-r from-transparent via-emerald-300/85 to-transparent shadow-[0_0_16px_rgba(110,231,183,0.75)] animate-[report-lines_2.4s_ease-in-out_infinite]" />
-                    </>
-                )}
-            </div>
-        </div>
-    );
-}
-
 function ImageTip({ text }: { text: string }) {
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
@@ -374,7 +315,7 @@ function AnalysisProgressPanel({
     details,
     steps,
     activeStep,
-    accent = "teal"
+    accent = "slate"
 }: {
     progress: number;
     currentLabel: string;
@@ -383,40 +324,24 @@ function AnalysisProgressPanel({
     details: string;
     steps: { key: string; short: string; label: string }[];
     activeStep: string;
-    accent?: "teal" | "slate";
+    accent?: "slate";
 }) {
     const safeProgress = Math.max(0, Math.min(100, progress));
-    const theme = accent === "teal"
-        ? {
-            shell: "border-[#d8e7e5] bg-[radial-gradient(circle_at_top,rgba(121,167,160,0.18),transparent_42%),linear-gradient(135deg,#fcfffe_0%,#f4f8f7_45%,#eef4f3_100%)]",
-            badge: "border-[#cddfdb] bg-white/85 text-[#355d58]",
-            dot: "bg-[#567f78] shadow-[0_0_0_6px_rgba(86,127,120,0.14)]",
-            title: "text-[#183532]",
-            subtext: "text-[#5f7470]",
-            stat: "text-[#254844]",
-            rail: "bg-[#dbe7e4]",
-            fill: "bg-[linear-gradient(90deg,#4d726c_0%,#73958f_52%,#567f78_100%)]",
-            glow: "bg-[radial-gradient(circle,rgba(167,214,205,0.9)_0%,rgba(167,214,205,0.18)_55%,transparent_75%)]",
-            scan: "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),rgba(255,255,255,0.7),rgba(255,255,255,0.2),transparent)]",
-            stepIdle: "border-[#d9e5e2] bg-white/70 text-[#94a5a1]",
-            stepDone: "border-[#bed1cd] bg-[#edf4f2] text-[#446963]",
-            stepActive: "border-[#89aaa4] bg-[#f8fbfb] text-[#23403c] shadow-[0_8px_24px_rgba(86,127,120,0.14)]"
-        }
-        : {
-            shell: "border-[#e2e6eb] bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),transparent_42%),linear-gradient(135deg,#ffffff_0%,#f7f9fb_45%,#eef2f6_100%)]",
-            badge: "border-[#dde3ea] bg-white/90 text-[#4c5b70]",
-            dot: "bg-[#607086] shadow-[0_0_0_6px_rgba(96,112,134,0.14)]",
-            title: "text-[#1f2937]",
-            subtext: "text-[#6b7280]",
-            stat: "text-[#334155]",
-            rail: "bg-[#e5eaf0]",
-            fill: "bg-[linear-gradient(90deg,#556476_0%,#7e8d9f_50%,#5f7084_100%)]",
-            glow: "bg-[radial-gradient(circle,rgba(191,201,214,0.9)_0%,rgba(191,201,214,0.18)_55%,transparent_75%)]",
-            scan: "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),rgba(255,255,255,0.68),rgba(255,255,255,0.2),transparent)]",
-            stepIdle: "border-[#e4e8ee] bg-white/75 text-[#98a2b0]",
-            stepDone: "border-[#d3dae4] bg-[#f2f5f8] text-[#556476]",
-            stepActive: "border-[#a9b5c4] bg-[#fbfcfd] text-[#334155] shadow-[0_8px_24px_rgba(96,112,134,0.12)]"
-        };
+    const theme = {
+        shell: "border-[#e2e6eb] bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.16),transparent_42%),linear-gradient(135deg,#ffffff_0%,#f7f9fb_45%,#eef2f6_100%)]",
+        badge: "border-[#dde3ea] bg-white/90 text-[#4c5b70]",
+        dot: "bg-[#607086] shadow-[0_0_0_6px_rgba(96,112,134,0.14)]",
+        title: "text-[#1f2937]",
+        subtext: "text-[#6b7280]",
+        stat: "text-[#334155]",
+        rail: "bg-[#e5eaf0]",
+        fill: "bg-[linear-gradient(90deg,#556476_0%,#7e8d9f_50%,#5f7084_100%)]",
+        glow: "bg-[radial-gradient(circle,rgba(191,201,214,0.9)_0%,rgba(191,201,214,0.18)_55%,transparent_75%)]",
+        scan: "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.2),rgba(255,255,255,0.68),rgba(255,255,255,0.2),transparent)]",
+        stepIdle: "border-[#e4e8ee] bg-white/75 text-[#98a2b0]",
+        stepDone: "border-[#d3dae4] bg-[#f2f5f8] text-[#556476]",
+        stepActive: "border-[#a9b5c4] bg-[#fbfcfd] text-[#334155] shadow-[0_8px_24px_rgba(96,112,134,0.12)]"
+    };
 
     return (
         <div className="mx-auto w-full max-w-3xl px-2 md:px-0">
@@ -498,14 +423,10 @@ function ImageAnalysisProgressBar({
     progress,
     phase,
     isVisible,
-    imagePreview,
-    imageName,
 }: {
     progress: number;
     phase: "detecting" | "analyzing" | "inferring" | "results";
     isVisible: boolean;
-    imagePreview?: string | null;
-    imageName?: string;
 }) {
     const phaseNames = {
         detecting: { label: "Scanning image structure", time: "2-3s" },
@@ -521,21 +442,13 @@ function ImageAnalysisProgressBar({
 
     return (
         <div className="space-y-4">
-            {imagePreview ? (
-                <ScanPreviewCard
-                    type="image"
-                    imageUrl={imagePreview}
-                    title="Image Scanner"
-                    subtitle={imageName || "Uploaded medical image"}
-                />
-            ) : null}
             <AnalysisProgressPanel
                 progress={progress}
                 currentLabel={phaseInfo.label}
                 currentTime={phaseInfo.time}
                 totalEstimate={totalEstimate}
                 activeStep={phase}
-                accent="teal"
+                accent="slate"
                 steps={[
                     { key: "detecting", short: "01", label: "Detect" },
                     { key: "analyzing", short: "02", label: "Analyze" },
@@ -561,12 +474,10 @@ function ReportAnalysisProgressBar({
     progress,
     phase,
     isVisible,
-    reportName,
 }: {
     progress: number;
     phase: "extracting" | "analyzing" | "inferring" | "results";
     isVisible: boolean;
-    reportName?: string;
 }) {
     const phaseNames = {
         extracting: { label: "Reading report text", time: "2-4s" },
@@ -582,11 +493,6 @@ function ReportAnalysisProgressBar({
 
     return (
         <div className="space-y-4">
-            <ScanPreviewCard
-                type="report"
-                title="Report Scanner"
-                subtitle={reportName || "Uploaded report"}
-            />
             <AnalysisProgressPanel
                 progress={progress}
                 currentLabel={phaseInfo.label}
@@ -1576,27 +1482,6 @@ export default function ChatDashboard() {
 
     return (
         <div className="flex h-screen bg-white overflow-hidden font-sans pt-[64px]">
-            <style jsx global>{`
-                @keyframes scan-sweep {
-                    0% { transform: translateY(-28px); opacity: 0; }
-                    12% { opacity: 1; }
-                    50% { opacity: 1; }
-                    100% { transform: translateY(240px); opacity: 0; }
-                }
-                @keyframes report-scan {
-                    0% { transform: translateX(-20px); opacity: 0; }
-                    15% { opacity: 1; }
-                    50% { opacity: 1; }
-                    100% { transform: translateX(420px); opacity: 0; }
-                }
-                @keyframes report-lines {
-                    0% { transform: translateY(0); opacity: 0; }
-                    18% { opacity: 1; }
-                    50% { opacity: 1; }
-                    100% { transform: translateY(180px); opacity: 0; }
-                }
-            `}</style>
-
             {/* Sidebar ChatGPT Style */}
             <aside className={`${sidebarOpen ? 'w-[260px]' : 'w-0'} transition-all duration-300 flex-shrink-0 bg-[#f9f9f9] border-r border-[#e5e5e5] flex flex-col overflow-hidden hidden md:flex relative group`}>
                 <div className="p-3 flex items-center justify-between">
@@ -1988,8 +1873,8 @@ export default function ChatDashboard() {
                                                             hasAttachment = true;
                                                             return (
                                                                 <div className="mt-2 flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-300">
-                                                                    <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                                                                        <FileText className="w-5 h-5 text-red-600" />
+                                                                    <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
+                                                                        <FileText className="w-5 h-5 text-white" />
                                                                     </div>
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="text-sm font-medium text-slate-800 truncate">
@@ -2002,7 +1887,7 @@ export default function ChatDashboard() {
                                                                             href={payload.report_preview}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
-                                                                            className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
+                                                                            className="text-xs text-slate-900 hover:text-black font-medium shrink-0 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-300 hover:bg-slate-200 transition-colors"
                                                                         >
                                                                             View PDF
                                                                         </a>
@@ -2141,8 +2026,6 @@ export default function ChatDashboard() {
                                                 progress={imageAnalysisProgress}
                                                 phase={analysisPhase}
                                                 isVisible={isAnalyzingImage}
-                                                imagePreview={latestUploadedImage?.preview}
-                                                imageName={latestUploadedImage?.name}
                                             />
                                         </div>
                                     )}
@@ -2154,7 +2037,6 @@ export default function ChatDashboard() {
                                                 progress={reportAnalysisProgress}
                                                 phase={reportAnalysisPhase}
                                                 isVisible={isAnalyzingReport}
-                                                reportName={latestUploadedReport?.name}
                                             />
                                         </div>
                                     )}
@@ -2197,7 +2079,7 @@ export default function ChatDashboard() {
                                                     key={choice}
                                                     size="sm"
                                                     variant={choice === "upload" ? "default" : "outline"}
-                                                    className={choice === "upload" ? "h-8 text-xs rounded-full bg-blue-600 hover:bg-blue-700 text-white" : "h-8 text-xs rounded-full bg-white border-[#e5e5e5] capitalize"}
+                                                    className={choice === "upload" ? "h-8 text-xs rounded-full bg-slate-900 hover:bg-black text-white border border-slate-900" : "h-8 text-xs rounded-full bg-white border-[#e5e5e5] capitalize"}
                                                     onClick={() => {
                                                         // ✅ Special handling for "upload" choice - trigger file picker
                                                         if (choice === "upload") {
@@ -2415,8 +2297,8 @@ export default function ChatDashboard() {
                                     <FileText className="w-4 h-4 text-slate-500" />
                                 </div>
                                 <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
-                                    <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center shrink-0">
-                                        <FileText className="w-5 h-5 text-red-600" />
+                                    <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center shrink-0">
+                                        <FileText className="w-5 h-5 text-white" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-slate-800 truncate">{latestUploadedReport.name}</div>
