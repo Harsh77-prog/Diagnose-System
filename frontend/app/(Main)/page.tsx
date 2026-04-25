@@ -26,8 +26,10 @@ import {
 import { Process1 } from "@/components/process1";
 import { Separator } from "@/components/ui/separator";
 import { useRouter } from "next/navigation";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { MedicalParticleRingCanvas } from "@/components/medical-particle-background";
+import { LegalPolicyModal } from "@/components/legal-policy-modal";
+import { FooterInfoModal } from "@/components/footer-info-modal";
 
 const faqs = [
   {
@@ -36,49 +38,49 @@ const faqs = [
       "No. MedCoreAI provides AI-powered health guidance and symptom analysis, but is not a substitute for professional medical diagnosis or treatment. Always consult licensed healthcare providers for medical advice. In emergencies, contact emergency services immediately.",
   },
   {
-    trigger: "How accurate is the symptom analysis?",
+    trigger: "How do I start diagnosis mode?",
     content:
-      "Our AI is trained on millions of clinical cases with 94% accuracy on validated medical datasets. However, accuracy depends on complete and accurate symptom reporting. We always recommend professional evaluation for persistent symptoms.",
+      "You can start diagnosis by typing commands like `diagnose:` or `predict:` before your message. Image uploads and report uploads also enter the diagnosis flow automatically when they are attached in chat.",
   },
   {
-    trigger: "Is my health data secure and HIPAA compliant?",
+    trigger: "Can MedCoreAI answer normal medical questions too?",
     content:
-      "Yes. All patient data is encrypted end-to-end, stored on HIPAA-compliant servers, and never shared with third parties. We exceed healthcare security standards and undergo regular compliance audits.",
+      "Yes. The chat supports both normal healthcare conversation and the structured diagnosis flow. For example, you can ask educational questions like what a disease is, then switch into diagnosis when you want symptom-based guidance.",
   },
   {
-    trigger: "Can MedCoreAI diagnose conditions?",
+    trigger: "What kinds of uploads are supported?",
     content:
-      "MedCoreAI does not provide medical diagnosis. It analyzes symptoms, provides educational information, and helps patients understand when they need professional care. Actual diagnosis must come from licensed healthcare providers.",
+      "The current app supports medical images and medical reports. Images are routed through the visual analysis flow, while reports such as PDFs are analyzed to extract findings and symptoms that can be used in the diagnosis process.",
   },
   {
-    trigger: "What medical image formats are supported?",
+    trigger: "How does image analysis choose the correct model?",
     content:
-      "We support X-rays, CT scans, MRI images, ultrasounds, and lab reports in common formats (JPEG, PNG, PDF). AI analysis provides observations and highlights areas of concern for physician review.",
+      "The app uses a mix of user-selected image type, conversation context, symptoms, and filename hints to choose the best matching image dataset. If the upload looks incorrect or unrelated, the system can ask the user to upload a proper medical image again.",
   },
   {
-    trigger: "How does the doctor referral system work?",
+    trigger: "What happens if I upload the wrong image?",
     content:
-      "Based on symptoms and location, we connect patients with local specialists, urgent care, or emergency services as appropriate. All referrals are made with patient consent.",
+      "The current system includes a validation step before image analysis. If an upload looks like a non-medical image or does not match the selected image type closely enough, the chat asks for a correct upload instead of returning a misleading result.",
   },
   {
-    trigger: "Can healthcare providers integrate MedCoreAI into their practice?",
+    trigger: "Can I download my diagnosis as a PDF?",
     content:
-      "Yes. We offer enterprise integrations for hospitals, clinics, and telemedicine platforms. Our API supports EHR integration, allowing seamless workflow incorporation.",
+      "Yes. After a completed result, the popup can generate and download a polished PDF summary. Right now that PDF is downloaded on demand and is not permanently stored by the app for later retrieval.",
   },
   {
-    trigger: "How is patient data anonymized?",
+    trigger: "Can I translate the response into Hindi?",
     content:
-      "We use de-identified data for AI model improvement, with strict patient privacy controls. Patients can opt out of data sharing, and all anonymization meets HIPAA standards.",
+      "Yes. Assistant replies can be translated into Hindi directly in chat, which makes the result easier to review without leaving the conversation view.",
   },
   {
-    trigger: "What happens if an emergency is detected?",
+    trigger: "Does the app save my conversation history?",
     content:
-      "Our system immediately flags emergency symptoms and directs patients to call emergency services or visit the nearest ER. This includes chest pain, severe difficulty breathing, and other critical presentations.",
+      "Yes. Chat sessions and messages are stored so users can reopen previous conversations later. Diagnosis results remain available through the saved conversation history, even though the generated PDF file itself is not stored.",
   },
   {
-    trigger: "Is MedCoreAI available 24/7?",
+    trigger: "Are the results final medical diagnoses?",
     content:
-      "Yes. Unlike traditional healthcare, MedCoreAI is available anytime, anywhere. For critical emergencies, we always recommend immediate professional care.",
+      "No. MedCoreAI provides AI-assisted guidance, preliminary analysis, and educational help. Users should treat the output as supportive information and verify important or urgent issues with a qualified healthcare professional.",
   },
 ];
 
@@ -189,6 +191,8 @@ function StatCard({ stat, index }: { stat: typeof stats[0]; index: number }) {
 export default function Page() {
   const router = useRouter();
   const heroRef = useRef<HTMLDivElement>(null);
+  const [activeLegalModal, setActiveLegalModal] = useState<"privacy" | "terms" | null>(null);
+  const [activeFooterModal, setActiveFooterModal] = useState<"about" | "security" | "contact" | null>(null);
 
   return (
     <main className="overflow-x-hidden">
@@ -447,12 +451,20 @@ export default function Page() {
                 smarter health decisions, instantly.
               </p>
               <div className="flex gap-4">
-                <a href="#" className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setActiveFooterModal("about")}
+                  className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors"
+                >
                   <Globe className="h-5 w-5" />
-                </a>
-                <a href="#" className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveFooterModal("security")}
+                  className="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 transition-colors"
+                >
                   <Lock className="h-5 w-5" />
-                </a>
+                </button>
               </div>
             </div>
 
@@ -461,19 +473,39 @@ export default function Page() {
               <h4 className="text-neutral-900 font-semibold mb-4">Product</h4>
               <ul className="space-y-3">
                 <li><a href="#features" className="text-neutral-600 hover:text-neutral-900 transition-colors">Features</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Pricing</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Enterprise</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Security</a></li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFooterModal("security")}
+                    className="text-neutral-600 hover:text-neutral-900 transition-colors"
+                  >
+                    Security
+                  </button>
+                </li>
               </ul>
             </div>
 
             <div>
               <h4 className="text-neutral-900 font-semibold mb-4">Company</h4>
               <ul className="space-y-3">
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">About</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Blog</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Careers</a></li>
-                <li><a href="#" className="text-neutral-600 hover:text-neutral-900 transition-colors">Contact</a></li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFooterModal("about")}
+                    className="text-neutral-600 hover:text-neutral-900 transition-colors"
+                  >
+                    About
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFooterModal("contact")}
+                    className="text-neutral-600 hover:text-neutral-900 transition-colors"
+                  >
+                    Contact
+                  </button>
+                </li>
               </ul>
             </div>
           </div>
@@ -484,13 +516,51 @@ export default function Page() {
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-neutral-500">
             <p>&copy; 2026 MedCoreAI. All rights reserved.</p>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-neutral-900 transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-neutral-900 transition-colors">Terms of Service</a>
+              <button
+                type="button"
+                onClick={() => setActiveLegalModal("privacy")}
+                className="hover:text-neutral-900 transition-colors"
+              >
+                Privacy Policy
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveLegalModal("terms")}
+                className="hover:text-neutral-900 transition-colors"
+              >
+                Terms of Service
+              </button>
               <a href="#" className="hover:text-neutral-900 transition-colors">Built by @Team</a>
             </div>
           </div>
         </div>
       </footer>
+
+      <LegalPolicyModal
+        open={activeLegalModal === "privacy"}
+        type="privacy"
+        onClose={() => setActiveLegalModal(null)}
+      />
+      <LegalPolicyModal
+        open={activeLegalModal === "terms"}
+        type="terms"
+        onClose={() => setActiveLegalModal(null)}
+      />
+      <FooterInfoModal
+        open={activeFooterModal === "about"}
+        type="about"
+        onClose={() => setActiveFooterModal(null)}
+      />
+      <FooterInfoModal
+        open={activeFooterModal === "security"}
+        type="security"
+        onClose={() => setActiveFooterModal(null)}
+      />
+      <FooterInfoModal
+        open={activeFooterModal === "contact"}
+        type="contact"
+        onClose={() => setActiveFooterModal(null)}
+      />
     </main>
   );
 }
