@@ -2066,20 +2066,20 @@ export default function ChatDashboard() {
 
                                                 if (hasImage) {
                                                     return (
-                                                        <div className="w-full max-w-[360px] overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-                                                            <div className="relative">
+                                                        <div className="w-full max-w-[300px] overflow-hidden rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_14px_36px_rgba(15,23,42,0.08)]">
+                                                            <div className="relative aspect-[4/3] overflow-hidden bg-slate-100">
                                                                 <img
                                                                     src={payload?.image_preview}
                                                                     alt={payload?.image_name || "Uploaded medical image"}
-                                                                    className="h-auto max-h-[360px] w-full object-cover"
+                                                                    className="h-full w-full object-cover"
                                                                 />
-                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-slate-950/16 via-slate-900/5 to-transparent" />
-                                                                <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/88 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 shadow-sm backdrop-blur">
-                                                                    <ImageIcon className="h-3.5 w-3.5" />
+                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-slate-950/16 via-slate-900/5 to-transparent" />
+                                                                <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/88 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700 shadow-sm backdrop-blur">
+                                                                    <ImageIcon className="h-3 w-3" />
                                                                     Medical Image
                                                                 </div>
                                                             </div>
-                                                            <div className="space-y-2 px-4 py-3">
+                                                            <div className="space-y-2 px-3.5 py-3">
                                                                 <div className="flex items-start justify-between gap-3">
                                                                     <div className="min-w-0">
                                                                         <div className="text-sm font-semibold text-slate-900 truncate">
