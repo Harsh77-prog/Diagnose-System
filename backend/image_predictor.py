@@ -20,7 +20,7 @@ from medmnist import INFO
 from PIL import Image
 from torchvision import models, transforms
 
-from config import IMAGE_INFERENCE_MAX_WORKERS, IMAGE_MODEL_MAX_RESIDENT
+from config import IMAGE_INFERENCE_MAX_WORKERS, IMAGE_MODEL_KEEP_LOADED, IMAGE_MODEL_MAX_RESIDENT
 
 torch.set_num_threads(2)
 
@@ -76,18 +76,20 @@ class ImagePredictor:
         self._model_locks: dict[str, threading.Lock] = {name: threading.Lock() for name in DATASETS}
         self._loaded_model_order: OrderedDict[str, float] = OrderedDict()
         self._max_resident_models = max(1, IMAGE_MODEL_MAX_RESIDENT)
+        self._keep_loaded = IMAGE_MODEL_KEEP_LOADED
         self._predict_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
         self._predict_cache_lock = threading.Lock()
         self._predict_cache_ttl_sec = 20 * 60
         self._predict_cache_max_items = 256
         self._executor = ThreadPoolExecutor(max_workers=max(1, IMAGE_INFERENCE_MAX_WORKERS))
         LOGGER.info(
-            "ImagePredictor init | cwd=%s | model_dir=%s | device=%s | max_resident=%s | workers=%s",
+            "ImagePredictor init | cwd=%s | model_dir=%s | device=%s | max_resident=%s | workers=%s | keep_loaded=%s",
             os.getcwd(),
             self.model_dir,
             self.device,
             self._max_resident_models,
             max(1, IMAGE_INFERENCE_MAX_WORKERS),
+            self._keep_loaded,
         )
         self._discover_model_files()
 
@@ -155,7 +157,7 @@ class ImagePredictor:
                     self._model_uses_resnet[dataset_name] = True
                 else:
                     num_classes = len(INFO[dataset_name]["label"])
-                    state = torch.load(model_path, map_location=self.device, weights_only=True)
+                    state = torch.load(model_path, map_location=self.device, weights_only=True, mmap=True)
                     if _is_resnet_state(state):
                         model = _build_resnet18(num_classes, self.device)
                         self._model_uses_resnet[dataset_name] = True
@@ -227,7 +229,10 @@ class ImagePredictor:
             single_prediction = self._predict_single(image, dataset_name)
             if single_prediction:
                 predictions.append(single_prediction)
-            self._evict_if_needed()
+            if self._keep_loaded:
+                self._evict_if_needed()
+            else:
+                self._unload_model(dataset_name)
 
         inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
         LOGGER.info("Sequential inference completed | datasets=%d | duration_ms=%s", len(predictions), inference_duration)
@@ -269,7 +274,10 @@ class ImagePredictor:
                     _ = model.forward(dummy)
             except Exception:
                 LOGGER.exception("Warmup forward pass failed for %s", dataset_name)
-            self._evict_if_needed()
+            if self._keep_loaded:
+                self._evict_if_needed()
+            else:
+                self._unload_model(dataset_name)
         return warmed
 
     def _cache_key(self, image_bytes: bytes, datasets: list[str]) -> str:

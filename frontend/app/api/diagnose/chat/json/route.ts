@@ -159,66 +159,114 @@ function resolvePreferredDatasetLimit(): number {
   const raw = (process.env.DIAGNOSE_IMAGE_MAX_DATASETS || "").trim();
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 5) return Math.round(parsed);
-  return 2;
+  return 1;
+}
+
+function addDatasetScore(scores: Record<string, number>, dataset: string, points: number) {
+  scores[dataset] = (scores[dataset] || 0) + points;
 }
 
 function inferPreferredImageDatasets(
   message: string,
   slots: FollowupState["slots"],
-  confirmedSymptoms: Set<string>
+  confirmedSymptoms: Set<string>,
+  imageFilename?: string | null,
+  imageMime?: string | null,
+  selectedImageType?: string | null
 ): string[] {
   const t = normalizeToken(message);
-  const preferred: string[] = [];
-  const push = (v: string) => {
-    if (!preferred.includes(v)) preferred.push(v);
+  const normalizedFilename = normalizeToken(imageFilename || "");
+  const normalizedMime = normalizeToken(imageMime || "");
+  const normalizedSelectedType = normalizeToken(selectedImageType || "");
+  const symptomList = Array.from(confirmedSymptoms);
+  const scores: Record<string, number> = {
+    chestmnist: 0,
+    dermamnist: 0,
+    retinamnist: 0,
+    bloodmnist: 0,
+    pathmnist: 0,
   };
 
-  const hasSkinKeywords =
-    slots.bodySystem === "dermatologic" ||
-    containsAny(t, [
-      /\b(skin|rash|itch|itchy|patch|lesion|blister|red spot|redness|mole|melanoma|eczema|acne|psoriasis|hive|hives|wart|ulcer|dermatology|dermatologist|bump|waxy|pearly|scaly|scale|scalp|darkening|discolor|discolour|spot|freckle|birthmark|keratosis|carcinoma|fibroma|cherry|angioma|vascular|bleed|bleeds|bleeding|nevi|nevus|dermis|dermal|epidermal|epidermis)\b/
-    ]) ||
-    Array.from(confirmedSymptoms).some(s => s.includes("skin") || s.includes("itch") || s.includes("rash"));
-  if (hasSkinKeywords) push("dermamnist");
+  const selectedTypeMap: Record<string, string> = {
+    chest: "chestmnist",
+    chestmnist: "chestmnist",
+    "chest xray": "chestmnist",
+    "chest x-ray": "chestmnist",
+    skin: "dermamnist",
+    "skin photo": "dermamnist",
+    derma: "dermamnist",
+    dermamnist: "dermamnist",
+    retina: "retinamnist",
+    eye: "retinamnist",
+    "eye scan": "retinamnist",
+    retinamnist: "retinamnist",
+    blood: "bloodmnist",
+    "blood slide": "bloodmnist",
+    "blood image": "bloodmnist",
+    bloodmnist: "bloodmnist",
+    pathology: "pathmnist",
+    tissue: "pathmnist",
+    "tissue slide": "pathmnist",
+    unsure: "",
+    unknown: "",
+    pathmnist: "pathmnist",
+  };
 
-  const hasEyeKeywords =
-    containsAny(t, [
-      /\b(vision|blurry|blurred|retina|eye|eyes|dark spots?|floaters?|visual|blindness|cataract|glaucoma|macular|optics|cornea|pupil|sclera|conjunctivitis|checkup eye|retinal|fundus|optic disc|peripheral vision|distorted|wavy|ophthalmologist)\b/
-    ]) ||
-    Array.from(confirmedSymptoms).some(s => s.includes("vision") || s.includes("eye") || s.includes("visual"));
-  if (hasEyeKeywords) push("retinamnist");
+  const userSelectedDataset = selectedTypeMap[normalizedSelectedType];
+  if (userSelectedDataset) {
+    addDatasetScore(scores, userSelectedDataset, 12);
+  }
 
-  const hasChestKeywords =
-    slots.bodySystem === "respiratory" ||
-    slots.bodySystem === "cardiovascular" ||
-    containsAny(t, [
-      /\b(cough|chest|breath|breathing|phlegm|wheeze|respiratory|pneumonia|thorax|rib|ribs|heart|cardiac|cardiovascular|x-ray|xray|x ray|lung|lungs|tuberculosis|shadow|spot lung|shortness of breath|sob|wet cough|stabbing pain|chest pain|mucus|sputum|fever chills|racing heart)\b/
-    ]) ||
-    Array.from(confirmedSymptoms).some(s => s.includes("chest") || s.includes("cough") || s.includes("breath"));
-  if (hasChestKeywords) push("chestmnist");
+  if (slots.bodySystem === "respiratory" || slots.bodySystem === "cardiovascular") addDatasetScore(scores, "chestmnist", 5);
+  if (slots.bodySystem === "dermatologic") addDatasetScore(scores, "dermamnist", 5);
+  if (slots.bodySystem === "neurologic") addDatasetScore(scores, "retinamnist", 2);
 
-  const hasBloodKeywords =
-    containsAny(t, [
-      /\b(blood|cbc|wbc|rbc|platelet|hemoglobin|anemia|leukemia|plasma|smear|white blood|red blood|lymphocyte|eosinophil|basophil|neutrophil|monocyte|granulocyte|erythroblast|clot|clotting|bruising|infection|lymphoma|cell count|blood count|bone marrow|parasit)\b/
-    ]);
-  if (hasBloodKeywords) push("bloodmnist");
+  if (containsAny(t, [/\b(xray|x ray|x-ray|cxr|chest xray|chest x-ray|lungs?|thorax|rib|ribs|pneumonia|tuberculosis|respiratory|breathing|shortness of breath|sob|cough|phlegm|sputum|wheeze|chest pain|cardiac|heart)\b/])) {
+    addDatasetScore(scores, "chestmnist", 8);
+  }
+  if (containsAny(t, [/\b(skin|rash|itch|itchy|lesion|mole|melanoma|eczema|acne|psoriasis|hive|wart|ulcer|scalp|spot|birthmark|dermatology|dermatologist)\b/])) {
+    addDatasetScore(scores, "dermamnist", 8);
+  }
+  if (containsAny(t, [/\b(retina|retinal|fundus|eye|eyes|vision|visual|blurry|blurred|floaters|cataract|glaucoma|macular|ophthalmologist)\b/])) {
+    addDatasetScore(scores, "retinamnist", 8);
+  }
+  if (containsAny(t, [/\b(blood|cbc|wbc|rbc|platelet|hemoglobin|smear|neutrophil|lymphocyte|eosinophil|basophil|monocyte|bone marrow|leukemia|anemia)\b/])) {
+    addDatasetScore(scores, "bloodmnist", 8);
+  }
+  if (containsAny(t, [/\b(pathology|histopathology|biopsy|tissue|slide|microscopy|tumor|histology|adenocarcinoma|stroma|epithelium|colon tissue)\b/])) {
+    addDatasetScore(scores, "pathmnist", 8);
+  }
 
-  const hasPathologyKeywords =
-    containsAny(t, [
-      /\b(pathology|histopathology|biopsy|tissue|slide|cell|microscopy|tumor|cancer|carcinoma|histology|oncology|adenocarcinoma|mucosa|stroma|debris|epithelium|lining cell|fatty tissue|adipose|colon|colorectal|smooth muscle|framework)\b/
-    ]);
-  if (hasPathologyKeywords) push("pathmnist");
+  for (const symptom of symptomList) {
+    if (/(chest|cough|breath|sputum|phlegm|wheeze|lung|respir)/.test(symptom)) addDatasetScore(scores, "chestmnist", 4);
+    if (/(skin|rash|itch|lesion|blister|spot|mole|acne|psoriasis)/.test(symptom)) addDatasetScore(scores, "dermamnist", 4);
+    if (/(vision|eye|visual|blurred|redness of eyes|watering from eyes|yellowing of eyes)/.test(symptom)) addDatasetScore(scores, "retinamnist", 4);
+    if (/(blood|anemia|bleeding|bruise|hemoglobin)/.test(symptom)) addDatasetScore(scores, "bloodmnist", 4);
+    if (/(tissue|tumor|biopsy|node|lymph|mass|swelling)/.test(symptom)) addDatasetScore(scores, "pathmnist", 4);
+  }
 
-  if (preferred.length === 0) {
-    // Fast + safer default: avoid running all datasets when context is weak.
-    if (slots.bodySystem === "respiratory" || slots.bodySystem === "cardiovascular") push("chestmnist");
-    else if (slots.bodySystem === "neurologic") push("retinamnist");
-    else if (slots.bodySystem === "dermatologic") push("dermamnist");
-    else push("dermamnist");
+  if (containsAny(normalizedFilename, [/\b(xray|x ray|x-ray|cxr|chest|lung|lungs|thorax|rib)\b/])) addDatasetScore(scores, "chestmnist", 10);
+  if (containsAny(normalizedFilename, [/\b(skin|rash|derma|lesion|mole|eczema|psoriasis|acne)\b/])) addDatasetScore(scores, "dermamnist", 10);
+  if (containsAny(normalizedFilename, [/\b(retina|retinal|fundus|eye|eyes|macula)\b/])) addDatasetScore(scores, "retinamnist", 10);
+  if (containsAny(normalizedFilename, [/\b(blood|cbc|smear|wbc|rbc|platelet)\b/])) addDatasetScore(scores, "bloodmnist", 10);
+  if (containsAny(normalizedFilename, [/\b(pathology|histology|biopsy|tissue|slide|tumor)\b/])) addDatasetScore(scores, "pathmnist", 10);
+
+  if (normalizedMime.includes("dicom")) addDatasetScore(scores, "chestmnist", 6);
+
+  const ranked = Object.entries(scores)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([dataset]) => dataset);
+
+  const highestScore = Math.max(...Object.values(scores));
+  if (highestScore <= 0) {
+    if (slots.bodySystem === "respiratory" || slots.bodySystem === "cardiovascular") return ["chestmnist"];
+    if (slots.bodySystem === "dermatologic") return ["dermamnist"];
+    if (slots.bodySystem === "neurologic") return ["retinamnist"];
+    return ["dermamnist"];
   }
 
   const limit = resolvePreferredDatasetLimit();
-  return preferred.slice(0, limit);
+  return ranked.slice(0, limit);
 }
 
 // Maps an image model finding to a list of clinical diseases it suggests.
@@ -2089,6 +2137,7 @@ export async function POST(req: NextRequest) {
       image_base64?: string | null;
       image_filename?: string | null;
       image_mime?: string | null;
+      image_type?: string | null;
       report_base64?: string | null;
       report_filename?: string | null;
       report_mime?: string | null;
@@ -2215,7 +2264,14 @@ export async function POST(req: NextRequest) {
     if (hasImagePayload) {
       slots.imageAvailable = true;
       slots.imageProvided = true;
-      const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
+      const preferredDatasets = inferPreferredImageDatasets(
+        userMessage,
+        slots,
+        confirmed,
+        body.image_filename,
+        body.image_mime,
+        body.image_type
+      );
       const imageFetch = await fetchImagePrediction(imageBase64, userId, preferredDatasets);
       if (imageFetch.prediction) {
         const sanitized = sanitizeImagePrediction(imageFetch.prediction);
@@ -2282,7 +2338,14 @@ export async function POST(req: NextRequest) {
       } else if (qid === "image_available") {
         if (answer === "yes") {
           slots.imageAvailable = true;
-          const preferredDatasets = inferPreferredImageDatasets(userMessage, slots, confirmed);
+          const preferredDatasets = inferPreferredImageDatasets(
+            userMessage,
+            slots,
+            confirmed,
+            body.image_filename,
+            body.image_mime,
+            body.image_type
+          );
           void ensureImageWarmup(userId, preferredDatasets);
           if (hasImagePayload) {
             slots.imageProvided = true;

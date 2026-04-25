@@ -30,6 +30,7 @@ type Message = {
 type UserMessagePayload = {
     image_preview?: string;
     image_name?: string;
+    image_type?: string;
     report_name?: string;
     report_preview?: string;
     report_type?: string;
@@ -85,6 +86,17 @@ type DiagnosisPayload = {
     report_analysis?: ReportAnalysisPayload | null;
 };
 
+type MedicalImageType = "chest" | "skin" | "retina" | "blood" | "pathology" | "unsure";
+
+const IMAGE_TYPE_OPTIONS: Array<{ value: MedicalImageType; label: string; hint: string }> = [
+    { value: "chest", label: "Chest X-ray", hint: "Lungs, chest, breathing" },
+    { value: "skin", label: "Skin Photo", hint: "Rash, spot, wound, mole" },
+    { value: "retina", label: "Eye Scan", hint: "Retina, fundus, eye image" },
+    { value: "blood", label: "Blood Slide", hint: "Blood cells or smear" },
+    { value: "pathology", label: "Tissue Slide", hint: "Biopsy or lab slide" },
+    { value: "unsure", label: "Not Sure", hint: "We will auto-detect" },
+];
+
 function combinedTopPredictions(payload?: DiagnosisPayload | null): { disease: string; probability: number }[] {
     const base = payload?.top_predictions || [];
     return base.map((p) => ({
@@ -116,6 +128,49 @@ function parseUserMessagePayload(jsonPayload?: string | null): UserMessagePayloa
     } catch {
         return null;
     }
+}
+
+function labelizeImageType(imageType?: string | null): string {
+    if (!imageType) return "";
+    const match = IMAGE_TYPE_OPTIONS.find((option) => option.value === imageType);
+    return match?.label || labelize(imageType);
+}
+
+function suggestImageType(
+    file: File | null,
+    followUpQuestion: string,
+    inputText: string,
+    messages: Message[]
+): MedicalImageType | "" {
+    if (!file) return "";
+    const context = `${file.name} ${followUpQuestion} ${inputText} ${messages.slice(-6).map((m) => m.content).join(" ")}`.toLowerCase();
+
+    if (/\b(xray|x-ray|x ray|cxr|chest|lung|lungs|thorax|rib|ribs|pneumonia)\b/.test(context)) {
+        return "chest";
+    }
+    if (/\b(skin|rash|itch|itchy|eczema|psoriasis|lesion|mole|acne|derma)\b/.test(context)) {
+        return "skin";
+    }
+    if (/\b(eye|retina|retinal|fundus|vision|visual|macula|glaucoma|cataract)\b/.test(context)) {
+        return "retina";
+    }
+    if (/\b(blood|cbc|smear|wbc|rbc|platelet|hemoglobin)\b/.test(context)) {
+        return "blood";
+    }
+    if (/\b(pathology|biopsy|histology|tissue|slide|tumor|specimen)\b/.test(context)) {
+        return "pathology";
+    }
+    return "";
+}
+
+function getImageTypeButtonState(
+    option: MedicalImageType,
+    selectedImageType: MedicalImageType | "",
+    suggestedImageType: MedicalImageType | ""
+): "selected" | "suggested" | "idle" {
+    if (selectedImageType === option) return "selected";
+    if (!selectedImageType && suggestedImageType === option) return "suggested";
+    return "idle";
 }
 
 function normalizeBrandName(text: string): string {
@@ -777,6 +832,7 @@ export default function ChatDashboard() {
 
     const [input, setInput] = useState("");
     const [attachments, setAttachments] = useState<File[]>([]);
+    const [selectedImageType, setSelectedImageType] = useState<MedicalImageType | "">("");
     const [loading, setLoading] = useState(false);
     const [followUpActive, setFollowUpActive] = useState(false);
     const [followUpQuestionId, setFollowUpQuestionId] = useState<string>("");
@@ -818,6 +874,10 @@ export default function ChatDashboard() {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const reportInputRef = useRef<HTMLInputElement>(null);
+    const hasImageAttachment = attachments.some((file) => file.type.startsWith("image/"));
+    const canSubmitMessage = !loading && (Boolean(input.trim()) || attachments.length > 0);
+    const primaryImageAttachment = attachments.find((file) => file.type.startsWith("image/")) || null;
+    const suggestedImageType = suggestImageType(primaryImageAttachment, followUpQuestion, input, messages);
     const reportPreviewUrlsRef = useRef<string[]>([]);
     const inFlightHindiRequestsRef = useRef<Record<string, Promise<boolean>>>({});
     const failedHindiPrefetchRef = useRef<Record<string, boolean>>({});
@@ -858,7 +918,10 @@ export default function ChatDashboard() {
         if (uploadQuestionId === "image_upload") {
             const images = incoming.filter((file) => file.type.startsWith("image/"));
             if (images.length > 0) {
-                void sendMessage("uploaded image", "custom", images);
+                const suggestedType = suggestImageType(images[0], followUpQuestion, input, messages);
+                setAttachments(images);
+                setSelectedImageType(suggestedType || "unsure");
+                setInput("uploaded image");
                 return;
             }
         }
@@ -869,11 +932,21 @@ export default function ChatDashboard() {
                 return;
             }
         }
+        const incomingFirstImage = incoming.find((file) => file.type.startsWith("image/")) || null;
+        if (incomingFirstImage) {
+            setSelectedImageType(suggestImageType(incomingFirstImage, followUpQuestion, input, messages) || "unsure");
+        }
         setAttachments((prev) => [...prev, ...incoming]);
     }
 
     function removeAttachment(index: number) {
-        setAttachments((prev) => prev.filter((_, i) => i !== index));
+        setAttachments((prev) => {
+            const next = prev.filter((_, i) => i !== index);
+            if (!next.some((file) => file.type.startsWith("image/"))) {
+                setSelectedImageType("");
+            }
+            return next;
+        });
     }
 
     // Track latest diagnosis and auto-open result panel
@@ -929,6 +1002,8 @@ export default function ChatDashboard() {
         setFollowUpQuestion("");
         setFollowUpChoices([]);
         setInput("");
+        setAttachments([]);
+        setSelectedImageType("");
         setLatestDiagnosis(null);
         setLatestDiagnosisMessageId(null);
         setResultPanelMinimized(false);
@@ -951,6 +1026,8 @@ export default function ChatDashboard() {
         setLatestDiagnosis(null);
         setLatestDiagnosisMessageId(null);
         setResultPanelMinimized(false);
+        setAttachments([]);
+        setSelectedImageType("");
         setHindiByMessage({});
         setTranslatedByMessage({});
         setTranslatingByMessage({});
@@ -1035,13 +1112,14 @@ export default function ChatDashboard() {
     }
 
     async function sendMessage(text: string, action?: "yes" | "no" | "custom", overrideAttachments?: File[]) {
-        if (loading) return;
-        if (!text.trim() && !action) return;
-
-        const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : text;
         const pendingAttachments = overrideAttachments ? [...overrideAttachments] : [...attachments];
+        if (loading) return;
         const firstImage = pendingAttachments.find((f) => f.type.startsWith("image/")) || null;
         const firstReport = pendingAttachments.find((f) => !f.type.startsWith("image/")) || null;
+        const fallbackText = firstImage ? "uploaded image" : firstReport ? "uploaded medical report" : "";
+        const sentText = action === "yes" ? "Yes" : action === "no" ? "No" : (text.trim() || fallbackText);
+        if (!sentText.trim() && !action) return;
+
         const imageDataUrl = firstImage ? await fileToBase64(firstImage) : null;
         const reportDataUrl = firstReport ? await fileToBase64(firstReport) : null;
         const reportPreviewUrl = firstReport ? fileToPreviewUrl(firstReport) : null;
@@ -1056,6 +1134,7 @@ export default function ChatDashboard() {
                 ? JSON.stringify({ 
                     image_preview: imageDataUrl || undefined, 
                     image_name: firstImage?.name, 
+                    image_type: selectedImageType || undefined,
                     report_name: firstReport?.name,
                     report_preview: reportPreviewUrl || undefined,
                     report_type: firstReport?.type || undefined
@@ -1066,6 +1145,7 @@ export default function ChatDashboard() {
 
         setInput("");
         setAttachments([]);
+        setSelectedImageType("");
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
         setLoading(true);
 
@@ -1102,6 +1182,7 @@ export default function ChatDashboard() {
                         jsonPayload: imageDataUrl || firstReport ? {
                             image_preview: imageDataUrl || undefined,
                             image_name: firstImage?.name,
+                            image_type: selectedImageType || undefined,
                             report_name: firstReport?.name,
                             report_preview: reportPreviewUrl || undefined,
                             report_type: firstReport?.type || undefined
@@ -1187,6 +1268,7 @@ export default function ChatDashboard() {
                             image_base64: imageDataUrl,
                             image_filename: firstImage?.name || null,
                             image_mime: firstImage?.type || null,
+                            image_type: selectedImageType || null,
                             report_base64: reportDataUrl,
                             report_filename: firstReport?.name || null,
                             report_mime: firstReport?.type || null
@@ -1217,7 +1299,8 @@ export default function ChatDashboard() {
                             session_action: action || null,
                             image_base64: imageDataUrl,
                             image_filename: firstImage?.name || null,
-                            image_mime: firstImage?.type || null
+                            image_mime: firstImage?.type || null,
+                            image_type: selectedImageType || null
                         }),
                     });
 
@@ -1907,6 +1990,11 @@ export default function ChatDashboard() {
                                                                         <div className="mt-1 text-xs text-slate-500">
                                                                             Ready for visual analysis
                                                                         </div>
+                                                                        {payload?.image_type ? (
+                                                                            <div className="mt-2 inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                                                                                {labelizeImageType(payload.image_type)}
+                                                                            </div>
+                                                                        ) : null}
                                                                     </div>
                                                                     <div className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-900 shadow-[0_0_0_6px_rgba(15,23,42,0.08)]" />
                                                                 </div>
@@ -2181,6 +2269,62 @@ export default function ChatDashboard() {
                                 </div>
                             ) : null}
 
+                            {attachments.some((file) => file.type.startsWith("image/")) ? (
+                                <div className="px-3 pt-3">
+                                    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                                    What Kind Of Image Is This?
+                                                </div>
+                                                <div className="mt-1 text-xs text-slate-600">
+                                                    Pick the closest match if you know it. MedCoreAI still uses your conversation and file name to choose the best model.
+                                                </div>
+                                            </div>
+                                            <div className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                                                selectedImageType
+                                                    ? "bg-slate-900 text-white"
+                                                    : suggestedImageType
+                                                        ? "bg-slate-100 text-slate-700"
+                                                        : "bg-slate-100 text-slate-500"
+                                            }`}>
+                                                {selectedImageType
+                                                    ? labelizeImageType(selectedImageType)
+                                                    : suggestedImageType
+                                                        ? `Suggested: ${labelizeImageType(suggestedImageType)}`
+                                                        : "Optional"}
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {IMAGE_TYPE_OPTIONS.map((option) => {
+                                                const state = getImageTypeButtonState(option.value, selectedImageType, suggestedImageType);
+                                                return (
+                                                <button
+                                                    key={option.value}
+                                                    type="button"
+                                                    onClick={() => setSelectedImageType(option.value)}
+                                                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                                        state === "selected"
+                                                            ? "border-slate-900 bg-slate-900 text-white"
+                                                            : state === "suggested"
+                                                                ? "border-slate-400 bg-slate-100 text-slate-800 hover:bg-slate-200"
+                                                                : "border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                                    }`}
+                                                    title={option.hint}
+                                                >
+                                                    <span>{option.label}</span>
+                                                    {state === "suggested" ? <span className="ml-1 text-[10px] uppercase tracking-wide">Auto</span> : null}
+                                                </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-2 text-[11px] text-slate-500">
+                                            Examples: use <span className="font-medium text-slate-700">Chest X-ray</span> for lungs or breathing problems, and <span className="font-medium text-slate-700">Tissue Slide</span> for biopsy or lab-slide images.
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+
                             <form
                                 onSubmit={(e) => {
                                     e.preventDefault();
@@ -2245,23 +2389,31 @@ export default function ChatDashboard() {
                                     ref={textareaRef}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    placeholder={loading ? "MedCoreAI is thinking..." : "Message MedCoreAI... (use diagnose: to start diagnosis)"}
+                                    placeholder={
+                                        loading
+                                            ? "MedCoreAI is thinking..."
+                                            : hasImageAttachment && !selectedImageType
+                                                ? "Add a short note if you want, or just send the image for analysis"
+                                                : "Message MedCoreAI... (use diagnose: to start diagnosis)"
+                                    }
                                     disabled={loading}
                                     className="flex-1 bg-transparent border-0 shadow-none focus-visible:outline-none focus:ring-0 min-h-[40px] max-h-[200px] resize-none text-[15px] pt-2 px-3 w-full placeholder:text-slate-500 text-black overflow-y-auto"
                                     rows={1}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
-                                            sendMessage(input, followUpActive ? "custom" : undefined);
+                                            if (canSubmitMessage) {
+                                                sendMessage(input, followUpActive ? "custom" : undefined);
+                                            }
                                         }
                                     }}
                                 />
                                 <div className="mb-0.5 mr-0.5 ml-2 mt-auto shrink-0">
                                     <Button
                                         type="submit"
-                                        disabled={loading || !input.trim()}
+                                        disabled={!canSubmitMessage}
                                         size="icon"
-                                        className={`h-[32px] w-[32px] rounded-full transition-all ${input.trim() ? 'bg-black text-white' : 'bg-[#e5e5e5] text-white cursor-not-allowed'}`}
+                                        className={`h-[32px] w-[32px] rounded-full transition-all ${canSubmitMessage ? 'bg-black text-white' : 'bg-[#e5e5e5] text-white cursor-not-allowed'}`}
                                     >
                                         <Send className="w-3.5 h-3.5 ml-0.5" />
                                     </Button>
