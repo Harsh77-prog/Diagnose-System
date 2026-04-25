@@ -6,7 +6,6 @@ import {
   Brain,
   ClipboardPlus,
   Globe,
-  Hospital,
   Lock,
   Sparkles,
   ShieldCheck,
@@ -103,22 +102,22 @@ const features = [
       "Analyzes user-reported symptoms to identify possible conditions, categorize severity, and highlight when professional consultation may be needed.",
   },
   {
-    icon: Hospital,
-    title: "Healthcare Provider Network",
+    icon: FileText,
+    title: "One-Time PDF Report Export",
     description:
-      "Supports referrals to appropriate healthcare providers based on context, enabling smoother transitions from AI guidance to real care.",
+      "After a completed result, users can generate and download a polished PDF summary from the result popup for offline review and sharing.",
   },
   {
-    icon: Lock,
-    title: "HIPAA-Compliant Security",
+    icon: ShieldCheck,
+    title: "Medical Report Analysis",
     description:
-      "Built with strong encryption, secure data handling practices, and privacy-first architecture aligned with healthcare compliance standards.",
+      "Supports uploaded medical reports and extracts useful findings, symptoms, and clinical signals that are merged into the diagnosis flow.",
   },
   {
-    icon: Globe,
-    title: "Multi-Language Support",
+    icon: Zap,
+    title: "Hindi Translation Support",
     description:
-      "Enables conversations in multiple languages, allowing users to interact comfortably using familiar and preferred language options.",
+      "Assistant replies can be translated into Hindi directly inside the chat so users can review guidance in a more familiar language.",
   },
 ];
 
@@ -126,7 +125,6 @@ const stats = [
   { icon: Users, value: "1M+", label: "Users Trusted" },
   { icon: ShieldCheck, value: "94%", label: "Accuracy Rate" },
   { icon: Clock, value: "24/7", label: "Availability" },
-  { icon: Globe, value: "50+", label: "Languages" },
 ];
 
 const quickActions = [
