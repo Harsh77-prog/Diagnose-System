@@ -1,0 +1,266 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1180" viewBox="0 0 1920 1180">
+  <defs>
+    <style>
+      .title { font: 700 34px Arial, sans-serif; fill: #0f172a; }
+      .subtitle { font: 500 16px Arial, sans-serif; fill: #475569; }
+      .lane { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; rx: 24; ry: 24; }
+      .lane-title { font: 700 20px Arial, sans-serif; fill: #0f172a; }
+      .step { stroke: #334155; stroke-width: 2; rx: 18; ry: 18; }
+      .step-title { font: 700 17px Arial, sans-serif; fill: #0f172a; }
+      .text { font: 14px Arial, sans-serif; fill: #1e293b; }
+      .tiny { font: 13px Arial, sans-serif; fill: #475569; }
+      .arrow { stroke: #2563eb; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .green { stroke: #059669; stroke-width: 3; fill: none; marker-end: url(#green); }
+      .red { stroke: #dc2626; stroke-width: 3; fill: none; marker-end: url(#red); }
+      .dash { stroke: #64748b; stroke-width: 2.5; fill: none; stroke-dasharray: 8 7; marker-end: url(#gray); }
+      .decision { fill: #fff7ed; stroke: #ea580c; stroke-width: 2.5; }
+      .note { fill: #fefce8; stroke: #eab308; stroke-width: 2; rx: 16; ry: 16; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669"/>
+    </marker>
+    <marker id="red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect width="1920" height="1180" fill="#f4fbff"/>
+  <text x="56" y="58" class="title">MedCoreAI Project Data Flow Flowchart</text>
+  <text x="56" y="86" class="subtitle">End-to-end request and state flow through chat, session persistence, diagnosis orchestration, optional image/report analysis, follow-up state loop, translation, and final response rendering.</text>
+
+  <rect x="40" y="110" width="250" height="1020" class="lane"/>
+  <text x="60" y="145" class="lane-title">A. Browser / User</text>
+
+  <rect x="310" y="110" width="390" height="1020" class="lane"/>
+  <text x="330" y="145" class="lane-title">B. Chat UI (`chat/page.tsx`)</text>
+
+  <rect x="720" y="110" width="430" height="1020" class="lane"/>
+  <text x="740" y="145" class="lane-title">C. Next.js API / Orchestrator</text>
+
+  <rect x="1170" y="110" width="300" height="1020" class="lane"/>
+  <text x="1190" y="145" class="lane-title">D. Prisma + Local Data</text>
+
+  <rect x="1490" y="110" width="390" height="1020" class="lane"/>
+  <text x="1510" y="145" class="lane-title">E. FastAPI / AI Services</text>
+
+  <rect x="60" y="175" width="210" height="120" class="step" fill="#dbeafe"/>
+  <text x="80" y="205" class="step-title">1. User starts flow</text>
+  <text x="80" y="230" class="text">logs in</text>
+  <text x="80" y="251" class="text">opens chat</text>
+  <text x="80" y="272" class="text">types symptoms / uploads files</text>
+
+  <rect x="330" y="175" width="350" height="145" class="step" fill="#ffffff"/>
+  <text x="350" y="205" class="step-title">2. UI prepares request</text>
+  <text x="350" y="230" class="text">reads `useSession()`</text>
+  <text x="350" y="251" class="text">creates preview URLs / base64 payloads</text>
+  <text x="350" y="272" class="text">decides if message should use diagnosis flow</text>
+  <text x="350" y="293" class="text">or normal conversation flow</text>
+
+  <rect x="740" y="175" width="390" height="145" class="step" fill="#eef2ff"/>
+  <text x="760" y="205" class="step-title">3. Secure session check</text>
+  <text x="760" y="230" class="text">route verifies signed-in user via NextAuth</text>
+  <text x="760" y="251" class="text">diagnosis route requires `x-session-id` header</text>
+  <text x="760" y="272" class="text">conversation route checks same authenticated session</text>
+  <text x="760" y="293" class="text">unauthorized requests stop here</text>
+
+  <rect x="1190" y="175" width="260" height="145" class="step" fill="#ffffff"/>
+  <text x="1210" y="205" class="step-title">4. Session + message lookup</text>
+  <text x="1210" y="230" class="text">Prisma loads `ChatSession`</text>
+  <text x="1210" y="251" class="text">loads prior `Message` records</text>
+  <text x="1210" y="272" class="text">assistant `jsonPayload` is parsed</text>
+  <text x="1210" y="293" class="text">to recover follow-up state</text>
+
+  <polygon points="945,365 1045,430 945,495 845,430" class="decision"/>
+  <text x="891" y="425" class="step-title">5. Medical</text>
+  <text x="896" y="447" class="step-title">intent?</text>
+
+  <rect x="740" y="540" width="390" height="145" class="step" fill="#ecfeff"/>
+  <text x="760" y="570" class="step-title">6A. Diagnosis path in Next.js</text>
+  <text x="760" y="595" class="text">load disease/symptom datasets from local files</text>
+  <text x="760" y="616" class="text">extract symptoms and structured slots</text>
+  <text x="760" y="637" class="text">age / gender / severity / duration / red flags</text>
+  <text x="760" y="658" class="text">merge persisted state from earlier follow-ups</text>
+
+  <rect x="740" y="740" width="390" height="165" class="step" fill="#fef2f2"/>
+  <text x="760" y="770" class="step-title">6B. General conversation path</text>
+  <text x="760" y="795" class="text">`/api/conversation/chat/json` forwards user message</text>
+  <text x="760" y="816" class="text">with `X-Internal-Secret` and `X-User-Id`</text>
+  <text x="760" y="837" class="text">FastAPI sends request to OpenAI-compatible API</text>
+  <text x="760" y="858" class="text">response returns as healthcare guidance chat</text>
+  <text x="760" y="879" class="text">no diagnosis state machine is created</text>
+
+  <rect x="1510" y="740" width="350" height="160" class="step" fill="#fee2e2"/>
+  <text x="1530" y="770" class="step-title">7B. FastAPI conversation service</text>
+  <text x="1530" y="795" class="text">checks shared-secret/JWT auth</text>
+  <text x="1530" y="816" class="text">applies healthcare-only system prompt</text>
+  <text x="1530" y="837" class="text">calls `/chat/completions` provider</text>
+  <text x="1530" y="858" class="text">returns reply + source metadata</text>
+  <text x="1530" y="879" class="text">client stores reply to Prisma</text>
+
+  <polygon points="945,930 1045,995 945,1060 845,995" class="decision"/>
+  <text x="882" y="990" class="step-title">8. Image / report</text>
+  <text x="905" y="1012" class="step-title">attached?</text>
+
+  <rect x="330" y="355" width="350" height="160" class="step" fill="#fefce8"/>
+  <text x="350" y="385" class="step-title">UI persistence before inference</text>
+  <text x="350" y="410" class="text">optimistically appends user message</text>
+  <text x="350" y="431" class="text">auto-creates chat session if needed</text>
+  <text x="350" y="452" class="text">POSTs user message to `/api/chat/sessions/[id]/messages`</text>
+  <text x="350" y="473" class="text">stores preview metadata in `jsonPayload`</text>
+  <text x="350" y="494" class="text">starts progress bars for image/report work</text>
+
+  <rect x="1190" y="355" width="260" height="160" class="step" fill="#f0fdf4"/>
+  <text x="1210" y="385" class="step-title">Prisma write</text>
+  <text x="1210" y="410" class="text">creates `Message(role=user)`</text>
+  <text x="1210" y="431" class="text">keeps attachment preview refs</text>
+  <text x="1210" y="452" class="text">updates session timestamp</text>
+  <text x="1210" y="473" class="text">later stores assistant result too</text>
+  <text x="1210" y="494" class="text">used again for sync reload</text>
+
+  <rect x="1510" y="175" width="350" height="145" class="step" fill="#ffffff"/>
+  <text x="1530" y="205" class="step-title">Attachment support services</text>
+  <text x="1530" y="230" class="text">image predictor: validation, warmup, resize, MedMNIST</text>
+  <text x="1530" y="251" class="text">report analyzer: PDF/text/OCR -> LLM findings</text>
+  <text x="1530" y="272" class="text">translator: Deep Translator / structured question mode</text>
+  <text x="1530" y="293" class="text">all secured by backend auth middleware</text>
+
+  <rect x="1510" y="355" width="350" height="170" class="step" fill="#ecfccb"/>
+  <text x="1530" y="385" class="step-title">9A. Image analysis branch</text>
+  <text x="1530" y="410" class="text">frontend diagnosis route infers preferred datasets</text>
+  <text x="1530" y="431" class="text">optional AI image-type validation runs first</text>
+  <text x="1530" y="452" class="text">calls FastAPI `/api/diagnose/image-predict`</text>
+  <text x="1530" y="473" class="text">backend decodes, validates, caches, predicts</text>
+  <text x="1530" y="494" class="text">top dataset labels return to Next.js</text>
+
+  <rect x="1510" y="560" width="350" height="170" class="step" fill="#dcfce7"/>
+  <text x="1530" y="590" class="step-title">9B. Report analysis branch</text>
+  <text x="1530" y="615" class="text">frontend diagnosis route builds multipart form</text>
+  <text x="1530" y="636" class="text">calls FastAPI `/api/diagnose/upload-report`</text>
+  <text x="1530" y="657" class="text">backend extracts text from PDF/text/image</text>
+  <text x="1530" y="678" class="text">LLM maps abnormal findings to symptoms</text>
+  <text x="1530" y="699" class="text">sanitized report symptoms are merged back</text>
+
+  <rect x="1190" y="560" width="260" height="170" class="step" fill="#fff7ed"/>
+  <text x="1210" y="590" class="step-title">10. Local scoring context</text>
+  <text x="1210" y="615" class="text">confirmed/denied symptom sets</text>
+  <text x="1210" y="636" class="text">slots + prior answers</text>
+  <text x="1210" y="657" class="text">historical message text</text>
+  <text x="1210" y="678" class="text">disease descriptions + precautions</text>
+  <text x="1210" y="699" class="text">all feed final orchestration logic</text>
+
+  <rect x="740" y="355" width="390" height="150" class="step" fill="#ffffff"/>
+  <text x="760" y="385" class="step-title">11. Follow-up state machine</text>
+  <text x="760" y="410" class="text">scores diseases from confirmed vs denied symptoms</text>
+  <text x="760" y="431" class="text">applies demographic + clinical context adjustments</text>
+  <text x="760" y="452" class="text">evaluates reliability / confidence gap</text>
+  <text x="760" y="473" class="text">if unclear, chooses next question (dataset or OpenAI)</text>
+  <text x="760" y="494" class="text">packs `follow_up_state` into assistant `jsonPayload`</text>
+
+  <polygon points="945,530 1045,595 945,660 845,595" class="decision"/>
+  <text x="875" y="590" class="step-title">12. Enough confidence</text>
+  <text x="897" y="612" class="step-title">for final result?</text>
+
+  <rect x="740" y="690" width="390" height="195" class="step" fill="#e0f2fe"/>
+  <text x="760" y="720" class="step-title">13A. Final multimodal diagnosis</text>
+  <text x="760" y="745" class="text">combines symptom ranking + image signal boost + report findings</text>
+  <text x="760" y="766" class="text">resolves disease metadata (description, precautions)</text>
+  <text x="760" y="787" class="text">optionally asks OpenAI for home remedies/lifestyle/diet guidance</text>
+  <text x="760" y="808" class="text">builds `ml_diagnosis` JSON and readable reply</text>
+  <text x="760" y="829" class="text">assistant payload includes diagnosis, top predictions, image/report use</text>
+  <text x="760" y="850" class="text">session is treated as complete after final result</text>
+
+  <rect x="740" y="930" width="390" height="155" class="step" fill="#f0fdf4"/>
+  <text x="760" y="960" class="step-title">13B. Continue follow-up</text>
+  <text x="760" y="985" class="text">reply includes `Question N` text</text>
+  <text x="760" y="1006" class="text">client shows yes/no or upload prompt</text>
+  <text x="760" y="1027" class="text">next user answer returns to Step 3</text>
+  <text x="760" y="1048" class="text">state resumes from Prisma-stored payload</text>
+
+  <rect x="1190" y="780" width="260" height="170" class="step" fill="#eef2ff"/>
+  <text x="1210" y="810" class="step-title">14. Assistant persistence</text>
+  <text x="1210" y="835" class="text">UI writes assistant message to Prisma</text>
+  <text x="1210" y="856" class="text">`jsonPayload = ml_diagnosis`</text>
+  <text x="1210" y="877" class="text">or `jsonPayload = follow_up_state`</text>
+  <text x="1210" y="898" class="text">then reloads all messages for perfect sync</text>
+  <text x="1210" y="919" class="text">restores state after refresh/session switch</text>
+
+  <rect x="330" y="735" width="350" height="190" class="step" fill="#ffffff"/>
+  <text x="350" y="765" class="step-title">15. UI renders response</text>
+  <text x="350" y="790" class="text">stops progress bars</text>
+  <text x="350" y="811" class="text">updates sidebar + chat transcript</text>
+  <text x="350" y="832" class="text">shows diagnosis popup when final result arrives</text>
+  <text x="350" y="853" class="text">extracts image/report symptoms for result panel</text>
+  <text x="350" y="874" class="text">can reopen stored session and reconstruct status</text>
+  <text x="350" y="895" class="text">can translate reply to Hindi on demand</text>
+
+  <rect x="1510" y="930" width="350" height="155" class="step" fill="#fff7ed"/>
+  <text x="1530" y="960" class="step-title">16. Translation side flow</text>
+  <text x="1530" y="985" class="text">UI sends text or diagnosis JSON to `/api/diagnose/translate`</text>
+  <text x="1530" y="1006" class="text">backend translates text or structured Question N format</text>
+  <text x="1530" y="1027" class="text">if backend unavailable, frontend falls back to OpenAI</text>
+  <text x="1530" y="1048" class="text">translated content is cached client-side per message</text>
+
+  <rect x="60" y="955" width="210" height="130" class="step" fill="#dbeafe"/>
+  <text x="80" y="985" class="step-title">17. User sees outcome</text>
+  <text x="80" y="1010" class="text">follow-up question,</text>
+  <text x="80" y="1031" class="text">or final diagnosis,</text>
+  <text x="80" y="1052" class="text">or normal healthcare answer</text>
+
+  <rect x="520" y="1088" width="900" height="56" class="note"/>
+  <text x="545" y="1122" class="text">Important implementation detail: the diagnosis flow is not purely backend-driven. Next.js owns the main decision tree and uses FastAPI as a multimodal support layer for image, report, translation, and general healthcare conversation services.</text>
+
+  <path d="M270 235 H330" class="arrow"/>
+  <path d="M680 250 H740" class="arrow"/>
+  <path d="M1130 250 H1190" class="green"/>
+  <path d="M1320 320 V355" class="dash"/>
+  <path d="M945 320 V365" class="arrow"/>
+  <path d="M1045 430 H1170" class="red"/>
+  <path d="M945 495 V540" class="green"/>
+  <path d="M845 430 H680" class="arrow"/>
+  <path d="M1130 812 H1190" class="green"/>
+
+  <path d="M1130 812 C1220 812, 1220 812, 1190 812" class="green"/>
+
+  <path d="M1130 812 C1260 812, 1370 812, 1510 812" class="dash"/>
+
+  <path d="M945 685 V530" class="dash"/>
+  <path d="M1045 595 H1490" class="green"/>
+  <path d="M1490 440 H1130" class="green"/>
+  <path d="M1490 645 H1130" class="green"/>
+  <path d="M1450 645 V730" class="dash"/>
+  <path d="M945 905 V930" class="arrow"/>
+  <path d="M1045 995 H1510" class="green"/>
+  <path d="M845 995 H680" class="arrow"/>
+  <path d="M680 820 H740" class="arrow"/>
+  <path d="M680 825 C710 825,710 820,740 820" class="arrow"/>
+  <path d="M1860 820 V930" class="dash"/>
+  <path d="M1450 865 H330" class="green"/>
+  <path d="M680 840 H740" class="arrow"/>
+  <path d="M680 825 H740" class="arrow"/>
+  <path d="M680 830 C705 830,715 830,740 830" class="arrow"/>
+  <path d="M680 870 C760 870,760 870,740 870" class="arrow"/>
+  <path d="M680 885 C760 885,760 885,740 885" class="arrow"/>
+  <path d="M680 895 C760 895,760 895,740 895" class="arrow"/>
+  <path d="M680 905 C760 905,760 905,740 905" class="arrow"/>
+  <path d="M680 910 C850 910,1050 910,1190 910" class="green"/>
+  <path d="M680 905 C520 905, 350 905, 270 1018" class="arrow"/>
+
+  <text x="1068" y="418" class="tiny">No -> informational/general path</text>
+  <text x="872" y="523" class="tiny">Yes</text>
+  <text x="1062" y="580" class="tiny">Yes, enrich with attachments</text>
+  <text x="865" y="679" class="tiny">No attachments</text>
+  <text x="864" y="674" class="tiny"></text>
+  <text x="1060" y="610" class="tiny"></text>
+  <text x="846" y="693" class="tiny"></text>
+  <text x="1058" y="583" class="tiny"></text>
+  <text x="861" y="926" class="tiny">Need more data</text>
+  <text x="1055" y="987" class="tiny">Translate / extra UX branch</text>
+  <text x="1112" y="575" class="tiny">symptoms + slots + attachments feed scoring</text>
+  <text x="1260" y="959" class="tiny">assistant payload becomes recoverable state</text>
+</svg>
