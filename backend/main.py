@@ -18,12 +18,19 @@ from config import (
     IMAGE_MODEL_PERIODIC_WARMUP,
     IMAGE_MODEL_WARMUP_ON_STARTUP,
     REQUEST_TIMEOUT_SECONDS,
+    TORCH_NUM_INTEROP_THREADS,
+    TORCH_NUM_THREADS,
 )
 from routers.conversation import router as conversation_router
 from routers.diagnose import router as diagnose_router, warmup_image_models_in_background
 
 # Keep torch conservative on small instances.
-torch.set_num_threads(2)
+torch.set_num_threads(TORCH_NUM_THREADS)
+try:
+    torch.set_num_interop_threads(TORCH_NUM_INTEROP_THREADS)
+except RuntimeError:
+    # Safe to ignore if PyTorch interop thread pool was already initialized.
+    pass
 
 logging.basicConfig(
     level=logging.INFO,

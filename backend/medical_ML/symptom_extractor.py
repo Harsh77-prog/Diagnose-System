@@ -32,11 +32,15 @@ class BioBERTSymptomExtractor:
     # BioBERT threshold — lowered for better natural language coverage
     SIMILARITY_THRESHOLD = 0.85
 
-    def __init__(self, model_dir: str, symptom_columns: list[str]):
+    def __init__(self, model_dir: str, symptom_columns: list[str], enable_embeddings: bool = True):
         self.symptom_columns = symptom_columns
         self.symptom_set = set(symptom_columns)
         self.model_dir = model_dir
         self.cache_path = os.path.join(model_dir, "symptom_embeddings.pkl")
+        self.enable_embeddings = enable_embeddings
+        self.tokenizer = None
+        self.model = None
+        self.symptom_embeddings: dict[str, np.ndarray] = {}
         
         # Embedding cache for clauses
         self._embedding_cache: dict[str, np.ndarray] = {}
@@ -393,18 +397,23 @@ class BioBERTSymptomExtractor:
             reverse=True
         )
 
-        # Load BioBERT model
-        print("  Loading BioBERT model...")
-        self.tokenizer = AutoTokenizer.from_pretrained("dmis-lab/biobert-v1.1")
-        self.model = AutoModel.from_pretrained("dmis-lab/biobert-v1.1")
-        self.model.eval()
+        if self.enable_embeddings:
+            # Load BioBERT model only when semantic matching is enabled.
+            print("  Loading BioBERT model...")
+            self.tokenizer = AutoTokenizer.from_pretrained("dmis-lab/biobert-v1.1")
+            self.model = AutoModel.from_pretrained("dmis-lab/biobert-v1.1")
+            self.model.eval()
 
-        # Pre-compute symptom embeddings
-        self.symptom_embeddings = self._load_or_compute_embeddings()
-        print(f"  ✓ BioBERT ready ({len(self.symptom_columns)} symptom embeddings)")
+            # Pre-compute symptom embeddings
+            self.symptom_embeddings = self._load_or_compute_embeddings()
+            print(f"  ✓ BioBERT ready ({len(self.symptom_columns)} symptom embeddings)")
+        else:
+            print("  ✓ Rule-based symptom extractor ready (BioBERT disabled)")
 
     def _get_embedding(self, text: str) -> np.ndarray:
         """Get BioBERT [CLS] embedding for a text string with caching."""
+        if not self.enable_embeddings or self.tokenizer is None or self.model is None:
+            raise RuntimeError("BioBERT embeddings are disabled")
         # Check cache first
         text_key = text.strip().lower()
         with self._cache_lock:
@@ -485,6 +494,9 @@ class BioBERTSymptomExtractor:
                 matched.add(symptom)
 
         # ── Stage 3: BioBERT for unmatched phrases ───────────────────
+        if not self.enable_embeddings:
+            return list(matched)
+
         # Split into clause-level chunks
         clauses = re.split(r'\band\b|\balso\b|\bplus\b|\bwith\b|,|;', text_clean)
         clauses = [c.strip() for c in clauses if len(c.strip()) >= 4]

@@ -18,6 +18,12 @@ def _env_flag(name: str, default: bool) -> bool:
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
+
+MEDCORE_LOW_MEMORY_MODE = _env_flag("MEDCORE_LOW_MEMORY_MODE", False)
+SYMPTOM_EMBEDDING_ENABLED = _env_flag("SYMPTOM_EMBEDDING_ENABLED", not MEDCORE_LOW_MEMORY_MODE)
+TORCH_NUM_THREADS = int(os.getenv("TORCH_NUM_THREADS", "1" if MEDCORE_LOW_MEMORY_MODE else "2"))
+TORCH_NUM_INTEROP_THREADS = int(os.getenv("TORCH_NUM_INTEROP_THREADS", "1"))
+
 # Performance & Timeout Configuration
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("REQUEST_TIMEOUT_SECONDS", "300"))
 ML_INFERENCE_TIMEOUT_SECONDS = int(os.getenv("ML_INFERENCE_TIMEOUT_SECONDS", "60"))

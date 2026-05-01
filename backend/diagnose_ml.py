@@ -10,6 +10,8 @@ import json
 import logging
 from typing import Any, Optional
 
+from config import MEDCORE_LOW_MEMORY_MODE, SYMPTOM_EMBEDDING_ENABLED
+
 LOGGER = logging.getLogger("medcore.diagnose_ml")
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -41,10 +43,16 @@ def _init_ml_components():
         with open(os.path.join(MODEL_DIR, "metadata.json")) as f:
             metadata = json.load(f)
         
-        LOGGER.info("Initializing BioBERT Symptom Extractor...")
+        extractor_mode = "biobert" if SYMPTOM_EMBEDDING_ENABLED else "rule-based"
+        LOGGER.info(
+            "Initializing symptom extractor | mode=%s | low_memory=%s",
+            extractor_mode,
+            MEDCORE_LOW_MEMORY_MODE,
+        )
         _extractor = BioBERTSymptomExtractor(
             model_dir=MODEL_DIR,
-            symptom_columns=metadata["symptom_columns"]
+            symptom_columns=metadata["symptom_columns"],
+            enable_embeddings=SYMPTOM_EMBEDDING_ENABLED,
         )
         
         LOGGER.info("✓ ML components initialized successfully")

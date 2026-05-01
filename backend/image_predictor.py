@@ -20,9 +20,19 @@ from medmnist import INFO
 from PIL import Image
 from torchvision import models, transforms
 
-from config import IMAGE_INFERENCE_MAX_WORKERS, IMAGE_MODEL_KEEP_LOADED, IMAGE_MODEL_MAX_RESIDENT
+from config import (
+    IMAGE_INFERENCE_MAX_WORKERS,
+    IMAGE_MODEL_KEEP_LOADED,
+    IMAGE_MODEL_MAX_RESIDENT,
+    TORCH_NUM_INTEROP_THREADS,
+    TORCH_NUM_THREADS,
+)
 
-torch.set_num_threads(2)
+torch.set_num_threads(TORCH_NUM_THREADS)
+try:
+    torch.set_num_interop_threads(TORCH_NUM_INTEROP_THREADS)
+except RuntimeError:
+    pass
 
 SIMPLECNN_IMAGE_SIZE = 28
 RESNET_IMAGE_SIZE = 64
@@ -223,16 +233,20 @@ class ImagePredictor:
         predictions: list[dict[str, Any]] = []
         inference_start = time.perf_counter()
 
-        for dataset_name in selected:
-            if not self._ensure_model_loaded(dataset_name, protected={dataset_name}):
-                continue
-            single_prediction = self._predict_single(image, dataset_name)
-            if single_prediction:
-                predictions.append(single_prediction)
-            if self._keep_loaded:
-                self._evict_if_needed()
-            else:
-                self._unload_model(dataset_name)
+        try:
+            for dataset_name in selected:
+                if not self._ensure_model_loaded(dataset_name, protected={dataset_name}):
+                    continue
+                single_prediction = self._predict_single(image, dataset_name)
+                if single_prediction:
+                    predictions.append(single_prediction)
+                if self._keep_loaded:
+                    self._evict_if_needed()
+                else:
+                    self._unload_model(dataset_name)
+        finally:
+            image.close()
+            gc.collect()
 
         inference_duration = float(f"{(time.perf_counter() - inference_start) * 1000:.2f}")
         LOGGER.info("Sequential inference completed | datasets=%d | duration_ms=%s", len(predictions), inference_duration)
@@ -376,3 +390,13 @@ class ImagePredictor:
         except Exception:
             LOGGER.exception("Inference failed for dataset=%s", dataset_name)
             return None
+        finally:
+            if "tensor" in locals():
+                del tensor
+            if "logits" in locals():
+                del logits
+            if "probs" in locals():
+                del probs
+            if "probs_np" in locals():
+                del probs_np
+            gc.collect()
