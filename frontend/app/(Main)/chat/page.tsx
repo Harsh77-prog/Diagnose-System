@@ -1046,6 +1046,7 @@ export default function ChatDashboard() {
             setLatestUploadedReport(null);
             setImageIdentifiedSymptoms([]);
             setReportIdentifiedSymptoms([]);
+            setMobilePanel((prev) => (prev === "prediction" ? "none" : prev));
             return;
         }
         if (latest.messageId !== latestDiagnosisMessageId) {
@@ -1057,6 +1058,7 @@ export default function ChatDashboard() {
             setImageIdentifiedSymptoms(context.imageSymptoms);
             setReportIdentifiedSymptoms(context.reportSymptoms);
             setResultPanelMinimized(false);
+            setMobilePanel("prediction");
         }
     }, [messages, latestDiagnosisMessageId]);
 
@@ -1675,6 +1677,8 @@ export default function ChatDashboard() {
     const panelPrecautions = latestDiagnosis?.disease_info?.precautions || [];
     const panelDescription = latestDiagnosis?.disease_info?.description || "";
     const panelSymptoms = latestDiagnosis?.confirmed_symptoms || [];
+    const hasPredictionPanelContent = Boolean(latestDiagnosis);
+    const panelDiagnosisName = latestDiagnosis?.diagnosis || "";
     const guidance = latestDiagnosis ? DEFAULT_GUIDANCE : null;
     const panelGuidance = {
         homeRemedies: latestDiagnosis?.guidance?.home_remedies || [],
@@ -1798,8 +1802,9 @@ export default function ChatDashboard() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className="ml-auto mr-1 text-[12px] px-2.5 h-8 border border-[#e5e5e5] rounded-full"
+                        className="ml-auto mr-1 text-[12px] px-2.5 h-8 border border-[#e5e5e5] rounded-full disabled:opacity-40 disabled:cursor-not-allowed"
                         onClick={() => setMobilePanel((prev) => (prev === "prediction" ? "none" : "prediction"))}
+                        disabled={!hasPredictionPanelContent}
                     >
                         Results
                     </Button>
@@ -2526,18 +2531,9 @@ export default function ChatDashboard() {
             </main >
 
             {/* Right Result Panel */}
+            {hasPredictionPanelContent ? (
             <aside className="hidden lg:flex h-full border-l border-[#e5e5e5] bg-[#fafafa]">
-                {!latestDiagnosis ? (
-                    <div className="w-[340px] p-5 flex flex-col justify-center items-center text-center text-slate-500">
-                        <div className="w-11 h-11 rounded-xl bg-white border border-[#e5e5e5] flex items-center justify-center mb-3">
-                            <Activity className="w-5 h-5 text-slate-600" />
-                        </div>
-                        <div className="text-sm font-semibold text-slate-700">Prediction Panel</div>
-                        <p className="text-xs mt-2 leading-relaxed max-w-[260px]">
-                            After diagnosis, detailed results with charts, home remedies, lifestyle, and diet guidance will appear here.
-                        </p>
-                    </div>
-                ) : resultPanelMinimized ? (
+                {resultPanelMinimized ? (
                     <div className="w-14 p-2 flex flex-col items-center gap-2">
                         <Button
                             variant="ghost"
@@ -2555,7 +2551,7 @@ export default function ChatDashboard() {
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <div className="text-[11px] uppercase tracking-wider text-slate-300">Likely condition</div>
-                                    <div className="text-lg font-semibold mt-1">{labelize(latestDiagnosis.diagnosis)}</div>
+                                    <div className="text-lg font-semibold mt-1">{labelize(panelDiagnosisName)}</div>
                                     <div className="text-xs text-slate-300 mt-1">Confidence: {panelConfidence.toFixed(1)}%</div>
                                 </div>
                                 <Button
@@ -2731,6 +2727,7 @@ export default function ChatDashboard() {
                     </div>
                 )}
             </aside>
+            ) : null}
 
             {/* Diagnosis Result Popup Modal */}
             <DiagnosisResultPopup

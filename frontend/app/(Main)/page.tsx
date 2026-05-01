@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/accordion";
 import { Process1 } from "@/components/process1";
 import { Separator } from "@/components/ui/separator";
+import { InView } from "@/components/ui/in-view";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { MedicalParticleRingCanvas } from "@/components/medical-particle-background";
@@ -135,38 +136,74 @@ const quickActions = [
   { icon: Stethoscope, label: "Talk to AI Doctor", path: "/chat" },
 ];
 
+const sectionReveal = {
+  hidden: { opacity: 0, y: 36, scale: 0.985, filter: "blur(8px)" },
+  visible: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+};
+
+const cardReveal = {
+  hidden: { opacity: 0, y: 22, scale: 0.98 },
+  visible: { opacity: 1, y: 0, scale: 1 },
+};
+
+function RevealBlock({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  return (
+    <InView
+      as="div"
+      once
+      viewOptions={{ margin: "-12% 0px -10% 0px" }}
+      variants={sectionReveal}
+      transition={{ duration: 0.7, delay, ease: "easeOut" }}
+    >
+      <div className={className}>{children}</div>
+    </InView>
+  );
+}
+
 // Feature card component with hover effects
 function FeatureCard({ feature, index }: { feature: typeof features[0]; index: number }) {
   const Icon = feature.icon;
 
   return (
-    <div
-      className="relative group p-6 rounded-2xl border border-neutral-200 bg-white backdrop-blur-sm transition-all duration-500 hover:scale-[1.02] hover:shadow-xl"
-      style={{
-        animation: `fadeInUp 0.6s ease-out ${index * 0.1}s both`,
-      }}
+    <InView
+      as="div"
+      once
+      viewOptions={{ margin: "-8% 0px -8% 0px" }}
+      variants={cardReveal}
+      transition={{ duration: 0.55, delay: index * 0.08, ease: "easeOut" }}
     >
-      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-neutral-100 to-neutral-50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-      
-      <div className="relative z-10">
-        <div className="inline-flex p-3 rounded-xl bg-neutral-900 mb-4">
-          <Icon className="h-6 w-6 text-white" />
-        </div>
-        
-        <h3 className="text-xl font-semibold mb-3 text-neutral-900 group-hover:text-neutral-700 transition-colors duration-300">
-          {feature.title}
-        </h3>
-        
-        <p className="text-neutral-600 leading-relaxed">
-          {feature.description}
-        </p>
-        
-        <div className="mt-4 flex items-center gap-2 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform translate-y-2 group-hover:translate-y-0">
-          <span>Learn more</span>
-          <ChevronRight className="h-4 w-4" />
+      <div className="relative group p-6 rounded-2xl border border-neutral-200 bg-white/95 backdrop-blur-sm transition-all duration-500 hover:scale-[1.02] hover:shadow-xl hover:-translate-y-1">
+        <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-neutral-100 to-neutral-50 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        <div className="absolute -inset-px rounded-2xl bg-linear-to-r from-transparent via-neutral-300/60 to-transparent opacity-0 blur-md transition-opacity duration-500 group-hover:opacity-100" />
+
+        <div className="relative z-10">
+          <div className="inline-flex p-3 rounded-xl bg-neutral-900 mb-4 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3">
+            <Icon className="h-6 w-6 text-white" />
+          </div>
+          
+          <h3 className="text-xl font-semibold mb-3 text-neutral-900 group-hover:text-neutral-700 transition-colors duration-300">
+            {feature.title}
+          </h3>
+          
+          <p className="text-neutral-600 leading-relaxed">
+            {feature.description}
+          </p>
+          
+          <div className="mt-4 flex items-center gap-2 text-sm font-medium opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+            <span>Learn more</span>
+            <ChevronRight className="h-4 w-4" />
+          </div>
         </div>
       </div>
-    </div>
+    </InView>
   );
 }
 
@@ -175,16 +212,18 @@ function StatCard({ stat, index }: { stat: typeof stats[0]; index: number }) {
   const Icon = stat.icon;
   
   return (
-    <div
-      className="flex flex-col items-center p-6 rounded-xl bg-white border border-neutral-200"
-      style={{
-        animation: `fadeInUp 0.6s ease-out ${index * 0.15}s both`,
-      }}
+    <InView
+      as="div"
+      once
+      variants={cardReveal}
+      transition={{ duration: 0.5, delay: index * 0.1, ease: "easeOut" }}
     >
-      <Icon className="h-8 w-8 text-neutral-900 mb-3" />
-      <div className="text-3xl font-bold text-neutral-900">{stat.value}</div>
-      <div className="text-sm text-neutral-500">{stat.label}</div>
-    </div>
+      <div className="flex flex-col items-center p-6 rounded-xl bg-white border border-neutral-200 transition-all duration-500 hover:-translate-y-1.5 hover:shadow-lg">
+        <Icon className="h-8 w-8 text-neutral-900 mb-3" />
+        <div className="text-3xl font-bold text-neutral-900">{stat.value}</div>
+        <div className="text-sm text-neutral-500">{stat.label}</div>
+      </div>
+    </InView>
   );
 }
 
@@ -309,7 +348,7 @@ export default function Page() {
 
       {/* Features Section - Light Theme */}
       <section id="features" className="relative py-24 px-6 bg-white">
-        <div className="max-w-7xl mx-auto">
+        <RevealBlock className="max-w-7xl mx-auto">
           {/* Section Header */}
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-4 py-1.5 text-sm font-medium text-neutral-700 mb-6 shadow-sm">
@@ -331,19 +370,19 @@ export default function Page() {
               <FeatureCard key={index} feature={feature} index={index} />
             ))}
           </div>
-        </div>
+        </RevealBlock>
       </section>
 
       {/* Process Section */}
       <section className="relative py-24 px-6 bg-neutral-50 border-y border-neutral-200">
-        <div className="max-w-7xl mx-auto">
+        <RevealBlock className="max-w-7xl mx-auto">
           <Process1 className="py-0" />
-        </div>
+        </RevealBlock>
       </section>
 
       {/* FAQ Section - Light Theme */}
       <section className="relative py-24 px-6 bg-white">
-        <div className="max-w-7xl mx-auto">
+        <RevealBlock className="max-w-7xl mx-auto">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
             {/* Left Side - Title */}
             <div className="lg:sticky lg:top-32">
@@ -393,7 +432,7 @@ export default function Page() {
               </Accordion>
             </div>
           </div>
-        </div>
+        </RevealBlock>
       </section>
 
       {/* CTA Section - Light Theme */}
@@ -402,7 +441,7 @@ export default function Page() {
         <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-neutral-200 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-neutral-200 rounded-full blur-3xl animate-pulse delay-1000" />
         
-        <div className="relative z-10 max-w-4xl mx-auto text-center">
+        <RevealBlock className="relative z-10 max-w-4xl mx-auto text-center">
           <h2 className="text-4xl md:text-6xl font-bold text-neutral-900 mb-6">
             Ready to experience{" "}
             <span className="bg-gradient-to-r from-neutral-700 via-neutral-900 to-neutral-700 bg-clip-text text-transparent">
@@ -431,12 +470,12 @@ export default function Page() {
               Try It Now
             </Button>
           </div>
-        </div>
+        </RevealBlock>
       </section>
 
       {/* Footer - Light Theme */}
       <footer className="relative bg-white border-t border-neutral-200">
-        <div className="max-w-7xl mx-auto px-6 py-16">
+        <RevealBlock className="max-w-7xl mx-auto px-6 py-16">
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             {/* Brand */}
             <div className="md:col-span-2">
@@ -533,7 +572,7 @@ export default function Page() {
               <a href="#" className="hover:text-neutral-900 transition-colors">Built by @ MedCoreAI Team 🔱🕉️ </a>
             </div>
           </div>
-        </div>
+        </RevealBlock>
       </footer>
 
       <LegalPolicyModal

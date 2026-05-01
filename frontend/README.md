@@ -1,45 +1,142 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MedCoreAI Frontend
 
-## Getting Started
+Next.js frontend for the MedCoreAI platform. This app owns the user-facing product experience and the secure application layer between the browser and the Python backend.
 
-First, run the development server:
+## Responsibilities
+
+- landing page and product presentation
+- authentication and account flows
+- diagnosis chat UX
+- image and report upload flow
+- result visualization and export workflow
+- session history and conversation recovery
+- authenticated proxy routes to the backend
+
+## Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- NextAuth
+- Prisma
+- Neon Postgres
+- Motion-based UI interactions
+
+## Structure
+
+```text
+frontend/
+├─ app/
+│  ├─ (Main)/         # main pages: home, about, chat, philosophy
+│  ├─ (Basic Auth)/   # login/signup/reset flows
+│  └─ api/            # server-side routes used by the app
+├─ components/        # reusable UI and chat components
+├─ lib/               # auth, prisma, helpers
+├─ prisma/            # prisma schema/config
+└─ public/            # assets
+```
+
+## Frontend Capabilities
+
+### Product Experience
+
+- animated landing and informational pages
+- polished multi-section layout
+- healthcare-oriented branding and result presentation
+
+### Chat Flow
+
+- normal healthcare conversation mode
+- diagnosis mode with session-aware UI
+- image upload and report upload support
+- progress indicators for longer operations
+- adaptive results panel
+
+### Account and Data Layer
+
+- signup and login
+- email verification
+- password reset
+- session persistence
+
+## Frontend as Application Layer
+
+The frontend is not only rendering React components. It also provides:
+
+- authenticated request forwarding to the backend
+- normalization of backend responses
+- timeout and retry handling
+- integration of file uploads into diagnosis flows
+- secure sharing of trusted internal headers
+
+## Important Routes
+
+- `/chat`
+- `/about`
+- `/Philosophy`
+- `/api/diagnose/chat/json`
+- `/api/diagnose/upload-report`
+- `/api/diagnose/translate`
+- `/api/conversation/chat/json`
+- `/api/auth/[...nextauth]`
+
+## Environment Variables
+
+Typical frontend variables:
+
+```env
+DATABASE_URL=
+NEXTAUTH_URL=
+NEXTAUTH_SECRET=
+BACKEND_URL=
+SHARED_SECRET=
+OPENAI_API_KEY=
+OPENAI_MODEL=
+UNSPLASH_ACCESS_KEY=
+```
+
+## Local Development
 
 ```bash
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-for database
+Open:
 
-```
-env -> DATABASE_URL="postgresql://prisma_user@localhost:5432/medUser?schema=public"
-docker ->
-1. open docker folder in docker terminal (recomended) or any teminal
-2. run command ->  docker-compose up -d
+```text
+http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Database Commands
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run db:gen
+npm run db:migrate
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deployment
 
-## Learn More
+Recommended target: Vercel
 
-To learn more about Next.js, take a look at the following resources:
+Deployment notes:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- deploy the `frontend/` directory as the Next.js app
+- set `BACKEND_URL` to the FastAPI deployment
+- keep `SHARED_SECRET` identical across frontend and backend
+- provide NextAuth and database environment variables in Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## What Makes This Frontend Strong
 
-## Deploy on Vercel
+- combines UI, auth, and orchestration responsibilities
+- handles multimodal user flows instead of basic form submission
+- includes real product design work around trust, clarity, and progressive disclosure
+- bridges browser interactions to a heavier ML backend cleanly
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Related Docs
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [Root README](../README.md)
+- [Backend README](../backend/README.md)
+- [Setup Guide](../setup.md)

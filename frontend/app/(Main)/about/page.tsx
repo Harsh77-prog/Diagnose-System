@@ -1,4 +1,61 @@
+"use client";
+
+import { InView } from "@/components/ui/in-view";
 import { Activity, Brain, CircleHelp, ShieldCheck, UserRound } from "lucide-react";
+
+const sectionReveal = {
+  hidden: { opacity: 0, y: 34, scale: 0.985, filter: "blur(8px)" },
+  visible: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+};
+
+const cardReveal = {
+  hidden: { opacity: 0, y: 20, scale: 0.98 },
+  visible: { opacity: 1, y: 0, scale: 1 },
+};
+
+function RevealBlock({
+  children,
+  className,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  delay?: number;
+}) {
+  return (
+    <InView
+      as="div"
+      once
+      viewOptions={{ margin: "-12% 0px -10% 0px" }}
+      variants={sectionReveal}
+      transition={{ duration: 0.7, delay, ease: "easeOut" }}
+    >
+      <div className={className}>{children}</div>
+    </InView>
+  );
+}
+
+function RevealCard({
+  children,
+  delay = 0,
+  className,
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  className?: string;
+}) {
+  return (
+    <InView
+      as="div"
+      once
+      viewOptions={{ margin: "-8% 0px -8% 0px" }}
+      variants={cardReveal}
+      transition={{ duration: 0.55, delay, ease: "easeOut" }}
+    >
+      <div className={className}>{children}</div>
+    </InView>
+  );
+}
 
 export default function AboutPage() {
   return (
@@ -34,44 +91,44 @@ export default function AboutPage() {
       </section>
 
       <section className="border-b border-[#e5e5e5] px-6 py-16 md:px-10">
-        <div className="mx-auto max-w-6xl">
+        <RevealBlock className="mx-auto max-w-6xl">
           <h2 className="text-3xl font-bold tracking-tight md:text-4xl">How It Works</h2>
           <p className="mt-3 max-w-3xl text-sm text-slate-600 md:text-base">
             This is the live triage flow now running in chat.
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-5">
-            <div className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+            <RevealCard delay={0} className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               <UserRound className="mb-3 h-5 w-5 text-slate-700" />
               <p className="text-sm font-semibold">1. User Symptoms</p>
               <p className="mt-2 text-xs text-slate-600">You describe your issue in natural language.</p>
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+            </RevealCard>
+            <RevealCard delay={0.06} className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               <Activity className="mb-3 h-5 w-5 text-slate-700" />
               <p className="text-sm font-semibold">2. Age Group</p>
               <p className="mt-2 text-xs text-slate-600">System asks age group first for triage context.</p>
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+            </RevealCard>
+            <RevealCard delay={0.12} className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               <Activity className="mb-3 h-5 w-5 text-slate-700" />
               <p className="text-sm font-semibold">3. Gender</p>
               <p className="mt-2 text-xs text-slate-600">Gender is collected second for model calibration.</p>
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4">
+            </RevealCard>
+            <RevealCard delay={0.18} className="rounded-2xl border border-[#e5e5e5] bg-[#fafafa] p-4 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               <Brain className="mb-3 h-5 w-5 text-slate-700" />
               <p className="text-sm font-semibold">4. Live Follow-Ups</p>
               <p className="mt-2 text-xs text-slate-600">OpenAI generates question-by-question follow-ups from context.</p>
-            </div>
-            <div className="rounded-2xl border border-[#0f0f0f] bg-[#0f0f0f] p-4 text-white">
+            </RevealCard>
+            <RevealCard delay={0.24} className="rounded-2xl border border-[#0f0f0f] bg-[#0f0f0f] p-4 text-white transition-all duration-500 hover:-translate-y-1 hover:shadow-xl">
               <ShieldCheck className="mb-3 h-5 w-5 text-white" />
               <p className="text-sm font-semibold">5. Prediction Output</p>
               <p className="mt-2 text-xs text-white/80">System returns a confidence-based informational prediction.</p>
-            </div>
+            </RevealCard>
           </div>
-        </div>
+        </RevealBlock>
       </section>
 
       <section className="border-b border-[#e5e5e5] px-6 py-16 md:px-10">
-        <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-[#e5e5e5] bg-[#fafafa] p-6 md:p-8">
+        <RevealBlock className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-2">
+          <RevealCard className="rounded-3xl border border-[#e5e5e5] bg-[#fafafa] p-6 md:p-8 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl">
             <h3 className="text-xl font-bold">Confidence Growth Diagram</h3>
             <p className="mt-2 text-sm text-slate-600">
               Reliability improves as follow-up questions collect higher-signal details.
@@ -106,9 +163,9 @@ export default function AboutPage() {
                 <div className="h-2 rounded-full bg-[#e6e6e6]"><div className="h-2 w-[78%] rounded-full bg-[#111]" /></div>
               </div>
             </div>
-          </div>
+          </RevealCard>
 
-          <div className="rounded-3xl border border-[#e5e5e5] bg-white p-6 md:p-8">
+          <RevealCard delay={0.08} className="rounded-3xl border border-[#e5e5e5] bg-white p-6 md:p-8 transition-all duration-500 hover:-translate-y-1 hover:shadow-xl">
             <h3 className="text-xl font-bold">Question Selection Diagram</h3>
             <p className="mt-2 text-sm text-slate-600">
               Follow-up questions are generated for the current problem, not from a static fixed list.
@@ -130,34 +187,34 @@ export default function AboutPage() {
                 Loop repeats until reliability threshold or turn limit
               </div>
             </div>
-          </div>
-        </div>
+          </RevealCard>
+        </RevealBlock>
       </section>
 
       <section className="px-6 py-16 md:px-10">
-        <div className="mx-auto max-w-6xl rounded-3xl border border-[#e5e5e5] bg-[#fafafa] p-7 md:p-10">
+        <RevealBlock className="mx-auto max-w-6xl rounded-3xl border border-[#e5e5e5] bg-[#fafafa] p-7 md:p-10">
           <div className="mb-4 flex items-center gap-2 text-slate-700">
             <CircleHelp className="h-5 w-5" />
             <h3 className="text-xl font-bold">What This Project Delivers</h3>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700">
+            <RevealCard delay={0} className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               Dynamic symptom interviews using OpenAI-generated follow-up questions.
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700">
+            </RevealCard>
+            <RevealCard delay={0.06} className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               Session-based memory for coherent multi-turn medical conversations.
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700">
+            </RevealCard>
+            <RevealCard delay={0.12} className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               Confidence-aware prediction output with top candidate conditions.
-            </div>
-            <div className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700">
+            </RevealCard>
+            <RevealCard delay={0.18} className="rounded-2xl border border-[#e5e5e5] bg-white p-4 text-sm text-slate-700 transition-all duration-500 hover:-translate-y-1 hover:shadow-lg">
               Informational safety messaging and precaution-oriented guidance.
-            </div>
+            </RevealCard>
           </div>
           <p className="mt-6 text-sm text-slate-500">
             Safety notice: MedCoreAI is informational and does not replace licensed medical diagnosis or treatment.
           </p>
-        </div>
+        </RevealBlock>
       </section>
     </main>
   );
